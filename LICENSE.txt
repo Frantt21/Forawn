@@ -1,0 +1,79 @@
+End User License Agreement (EULA) — Forawn
+Última actualización: 12 de octubre de 2025
+
+Este Acuerdo de Licencia de Usuario Final ("EULA") es un contrato legal entre usted (persona física o jurídica, "Usuario") y el proveedor de la aplicación Forawn ("Proveedor", "nosotros"). Al instalar, copiar o usar Forawn ("Aplicación"), usted acepta quedar vinculado por los términos de este EULA. Si no está de acuerdo con estos términos, no instale ni utilice la Aplicación.
+
+1. Definiciones
+"Aplicación": el software distribuido bajo el nombre Forawn, incluyendo ejecutables, binarios, librerías, recursos, documentación y cualquier actualización.
+
+"Servicios": funcionalidades ofrecidas por la Aplicación, por ejemplo: descargador de contenido, generador de imágenes por IA, integración con APIs de terceros (Spotify, servicios de imágenes, etc.).
+
+"Contenido de Usuario": datos, prompts, URLs, archivos o cualquier material que el Usuario introduzca o genere mediante la Aplicación.
+
+2. Licencia de uso
+Concesión: Le otorgamos una licencia limitada, no exclusiva, intransferible y revocable para usar la Aplicación en dispositivos que usted posea o controle, conforme a este EULA.
+
+Restricciones: usted no puede (a) distribuir, sublicenciar, alquilar, arrendar, vender o transferir la Aplicación; (b) modificar, descompilar, realizar ingeniería inversa o derivar trabajos de la Aplicación, salvo en la medida permitida por la ley aplicable; (c) eliminar o alterar avisos de propiedad intelectual; (d) eludir medidas técnicas de protección.
+
+3. Uso de APIs y servicios de terceros
+La Aplicación integra y depende de servicios de terceros (por ejemplo APIs para búsquedas de música, portadas e imágenes IA). El funcionamiento de dichas características depende de la disponibilidad, políticas y condiciones de uso de esos servicios.
+
+Usted acepta cumplir las políticas y límites de uso de cualquier servicio externo que conecte mediante la Aplicación.
+
+No garantizamos la disponibilidad, latencia ni precisión de servicios externos.
+
+4. Contenido de Usuario y responsabilidad
+Usted conserva la propiedad del Contenido de Usuario que genere o suba.
+
+Usted es responsable del contenido que aporte, de su legalidad y de obtener permisos necesarios (por ejemplo, derechos de autor o licencias para material que procese o descargue).
+
+Al utilizar herramientas de generación por IA, usted acepta que el contenido generado puede estar sujeto a limitaciones de uso impuestas por los proveedores del servicio de IA.
+
+5. Privacidad y datos
+La Aplicación puede almacenar preferencias locales (por ejemplo idioma preferido) y enviar solicitudes a servicios remotos para cumplir funcionalidades.
+
+No somos responsables por la política de privacidad de servicios de terceros; revise sus términos y políticas antes de enviar datos.
+
+Para detalles sobre cómo tratamos datos, consulte la política de privacidad asociada (si existe) o la documentación del producto.
+
+6. Actualizaciones
+Podemos proporcionar actualizaciones automáticas o manuales. Las actualizaciones pueden cambiar, mejorar o eliminar funciones.
+
+Usted acepta que las actualizaciones sean instaladas y que pueden requerir nuevos permisos o cambios en dependencias.
+
+7. Limitación de responsabilidad y exención de garantías
+La APLICACIÓN SE PROVEE "TAL CUAL" Y "SEGÚN DISPONIBILIDAD". EN LA MEDIDA MÁXIMA PERMITIDA POR LA LEY, EL PROVEEDOR NO OTORGA GARANTÍAS EXPRESAS NI IMPLÍCITAS, INCLUYENDO PERO NO LIMITADO A GARANTÍAS DE COMERCIABILIDAD, IDONEIDAD PARA UN FIN PARTICULAR O NO INFRACCIÓN.
+
+EN NINGÚN CASO EL PROVEEDOR SERÁ RESPONSABLE POR DAÑOS INDIRECTOS, INCIDENTALES, ESPECIALES, CONSECUENTES O PUNITIVOS, INCLUIDOS PERDIDAS DE BENEFICIOS, DATOS O INTERRUPCIÓN DEL NEGOCIO, DERIVADOS DEL USO O INCAPACIDAD DE USAR LA APLICACIÓN, AÚN SI SE ADVIERTE DE LA POSIBILIDAD DE TALES DAÑOS.
+
+LA RESPONSABILIDAD TOTAL DEL PROVEEDOR POR DAÑOS DIRECTOS NO EXCEDERÁ, EN CUALQUIER CASO, LA CANTIDAD QUE USTED HAYA PAGADO POR LA APLICACIÓN (SI APLICA) O CERO (0) SI LA APLICACIÓN SE DISTRIBUYE DE FORMA GRATUITA.
+
+8. Actualizaciones, correcciones y soporte
+Podemos, a nuestra discreción, ofrecer soporte técnico, mejoras y correcciones de errores. No tenemos obligación de suministrar soporte o actualizaciones.
+
+El soporte puede estar sujeto a términos adicionales.
+
+9. Terminación
+Este EULA es efectivo hasta que sea terminado. Podemos terminar esta licencia inmediatamente si usted incumple los términos del EULA.
+
+Tras la terminación deberá eliminar todas las copias de la Aplicación y cesar su uso.
+
+10. Exportación y cumplimiento legal
+Usted acepta cumplir con las leyes de exportación aplicables y no exportar la Aplicación a países o personas prohibidas por la normativa vigente.
+
+11. Ley aplicable y jurisdicción
+Este EULA se regirá por las leyes aplicables del lugar donde el Proveedor tenga su sede (ajuste esto según su jurisdicción preferida).
+
+Para disputas se podrá someter a los tribunales competentes de dicha jurisdicción salvo que exista un acuerdo distinto por las partes.
+
+12. Disposiciones generales
+Si alguna cláusula de este EULA se considera inválida o inaplicable, las demás disposiciones permanecerán en vigor.
+
+Este EULA constituye el acuerdo completo entre usted y el Proveedor respecto de la Aplicación y reemplaza cualquier acuerdo previo relacionado con la materia.
+
+13. Contacto
+Si tiene preguntas sobre este EULA, envíe una solicitud a:
+
+Soporte / Contacto: [proveer correo o web del desarrollador]
+
+Al instalar o usar Forawn, usted reconoce haber leído, entendido y aceptado los términos de este EULA.
