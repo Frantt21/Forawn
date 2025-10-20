@@ -30,10 +30,12 @@ Download the latest installer from the [Releases](https://github.com/your-userna
 
 ![Screenshot](assets/warning_windows.jpg)
 
+- This happens because the installer is not signed (without capital)
 
-### Default install location:
 
-C:\Users\YourName\AppData\Roaming\Forawn
+### 📁 Default install location:
+
+- C:\Users\YourName\AppData\Roaming\Forawn
 - This avoids permission issues and allows the app to run without administrator privileges.
 
 ### Requirements
