@@ -1,5 +1,5 @@
 End User License Agreement (EULA) — Forawn
-Última actualización: 12 de octubre de 2025
+Última actualización: 20 de octubre de 2025
 
 Este Acuerdo de Licencia de Usuario Final ("EULA") es un contrato legal entre usted (persona física o jurídica, "Usuario") y el proveedor de la aplicación Forawn ("Proveedor", "nosotros"). Al instalar, copiar o usar Forawn ("Aplicación"), usted acepta quedar vinculado por los términos de este EULA. Si no está de acuerdo con estos términos, no instale ni utilice la Aplicación.
 
@@ -78,3 +78,4 @@ Soporte / Discord: @frntts
 
 
 Al instalar o usar Forawn, usted reconoce haber leído, entendido y aceptado los términos de este EULA.
+
