@@ -62,7 +62,7 @@ Tras la terminación deberá eliminar todas las copias de la Aplicación y cesar
 Usted acepta cumplir con las leyes de exportación aplicables y no exportar la Aplicación a países o personas prohibidas por la normativa vigente.
 
 11. Ley aplicable y jurisdicción
-Este EULA se regirá por las leyes aplicables del lugar donde el Proveedor tenga su sede (ajuste esto según su jurisdicción preferida).
+Este EULA se regirá por las leyes aplicables del lugar donde el Proveedor tenga su sede.
 
 Para disputas se podrá someter a los tribunales competentes de dicha jurisdicción salvo que exista un acuerdo distinto por las partes.
 
@@ -74,6 +74,7 @@ Este EULA constituye el acuerdo completo entre usted y el Proveedor respecto de 
 13. Contacto
 Si tiene preguntas sobre este EULA, envíe una solicitud a:
 
-Soporte / Contacto: [proveer correo o web del desarrollador]
+Soporte / Discord: @frntts 
+
 
 Al instalar o usar Forawn, usted reconoce haber leído, entendido y aceptado los términos de este EULA.
