@@ -24,7 +24,7 @@
 
 ## 📦 Installation
 
-Download the latest installer from the [Releases](https://github.com/your-username/forawn/releases) page.
+Download the latest installer from the [Releases](https://github.com/Frantt21/forawn/releases) page.
 
 ### 🛡️ If Windows shows you this alert
 
