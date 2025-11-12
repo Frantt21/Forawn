@@ -18,6 +18,7 @@
 - 🎧 **Spotify music downloader** with YouTube fallback
 - 🖼️ **AI image generator** for creative visuals
 - 🌐 **Text translator** with multi-language support
+- 📄 **QR Generator**
 - 🚫 **NSFW content search** (disabled by default for safety)
 
 ---
