@@ -1,0 +1,484 @@
+import 'dart:io';
+import 'dart:ui';
+import 'package:flutter/material.dart';
+import 'package:file_picker/file_picker.dart';
+import '../utils/color_utils.dart';
+import '../models/note.dart';
+import '../db/notes_database.dart';
+
+typedef TextGetter = String Function(String key, {String? fallback});
+
+class NoteData {
+  final String title;
+  final String description;
+  final String content;
+  final String? imagePath;
+  final String? category;
+  final int backgroundColorValue;
+  NoteData({
+    required this.title,
+    required this.description,
+    required this.content,
+    this.imagePath,
+    this.category,
+    required this.backgroundColorValue,
+  });
+}
+
+// showNotePopup ahora recibe getText para localización
+// existingNote != null => modo edición
+// categories lista que puede estar vacía
+// Retorna NoteData al guardar, null si cancela
+Future<NoteData?> showNotePopup({
+  required BuildContext context,
+  required TextGetter getText,
+  String initialTitle = '',
+  String initialDescription = '',
+  String initialContent = '',
+  String? initialImagePath,
+  String? initialCategory,
+  int initialColor = 0xFF121212,
+  required List<String> categories,
+  String dialogTitleKey = 'create_note_title',
+  Note? existingNote,
+}) async {
+  final titleCtrl = TextEditingController(text: initialTitle);
+  final descCtrl = TextEditingController(text: initialDescription);
+  final contentCtrl = TextEditingController(text: initialContent);
+
+  double contentHeight = 160.0;
+  bool isDraggingContentHandle = false;
+  final ScrollController contentScrollController = ScrollController();
+
+  String? imagePath = initialImagePath;
+  String? selectedCategory = initialCategory;
+  int bgColor = initialColor;
+  final db = NotesDatabase.instance;
+  var editingNote = existingNote;
+  final isEditing = existingNote != null;
+
+  // inputDecoration consistente: sin hover específico y con borde uniforme
+  final InputDecoration baseInputDecoration = InputDecoration(
+    filled: true,
+    fillColor: Colors.transparent,
+    hintStyle: TextStyle(color: Colors.white.withOpacity(0.45)),
+    contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+    border: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide.none),
+    enabledBorder: OutlineInputBorder(
+      borderRadius: BorderRadius.circular(8),
+      borderSide: BorderSide(color: Colors.transparent),
+    ),
+    focusedBorder: OutlineInputBorder(
+      borderRadius: BorderRadius.circular(8),
+      borderSide: BorderSide(color: Colors.deepPurpleAccent, width: 1.5),
+    ),
+  );
+
+  Future<void> cycleColor(StateSetter setState) async {
+    const presets = [0xFF121212, 0xFFFFFFFF, 0xFFFFF59D, 0xFFFFCDD2, 0xFFBBDEFB];
+    final idx = presets.indexOf(bgColor);
+    final next = presets[(idx + 1) % presets.length];
+
+    setState(() {
+      bgColor = next;
+    });
+
+    if (isEditing && editingNote != null) {
+      final current = editingNote!;
+      final updated = current.copyWith(backgroundColorValue: next, updatedAt: DateTime.now());
+      await db.updateNote(updated);
+      editingNote = updated;
+    }
+  }
+
+  try {
+    final result = await showDialog<NoteData>(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) {
+        return Center(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(minWidth: 720, maxWidth: 980),
+            child: StatefulBuilder(builder: (ctx, setState) {
+              Future<void> pickImage() async {
+                final res = await FilePicker.platform.pickFiles(type: FileType.image, allowMultiple: false);
+                if (res != null && res.files.isNotEmpty) {
+                  imagePath = res.files.first.path;
+                  setState(() {});
+                }
+              }
+
+              final bgPreview = Color(bgColor);
+              final titleText = isEditing ? getText('edit_note_title', fallback: 'Editar nota') : getText(dialogTitleKey, fallback: 'Select Image');
+              final cancelLabel = getText('cancel', fallback: 'Cancelar');
+              final saveLabel = isEditing ? getText('save', fallback: 'Guardar') : getText('create', fallback: 'Crear');
+
+              // Envoltorio translúcido con blur tipo Windows
+              return ClipRRect(
+                borderRadius: BorderRadius.circular(14),
+                child: BackdropFilter(
+                  filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
+                  child: Container(
+                    width: double.infinity,
+                    constraints: const BoxConstraints(minWidth: 720, maxWidth: 980),
+                    decoration: BoxDecoration(
+                      color: Theme.of(context).dialogBackgroundColor.withOpacity(0.55),
+                      borderRadius: BorderRadius.circular(14),
+                      border: Border.all(color: Colors.white.withOpacity(0.06)),
+                    ),
+                    child: Material(
+                      color: Colors.transparent,
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          // TITLE area
+                          Padding(
+                            padding: const EdgeInsets.fromLTRB(16, 16, 8, 0),
+                            child: Row(
+                              children: [
+                                GestureDetector(
+                                  onTap: pickImage,
+                                  child: Container(
+                                    width: 48,
+                                    height: 48,
+                                    decoration: BoxDecoration(borderRadius: BorderRadius.circular(8), color: Colors.black12),
+                                    child: (imagePath != null && File(imagePath!).existsSync())
+                                        ? ClipRRect(borderRadius: BorderRadius.circular(8), child: Image.file(File(imagePath!), fit: BoxFit.cover))
+                                        : const Icon(Icons.image, size: 22),
+                                  ),
+                                ),
+                                const SizedBox(width: 12),
+                                Expanded(child: Text(titleText, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w600))),
+                              ],
+                            ),
+                          ),
+
+                          // CONTENT
+                          Padding(
+                            padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+                            child: SizedBox(
+                              width: double.maxFinite,
+                              child: SingleChildScrollView(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                                  children: [
+                                    // Título (no redimensionable)
+                                    TextField(
+                                      controller: titleCtrl,
+                                      decoration: baseInputDecoration.copyWith(hintText: getText('title_hint', fallback: 'Título')),
+                                      maxLines: 1,
+                                      style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+                                      textCapitalization: TextCapitalization.sentences,
+                                    ),
+                                    const SizedBox(height: 10),
+
+                                    // Descripción (no redimensionable)
+                                    TextField(
+                                      controller: descCtrl,
+                                      decoration: baseInputDecoration.copyWith(hintText: getText('description_hint', fallback: 'Descripción')),
+                                      maxLines: 1,
+                                      style: const TextStyle(fontSize: 16, height: 1.15),
+                                      textCapitalization: TextCapitalization.sentences,
+                                    ),
+                                    const SizedBox(height: 10),
+
+                                    // Contenido: redimensionable por el usuario
+                                    Container(
+                                      width: double.infinity,
+                                      decoration: BoxDecoration(
+                                        color: Colors.black12,
+                                        borderRadius: BorderRadius.circular(12),
+                                        border: Border.all(color: Colors.white.withOpacity(0.04)),
+                                      ),
+                                      child: Column(
+                                        children: [
+                                          SizedBox(
+                                            height: contentHeight,
+                                            child: Padding(
+                                              padding: const EdgeInsets.all(8.0),
+                                              child: Scrollbar(
+                                                controller: contentScrollController,
+                                                thumbVisibility: true,
+                                                radius: const Radius.circular(6),
+                                                child: TextField(
+                                                  controller: contentCtrl,
+                                                  scrollController: contentScrollController,
+                                                  expands: true,
+                                                  maxLines: null,
+                                                  minLines: null,
+                                                  textAlignVertical: TextAlignVertical.top,
+                                                  decoration: baseInputDecoration.copyWith(
+                                                    hintText: getText('content_hint', fallback: 'Contenido'),
+                                                    border: InputBorder.none,
+                                                  ),
+                                                  style: const TextStyle(fontSize: 14),
+                                                ),
+                                              ),
+                                            ),
+                                          ),
+                                          GestureDetector(
+                                            behavior: HitTestBehavior.translucent,
+                                            onVerticalDragStart: (_) => setState(() => isDraggingContentHandle = true),
+                                            onVerticalDragUpdate: (details) {
+                                              setState(() {
+                                                contentHeight = (contentHeight + details.delta.dy).clamp(80.0, 600.0);
+                                              });
+                                            },
+                                            onVerticalDragEnd: (_) => setState(() => isDraggingContentHandle = false),
+                                            child: Container(
+                                              height: 10,
+                                              alignment: Alignment.center,
+                                              child: Container(
+                                                width: 48,
+                                                height: 4,
+                                                decoration: BoxDecoration(
+                                                  color: isDraggingContentHandle ? Colors.deepPurpleAccent : Colors.white24,
+                                                  borderRadius: BorderRadius.circular(4),
+                                                ),
+                                              ),
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                    const SizedBox(height: 12),
+
+                                    // Categoria editable (dropdown + opción para escribir)
+                                    Row(
+                                      children: [
+                                        Expanded(
+                                          child: _EditableCategoryField(
+                                            categories: categories,
+                                            selected: selectedCategory,
+                                            onChanged: (v) => setState(() => selectedCategory = v),
+                                            getText: getText,
+                                            baseDecoration: baseInputDecoration,
+                                          ),
+                                        ),
+                                        const SizedBox(width: 8),
+                                        IconButton(
+                                          tooltip: getText('change_color', fallback: 'Cambiar color'),
+                                          icon: Icon(Icons.format_paint, color: readableTextColorFor(bgPreview)),
+                                          onPressed: () async {
+                                            await cycleColor(setState);
+                                          },
+                                        ),
+                                      ],
+                                    ),
+
+                                    const SizedBox(height: 10),
+
+                                    // Previsualización compacta
+                                    Container(
+                                      height: 88,
+                                      padding: const EdgeInsets.all(8),
+                                      decoration: BoxDecoration(color: bgPreview, borderRadius: BorderRadius.circular(8), border: Border.all(color: Colors.black12)),
+                                      child: Row(
+                                        children: [
+                                          if (imagePath != null && File(imagePath!).existsSync())
+                                            ClipRRect(borderRadius: BorderRadius.circular(6), child: Image.file(File(imagePath!), width: 72, height: 72, fit: BoxFit.cover))
+                                          else
+                                            Container(width: 72, height: 72, decoration: BoxDecoration(color: Colors.black12, borderRadius: BorderRadius.circular(6)), child: const Icon(Icons.note)),
+                                          const SizedBox(width: 8),
+                                          Expanded(
+                                            child: Column(
+                                              crossAxisAlignment: CrossAxisAlignment.start,
+                                              children: [
+                                                Text(titleCtrl.text.isEmpty ? getText('title_preview', fallback: 'Título') : titleCtrl.text, style: TextStyle(color: readableTextColorFor(bgPreview), fontWeight: FontWeight.w600)),
+                                                const SizedBox(height: 6),
+                                                Text(descCtrl.text.isEmpty ? getText('description_preview', fallback: 'Descripción') : descCtrl.text, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(color: readableTextColorFor(bgPreview).withOpacity(0.9), fontSize: 13.5)),
+                                                const Spacer(),
+                                                Row(
+                                                  children: [
+                                                    if (selectedCategory != null && selectedCategory!.isNotEmpty)
+                                                      Container(padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4), decoration: BoxDecoration(color: readableTextColorFor(bgPreview).withOpacity(0.12), borderRadius: BorderRadius.circular(16)), child: Text(selectedCategory!, style: TextStyle(color: readableTextColorFor(bgPreview), fontSize: 12))),
+                                                    const Spacer(),
+                                                    Text(DateTime.now().toLocal().toString().split('.').first, style: TextStyle(color: readableTextColorFor(bgPreview).withOpacity(0.7), fontSize: 11)),
+                                                  ],
+                                                ),
+                                              ],
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+
+                                    const SizedBox(height: 12),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          ),
+
+                          // ACTIONS (botones) en la parte inferior
+                          Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+                            child: Row(
+                              mainAxisAlignment: MainAxisAlignment.end,
+                              children: [
+                                TextButton(onPressed: () => Navigator.pop(ctx), child: Text(cancelLabel)),
+                                const SizedBox(width: 8),
+                                ElevatedButton(
+                                  onPressed: () async {
+                                    final t = titleCtrl.text.trim();
+                                    final d = descCtrl.text.trim();
+                                    final c = contentCtrl.text.trim();
+                                    if (t.isEmpty) return;
+
+                                    if (selectedCategory != null && selectedCategory!.isNotEmpty && !categories.contains(selectedCategory)) {
+                                      categories.add(selectedCategory!);
+                                    }
+
+                                    if (isEditing && editingNote != null) {
+                                      final updated = editingNote!.copyWith(
+                                        title: t,
+                                        description: d,
+                                        content: c,
+                                        imagePath: imagePath,
+                                        category: selectedCategory,
+                                        backgroundColorValue: bgColor,
+                                        updatedAt: DateTime.now(),
+                                      );
+                                      await db.updateNote(updated);
+                                      Navigator.pop(ctx, NoteData(title: t, description: d, content: c, imagePath: imagePath, category: selectedCategory, backgroundColorValue: bgColor));
+                                    } else {
+                                      Navigator.pop(ctx, NoteData(title: t, description: d, content: c, imagePath: imagePath, category: selectedCategory, backgroundColorValue: bgColor));
+                                    }
+                                  },
+                                  child: Text(saveLabel),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              );
+            }),
+          ),
+        );
+      },
+    );
+
+    return result;
+  } finally {
+    contentScrollController.dispose();
+    titleCtrl.dispose();
+    descCtrl.dispose();
+    contentCtrl.dispose();
+  }
+}
+
+class _EditableCategoryField extends StatefulWidget {
+  final List<String> categories;
+  final String? selected;
+  final ValueChanged<String?> onChanged;
+  final TextGetter getText;
+  final InputDecoration baseDecoration;
+  const _EditableCategoryField({required this.categories, required this.selected, required this.onChanged, required this.getText, required this.baseDecoration});
+
+  @override
+  State<_EditableCategoryField> createState() => _EditableCategoryFieldState();
+}
+
+class _EditableCategoryFieldState extends State<_EditableCategoryField> {
+  bool _editing = false;
+  late TextEditingController _ctrl;
+  String? _selected;
+
+  @override
+  void initState() {
+    super.initState();
+    _ctrl = TextEditingController(text: widget.selected);
+    _selected = widget.selected;
+  }
+
+  @override
+  void didUpdateWidget(covariant _EditableCategoryField oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.selected != _selected) {
+      _selected = widget.selected;
+      _ctrl.text = _selected ?? '';
+    }
+  }
+
+  @override
+  void dispose() {
+    _ctrl.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final baseDecoration = widget.baseDecoration;
+    if (_editing) {
+      return Row(
+        children: [
+          Expanded(
+            child: TextFormField(
+              controller: _ctrl,
+              decoration: baseDecoration.copyWith(
+                hintText: widget.getText('new_category_hint', fallback: 'Nueva categoría'),
+              ),
+              onFieldSubmitted: (v) {
+                final value = v.trim();
+                setState(() => _editing = false);
+                _selected = value.isEmpty ? null : value;
+                widget.onChanged(_selected);
+              },
+              onEditingComplete: () {
+                final value = _ctrl.text.trim();
+                setState(() => _editing = false);
+                _selected = value.isEmpty ? null : value;
+                widget.onChanged(_selected);
+              },
+            ),
+          ),
+          const SizedBox(width: 6),
+          IconButton(
+            tooltip: widget.getText('add_category', fallback: 'Agregar categoría'),
+            icon: const Icon(Icons.check),
+            onPressed: () {
+              final value = _ctrl.text.trim();
+              setState(() => _editing = false);
+              _selected = value.isEmpty ? null : value;
+              widget.onChanged(_selected);
+            },
+          ),
+        ],
+      );
+    }
+
+    final items = <DropdownMenuItem<String?>>[
+      DropdownMenuItem<String?>(value: null, child: Text(widget.getText('no_category', fallback: 'Sin categoría'))),
+      ...widget.categories.map((c) => DropdownMenuItem<String?>(value: c, child: Text(c))),
+    ];
+
+    return Row(
+      children: [
+        Expanded(
+          child: DropdownButtonFormField<String?>(
+            initialValue: widget.categories.contains(_selected) ? _selected : null,
+            items: items,
+            onChanged: (v) {
+              _selected = v;
+              widget.onChanged(v);
+            },
+            decoration: baseDecoration.copyWith(contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6)),
+          ),
+        ),
+        const SizedBox(width: 6),
+        IconButton(
+          tooltip: widget.getText('add_category', fallback: 'Agregar categoría'),
+          icon: const Icon(Icons.edit),
+          onPressed: () {
+            _ctrl.text = '';
+            setState(() => _editing = true);
+          },
+        ),
+      ],
+    );
+  }
+}

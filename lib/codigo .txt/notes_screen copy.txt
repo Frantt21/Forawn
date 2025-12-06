@@ -1,0 +1,465 @@
+import 'dart:io';
+import 'package:flutter/material.dart';
+import 'package:window_manager/window_manager.dart';
+import '../db/notes_database.dart';
+import '../models/note.dart';
+import '../widgets/note_popup.dart';
+import '../widgets/note_card.dart';
+import 'archived_screen.dart';
+import 'trash_screen.dart';
+import 'settings_screen.dart';
+import '../utils/color_utils.dart';
+
+typedef TextGetter = String Function(String key, {String? fallback});
+
+class NotesScreen extends StatefulWidget {
+  final TextGetter getText;
+  final String currentLang;
+  const NotesScreen({super.key, required this.getText, required this.currentLang});
+
+  @override
+  State<NotesScreen> createState() => _NotesScreenState();
+}
+
+class _NotesScreenState extends State<NotesScreen> with WindowListener {
+  final _db = NotesDatabase.instance;
+  final List<Note> _notes = [];
+  final List<String> _categories = [];
+  bool _loading = true;
+
+  TextGetter get t => widget.getText;
+
+  @override
+  void initState() {
+    super.initState();
+    try {
+      windowManager.addListener(this);
+    } catch (_) {}
+    _reloadAll();
+  }
+
+  @override
+  void dispose() {
+    try {
+      windowManager.removeListener(this);
+    } catch (_) {}
+    super.dispose();
+  }
+
+  Future<void> _reloadAll() async {
+    _setLoading(true);
+    final fetched = await _db.readAllNotes(includeArchived: false, includeDeleted: false);
+
+    // ordenar: pinned primero, luego por updatedAt/createdAt desc
+    fetched.sort((a, b) {
+      if (a.pinned && !b.pinned) return -1;
+      if (!a.pinned && b.pinned) return 1;
+      final at = (b.updatedAt ?? b.createdAt).compareTo(a.updatedAt ?? a.createdAt);
+      return at;
+    });
+
+    _notes
+      ..clear()
+      ..addAll(fetched);
+    await _loadCategoriesFromNotes();
+    _setLoading(false);
+  }
+
+  Future<void> _loadCategoriesFromNotes() async {
+    final all = await _db.readAllNotes(includeArchived: true, includeDeleted: true);
+    final cats = <String>{};
+    for (final n in all) {
+      if (n.category != null && n.category!.trim().isNotEmpty) cats.add(n.category!.trim());
+    }
+    _categories
+      ..clear()
+      ..addAll(cats);
+    setState(() {});
+  }
+
+  void _setLoading(bool v) {
+    _loading = v;
+    if (mounted) setState(() {});
+  }
+
+  // Cache helpers
+  void _insertNoteToCache(Note note) {
+    _notes.insert(0, note);
+    // reordenar para mantener pinned primero
+    _notes.sort((a, b) {
+      if (a.pinned && !b.pinned) return -1;
+      if (!a.pinned && b.pinned) return 1;
+      final at = (b.updatedAt ?? b.createdAt).compareTo(a.updatedAt ?? a.createdAt);
+      return at;
+    });
+    setState(() {});
+  }
+
+  void _updateNoteInCache(Note note) {
+    final idx = _notes.indexWhere((n) => n.id == note.id);
+    if (idx >= 0) {
+      _notes[idx] = note;
+    } else {
+      _notes.insert(0, note);
+    }
+    // reordena para garantizar pinned primero
+    _notes.sort((a, b) {
+      if (a.pinned && !b.pinned) return -1;
+      if (!a.pinned && b.pinned) return 1;
+      final at = (b.updatedAt ?? b.createdAt).compareTo(a.updatedAt ?? a.createdAt);
+      return at;
+    });
+    setState(() {});
+  }
+
+  void _removeNoteFromCache(int id) {
+    _notes.removeWhere((n) => n.id == id);
+    setState(() {});
+  }
+
+  // Create (passes t)
+  Future<void> _createNote() async {
+    final data = await showNotePopup(context: context, getText: t, categories: _categories, dialogTitleKey: 'create_note_title');
+    if (data == null) return;
+    final note = Note(
+      title: data.title,
+      description: data.description,
+      content: data.content,
+      imagePath: data.imagePath,
+      category: data.category,
+      createdAt: DateTime.now(),
+      backgroundColorValue: data.backgroundColorValue,
+    );
+    final created = await _db.createNote(note);
+    await _loadCategoriesFromNotes();
+    _insertNoteToCache(created);
+  }
+
+  Future<void> _openNoteView(Note note) async {
+    await showDialog<void>(
+      context: context,
+      builder: (ctx) {
+        Note dialogNote = note;
+        return StatefulBuilder(builder: (ctx, setState) {
+          final bg = Color(dialogNote.backgroundColorValue);
+          final textColor = readableTextColorFor(bg);
+          final textColor2 = (const Color.fromARGB(255, 77, 77, 77));
+          final textColor3 = (const Color.fromARGB(255, 255, 255, 255));
+
+          return AlertDialog(
+            constraints: const BoxConstraints(minWidth: 720, maxWidth: 980),
+            backgroundColor: bg,
+            insetPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
+            title: Row(
+              children: [
+                if (dialogNote.imagePath != null && File(dialogNote.imagePath!).existsSync())
+                  Container(
+                    width: 70,
+                    height: 70,
+                    margin: const EdgeInsets.only(right: 8),
+                    child: ClipRRect(borderRadius: BorderRadius.circular(6), child: Image.file(File(dialogNote.imagePath!), fit: BoxFit.cover)),
+                  )
+                else
+                  const SizedBox(width: 70, height: 70),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        dialogNote.title,
+                        style: TextStyle(color: textColor, fontSize: 20, fontWeight: FontWeight.w600),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      const SizedBox(height: 6),
+                      Text(
+                        dialogNote.description ?? '',
+                        style: TextStyle(fontSize: 13.5, color: textColor2, fontWeight: FontWeight.w500),
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            content: ConstrainedBox(
+              constraints: const BoxConstraints(minWidth: 700),
+              child: SingleChildScrollView(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(dialogNote.content, style: TextStyle(fontSize: 16, color: textColor)),
+                    const SizedBox(height: 12),
+                   // separador visual antes de las acciones
+                    const SizedBox(height: 12),
+                    Divider(color: textColor.withOpacity(0.14), thickness: 1),
+                    const SizedBox(height: 8),
+                    if (dialogNote.category != null && dialogNote.category!.isNotEmpty)
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                        decoration: BoxDecoration(
+                          color: textColor.withOpacity(0.12),
+                          borderRadius: BorderRadius.circular(16),
+                        ),
+                        child: Text(
+                          dialogNote.category!,
+                          style: TextStyle(color: textColor, fontSize: 12),
+                        ),
+                      ),
+                    const SizedBox(height: 7),
+                    Text(
+                      '${t('created_at', fallback: 'Creada')}: ${dialogNote.createdAt.toLocal().toString().split('.').first}',
+                      style: TextStyle(fontSize: 12, color: textColor2),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            actions: [
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 8.0),
+                child: Center(
+                  child: Wrap(
+                    crossAxisAlignment: WrapCrossAlignment.center,
+                    spacing: 8,
+                    children: [
+                      Container(
+                        decoration: BoxDecoration(color: textColor.withOpacity(0.12), borderRadius: BorderRadius.circular(10)),
+                        child: IconButton(
+                          tooltip: t('close', fallback: 'Cerrar'),
+                          onPressed: () => Navigator.pop(ctx),
+                          icon: Icon(Icons.close, color: textColor),
+                        ),
+                      ),
+
+                      Container(
+                        decoration: BoxDecoration(color: textColor.withOpacity(0.12), borderRadius: BorderRadius.circular(10)),
+                        child: IconButton(
+                          tooltip: t('delete', fallback: 'Eliminar'),
+                          onPressed: () async {
+                            await _db.moveToTrash(dialogNote.id!);
+                            _removeNoteFromCache(dialogNote.id!);
+                            Navigator.pop(ctx);
+                            ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(t('moved_to_trash', fallback: 'Nota movida a papelera'))));
+                          },
+                          icon: Icon(Icons.delete_outline, color: textColor),
+                        ),
+                      ),
+
+                      Container(
+                        decoration: BoxDecoration(color: textColor.withOpacity(0.12), borderRadius: BorderRadius.circular(10)),
+                        child: IconButton(
+                          tooltip: t('archive', fallback: 'Archivar'),
+                          onPressed: () async {
+                            await _db.archiveNote(dialogNote.id!);
+                            _removeNoteFromCache(dialogNote.id!);
+                            Navigator.pop(ctx);
+                            ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(t('archived', fallback: 'Nota archivada'))));
+                          },
+                          icon: Icon(Icons.archive, color: textColor),
+                        ),
+                      ),
+
+                      Container(
+                        decoration: BoxDecoration(color: textColor.withOpacity(0.12), borderRadius: BorderRadius.circular(10)),
+                        child: IconButton(
+                          tooltip: dialogNote.pinned ? t('unpin', fallback: 'Desfijar') : t('pin', fallback: 'Fijar'),
+                          onPressed: () async {
+                            final updated = dialogNote.copyWith(pinned: !dialogNote.pinned, updatedAt: DateTime.now());
+                            await _db.updateNote(updated);
+                            _updateNoteInCache(updated);
+                            Navigator.pop(ctx);
+                          },
+                          icon: Icon(dialogNote.pinned ? Icons.push_pin : Icons.push_pin_outlined, color: textColor),
+                        ),
+                      ),
+
+                      Container(
+                        decoration: BoxDecoration(color: textColor.withOpacity(0.12), borderRadius: BorderRadius.circular(10)),
+                        child: IconButton(
+                          tooltip: t('change_color', fallback: 'Cambiar color'),
+                          onPressed: () async {
+                            const presets = [0xFF121212, 0xFFFFFFFF, 0xFFFFF59D, 0xFFFFCDD2, 0xFFBBDEFB];
+                            final idx = presets.indexOf(dialogNote.backgroundColorValue);
+                            final next = presets[(idx + 1) % presets.length];
+                            final updated = dialogNote.copyWith(backgroundColorValue: next, updatedAt: DateTime.now());
+                            await _db.updateNote(updated);
+                            _updateNoteInCache(updated);
+                            Navigator.pop(ctx);
+                          },
+                          icon: Icon(Icons.format_paint, color: textColor),
+                        ),
+                      ),
+
+                      Container(
+                        decoration: BoxDecoration(color: textColor.withOpacity(0.12), borderRadius: BorderRadius.circular(10)),
+                        child: IconButton(
+                          tooltip: t('edit', fallback: 'Editar'),
+                          onPressed: () async {
+                            Navigator.pop(ctx);
+                            final result = await showNotePopup(
+                              context: context,
+                              getText: t,
+                              initialTitle: dialogNote.title,
+                              initialDescription: dialogNote.description,
+                              initialContent: dialogNote.content,
+                              initialImagePath: dialogNote.imagePath,
+                              initialCategory: dialogNote.category,
+                              initialColor: dialogNote.backgroundColorValue,
+                              categories: _categories,
+                              dialogTitleKey: 'edit_note_title',
+                              existingNote: dialogNote,
+                            );
+                            if (result != null) {
+                              final updated = await _db.readNoteById(dialogNote.id!);
+                              if (updated != null) {
+                                await _loadCategoriesFromNotes();
+                                _updateNoteInCache(updated);
+                              }
+                            }
+                          },
+                          icon: Icon(Icons.edit, color: textColor),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          );
+        });
+      },
+    );
+  }
+
+  Future<void> _onCardTap(Note note) async {
+    await _openNoteView(note);
+  }
+
+  // acciones rapidas (update DB + cache)
+  // Future<void> _moveToTrashFromCard(Note note) async {
+  //   await _db.moveToTrash(note.id!);
+  //   _removeNoteFromCache(note.id!);
+  // }
+
+  // Future<void> _archiveFromCard(Note note) async {
+  //   await _db.archiveNote(note.id!);
+  //   _removeNoteFromCache(note.id!);
+  // }
+
+  // Future<void> _togglePinFromCard(Note note) async {
+  //   final updated = note.copyWith(pinned: !note.pinned, updatedAt: DateTime.now());
+  //   await _db.updateNote(updated);
+  //   _updateNoteInCache(updated);
+  // }
+
+  // Desktop helpers
+  Future<void> _minimize() async => await windowManager.minimize();
+  Future<void> _maximizeRestore() async {
+    final isMax = await windowManager.isMaximized();
+    if (isMax) {
+      await windowManager.unmaximize();
+    } else {
+      await windowManager.maximize();
+    }
+  }
+
+  Widget _header() {
+    final get = t;
+    return GestureDetector(
+      behavior: HitTestBehavior.translucent,
+      onPanStart: (_) => windowManager.startDragging(),
+      child: Container(
+        height: 42,
+        padding: const EdgeInsets.symmetric(horizontal: 10),
+        color: Colors.transparent,
+        child: Row(
+          children: [
+            SizedBox(
+              width: 36,
+              height: 36,
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(8),
+                child: Container(
+                  color: Colors.black26,
+                  alignment: Alignment.center,
+                  child: const Icon(Icons.note, color: Color.fromARGB(255, 251, 64, 64)),
+                ),
+              ),
+            ),
+            const SizedBox(width: 8),
+            Expanded(child: Text(get('notes_title', fallback: 'Notas'), style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600))),
+            IconButton(
+              tooltip: get('archive', fallback: 'Archivadas'),
+              icon: const Icon(Icons.archive),
+              onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => ArchivedScreen(getText: t, currentLang: widget.currentLang))).then((_) => _reloadAll()),
+            ),
+            IconButton(
+              tooltip: get('trash', fallback: 'Papelera'),
+              icon: const Icon(Icons.delete_outline),
+              onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => TrashScreen(getText: t, currentLang: widget.currentLang))).then((_) => _reloadAll()),
+            ),
+            IconButton(
+              tooltip: get('settings', fallback: 'Ajustes'),
+              icon: const Icon(Icons.settings),
+              onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => SettingsScreen2(getText: t, currentLang: widget.currentLang))).then((_) => _reloadAll()),
+            ),
+            const SizedBox(width: 8),
+            IconButton(tooltip: get('minimize', fallback: 'Minimizar'), icon: const Icon(Icons.remove, size: 18), onPressed: _minimize),
+            IconButton(tooltip: get('maximize', fallback: 'Maximizar'), icon: const Icon(Icons.crop_square, size: 18), onPressed: _maximizeRestore),
+            IconButton(tooltip: get('back', fallback: 'Volver'), icon: const Icon(Icons.arrow_back, size: 18), onPressed: () => Navigator.of(context).maybePop()),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildGrid(List<Note> notes) {
+    return LayoutBuilder(builder: (context, constraints) {
+      final width = constraints.maxWidth;
+      final crossAxisCount = (width ~/ 360).clamp(1, 3);
+      return GridView.builder(
+        padding: const EdgeInsets.all(12),
+        gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+          crossAxisCount: crossAxisCount,
+          crossAxisSpacing: 12,
+          mainAxisSpacing: 12,
+          childAspectRatio: 3.2,
+        ),
+        itemCount: notes.length,
+        itemBuilder: (_, i) => NoteCard(
+          note: notes[i],
+          onTap: () => _onCardTap(notes[i]),
+        ),
+      );
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final scaffoldBg = Colors.transparent;
+    return Scaffold(
+      backgroundColor: scaffoldBg,
+      body: Column(
+        children: [
+          _header(),
+          Expanded(
+            child: _loading
+                ? const Center(child: CircularProgressIndicator())
+                : _notes.isEmpty
+                    ? Center(child: Text(t('no_notes', fallback: 'No hay notas')))
+                    : _buildGrid(_notes),
+          ),
+        ],
+      ),
+      floatingActionButton: FloatingActionButton(
+        onPressed: _createNote,
+        child: const Icon(Icons.add),
+        backgroundColor: const Color.fromARGB(255, 251, 64, 64),
+        foregroundColor: Colors.black87,
+      ),
+    );
+  }
+}

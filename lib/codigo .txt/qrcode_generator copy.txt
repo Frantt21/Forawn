@@ -1,0 +1,482 @@
+// lib/screen/qrcode_generator.dart
+import 'dart:io';
+import 'dart:typed_data';
+import 'dart:ui' as ui;
+import 'package:flutter/foundation.dart';
+import 'package:flutter/material.dart';
+import 'package:qr_flutter/qr_flutter.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:share_plus/share_plus.dart';
+import 'package:url_launcher/url_launcher.dart';
+import 'package:flutter/services.dart';
+import 'package:window_manager/window_manager.dart';
+import 'package:flutter/rendering.dart';
+
+class QrGeneratorScreen extends StatefulWidget {
+  final String Function(String key, {String? fallback}) getText;
+  const QrGeneratorScreen({super.key, required this.getText, required this.currentLang});
+
+  final String currentLang;
+
+  @override
+  State<QrGeneratorScreen> createState() => _QrGeneratorScreenState();
+}
+
+class _QrGeneratorScreenState extends State<QrGeneratorScreen> with WindowListener {
+  final TextEditingController _controller = TextEditingController();
+  final GlobalKey _qrKey = GlobalKey();
+  String? _errorText;
+  bool _processing = false;
+  Color _fg = Colors.white;
+  Color _bg = Colors.black;
+  double _size = 256.0;
+  bool _includeMargin = false;
+  double _inputHeight = 56;
+  bool _isDraggingHandle = false;
+
+  @override
+  void initState() {
+    super.initState();
+    windowManager.addListener(this);
+  }
+
+  @override
+  void dispose() {
+    windowManager.removeListener(this);
+    _controller.dispose();
+    super.dispose();
+  }
+
+  bool _isValidUrl(String s) {
+    final trimmed = s.trim();
+    if (trimmed.isEmpty) return false;
+    try {
+      final uri = Uri.parse(trimmed);
+      return uri.hasScheme && uri.isAbsolute;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  Future<void> _openUrl() async {
+    final url = _controller.text.trim();
+    if (!_isValidUrl(url)) {
+      setState(() => _errorText = widget.getText('invalid_url', fallback: 'URL inválida'));
+      return;
+    }
+    final uri = Uri.parse(url);
+    if (!await canLaunchUrl(uri)) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(widget.getText('open_error', fallback: 'No se pudo abrir la URL'))));
+      return;
+    }
+    await launchUrl(uri, mode: LaunchMode.externalApplication);
+  }
+
+  Future<void> _copyUrl() async {
+    final text = _controller.text.trim();
+    if (text.isEmpty) return;
+    await Clipboard.setData(ClipboardData(text: text));
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(widget.getText('copied', fallback: 'Copiado al portapapeles'))));
+  }
+
+  Future<Uint8List?> _capturePng() async {
+    try {
+      final boundary = _qrKey.currentContext?.findRenderObject() as RenderRepaintBoundary?;
+      if (boundary == null) return null;
+      final devicePixelRatio = ui.window.devicePixelRatio;
+      final image = await boundary.toImage(pixelRatio: devicePixelRatio);
+      final byteData = await image.toByteData(format: ui.ImageByteFormat.png);
+      return byteData?.buffer.asUint8List();
+    } catch (e) {
+      debugPrint('[QR] capture error: $e');
+      return null;
+    }
+  }
+
+  Future<Directory> _getDownloadsDirectoryFallback() async {
+    try {
+      final dir = await getDownloadsDirectory();
+      if (dir != null) return dir;
+    } catch (_) {}
+    try {
+      final docs = await getApplicationDocumentsDirectory();
+      return docs;
+    } catch (_) {
+      return await getTemporaryDirectory();
+    }
+  }
+
+  Future<void> _saveAndShare() async {
+    final text = _controller.text.trim();
+    if (!_isValidUrl(text)) {
+      setState(() => _errorText = widget.getText('invalid_url', fallback: 'URL inválida'));
+      return;
+    }
+
+    setState(() => _processing = true);
+    try {
+      final pngBytes = await _capturePng();
+      if (pngBytes == null) throw Exception('Capture failed');
+
+      final baseDir = await _getDownloadsDirectoryFallback();
+      final file = File('${baseDir.path}/qr_${DateTime.now().millisecondsSinceEpoch}.png');
+      await file.writeAsBytes(pngBytes);
+
+      if (kIsWeb) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(widget.getText('saved_web', fallback: 'QR generado'))));
+      } else {
+        await Share.shareXFiles([XFile(file.path)], text: widget.getText('share_qr_text', fallback: 'QR generado'));
+      }
+
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('${widget.getText('saved_to', fallback: 'Guardado en')}: ${file.path}')));
+    } catch (e) {
+      debugPrint('[QR] save/share error: $e');
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('${widget.getText('save_error', fallback: 'Error al guardar:')} $e')));
+    } finally {
+      if (mounted) setState(() => _processing = false);
+    }
+  }
+
+  Widget _buildTitleBar() {
+    final get = widget.getText;
+    return GestureDetector(
+      behavior: HitTestBehavior.translucent,
+      onPanStart: (_) => windowManager.startDragging(),
+      child: Container(
+        height: 42,
+        padding: const EdgeInsets.symmetric(horizontal: 10),
+        child: Row(
+          children: [
+            SizedBox(
+              width: 36,
+              height: 36,
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(8),
+                child: Container(
+                  color: Colors.black26,
+                  alignment: Alignment.center,
+                  child: const Icon(Icons.qr_code, color: ui.Color.fromARGB(255, 24, 124, 255)),
+                ),
+              ),
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                get('qr_title', fallback: 'Generador de QR'),
+                style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
+              ),
+            ),
+            IconButton(
+              tooltip: get('minimize', fallback: 'Minimizar'),
+              icon: const Icon(Icons.remove, size: 18),
+              onPressed: () async => await windowManager.minimize(),
+            ),
+            IconButton(
+              tooltip: get('maximize', fallback: 'Maximizar'),
+              icon: const Icon(Icons.crop_square, size: 18),
+              onPressed: () async {
+                final isMax = await windowManager.isMaximized();
+                if (isMax) {
+                  await windowManager.unmaximize();
+                } else {
+                  await windowManager.maximize();
+                }
+              },
+            ),
+            IconButton(
+              tooltip: get('back', fallback: 'Back'),
+              icon: const Icon(Icons.arrow_back, size: 18),
+              onPressed: () => Navigator.of(context).maybePop(),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildQrArea() {
+    final t = widget.getText;
+    final valid = _isValidUrl(_controller.text);
+    if (!valid) {
+      return Container(
+        width: _size,
+        height: _size,
+        color: Colors.grey[900],
+        alignment: Alignment.center,
+        child: Padding(
+          padding: const EdgeInsets.all(8.0),
+          child: Text(t('enter_valid_url', fallback: 'Introduce una URL válida'), textAlign: TextAlign.center),
+        ),
+      );
+    }
+
+    return RepaintBoundary(
+      key: _qrKey,
+      child: Container(
+        color: _bg,
+        padding: _includeMargin ? const EdgeInsets.all(16) : EdgeInsets.zero,
+        child: QrImageView(
+          data: _controller.text.trim(),
+          size: _size,
+          backgroundColor: _bg,
+          foregroundColor: _fg,
+          errorStateBuilder: (cxt, err) => Container(
+            color: Colors.red,
+            child: Center(child: Text(t('qr_error', fallback: 'Error al generar el QR'))),
+          ),
+        ),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final t = widget.getText;
+    final isValid = _isValidUrl(_controller.text);
+    return Scaffold(
+      backgroundColor: Colors.transparent,
+      body: Column(
+        children: [
+          _buildTitleBar(),
+          Expanded(
+            child: SafeArea(
+              child: Padding(
+                padding: const EdgeInsets.all(18),
+                child: Column(
+                  children: [
+                    Container(
+                      decoration: BoxDecoration(color: Colors.black12, borderRadius: BorderRadius.circular(12)),
+                      child: Column(
+                        children: [
+                          SizedBox(
+                            height: _inputHeight,
+                            child: Padding(
+                              padding: const EdgeInsets.all(8.0),
+                              child:
+                              TextField(
+                                controller: _controller,
+                                decoration: InputDecoration(
+                                  hintText: t('qr_label_url', fallback: 'URL a codificar'),
+                                  border: InputBorder.none,
+                                  errorText: _errorText,
+                                  suffixIcon: IconButton(
+                                    icon: const Icon(Icons.paste),
+                                    onPressed: () async {
+                                      final data = await Clipboard.getData('text/plain');
+                                      if (data?.text != null) {
+                                        _controller.text = data!.text!;
+                                        setState(() {});
+                                      }
+                                    },
+                                  ),
+                                ),
+                                style: const TextStyle(fontSize: 14),
+                                keyboardType: TextInputType.url,
+                                onChanged: (_) {
+                                  if (_errorText != null) setState(() => _errorText = null);
+                                  setState(() {}); // refrescar QR while typing
+                                },
+                              )
+                            ), 
+                          ),
+                          GestureDetector(
+                            behavior: HitTestBehavior.translucent,
+                            onVerticalDragStart: (_) => setState(() => _isDraggingHandle = true),
+                            onVerticalDragUpdate: (details) {
+                              setState(() {
+                                _inputHeight = (_inputHeight + details.delta.dy).clamp(40.0, 220.0);
+                              });
+                            },
+                            onVerticalDragEnd: (_) => setState(() => _isDraggingHandle = false),
+                              child: Container(
+                              height: 10,
+                              alignment: Alignment.center,
+                              child: Container(width: 48, height: 4, decoration: BoxDecoration(color: _isDraggingHandle ? Colors.deepPurpleAccent : Colors.white24, borderRadius: BorderRadius.circular(4))),
+                            ),
+                          ),
+                          // const SizedBox(height: 12), 
+                        ],
+                      )
+                    ),
+                    const SizedBox(height: 12),
+                    Row(
+                      children: [
+                        ElevatedButton.icon(
+                          icon: const Icon(Icons.qr_code),
+                          label: Text(t('generate', fallback: 'Generar')),
+                          onPressed: isValid ? () => setState(() {}) : null,
+                          style: ElevatedButton.styleFrom(
+                            shape: const RoundedRectangleBorder(
+                              borderRadius: BorderRadius.all(Radius.circular(10)),
+                            ),
+                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+                            backgroundColor: const Color.fromARGB(255, 24, 124, 255),
+                            foregroundColor: Colors.black87,
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        ElevatedButton.icon(
+                          icon: const Icon(Icons.copy),
+                          label: Text(t('copy', fallback: 'Copiar')),
+                          onPressed: _copyUrl,
+                          style: ElevatedButton.styleFrom(
+                            shape: const RoundedRectangleBorder(
+                              borderRadius: BorderRadius.all(Radius.circular(10)),
+                            ),
+                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+                            backgroundColor: Colors.grey[200],
+                            foregroundColor: Colors.black87,
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        ElevatedButton.icon(
+                          icon: const Icon(Icons.open_in_new),
+                          label: Text(t('open_link', fallback: 'Abrir enlace')),
+                          onPressed: _openUrl,
+                          style: ElevatedButton.styleFrom(
+                            shape: const RoundedRectangleBorder(
+                              borderRadius: BorderRadius.all(Radius.circular(10)),
+                            ),
+                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+                            backgroundColor: const Color.fromARGB(255, 24, 124, 255),
+                            foregroundColor: Colors.black87,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 16),
+                    Expanded(
+                      child: Center(child: _buildQrArea()),
+                    ),
+                    const SizedBox(height: 12),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: SliderTheme(
+                            data: SliderTheme.of(context).copyWith(
+                              activeTrackColor: Color.fromARGB(255, 24, 124, 255),   // parte activa del track
+                              inactiveTrackColor: Colors.white24,    // parte inactiva del track
+                              thumbColor: Color.fromARGB(255, 24, 124, 255),               // el "thumb" (control)
+                              overlayColor: Color.fromARGB(255, 24, 124, 255).withOpacity(0.24), // halo al presionar
+                              valueIndicatorColor: Color.fromARGB(255, 24, 124, 255),      // color del label que aparece
+                              trackHeight: 4.0,
+                            ),
+                            child: Slider(
+                              min: 128,
+                              max: 640,
+                              divisions: 7,
+                              label: '${_size.round()}',
+                              value: _size,
+                              onChanged: (v) => setState(() => _size = v),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Text('${_size.round()} px'),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    Row(
+                      children: [
+                        Text(t('fg', fallback: 'Color frontal')),
+                        const SizedBox(width: 8),
+                        GestureDetector(
+                          onTap: () => _pickColor(true),
+                          child: Container(width: 28, height: 28, color: _fg),
+                        ),
+                        const SizedBox(width: 16),
+                        Text(t('bg', fallback: 'Color fondo')),
+                        const SizedBox(width: 8),
+                        GestureDetector(
+                          onTap: () => _pickColor(false),
+                          child: Container(width: 28, height: 28, color: _bg),
+                        ),
+                        const SizedBox(width: 16),
+                        Row(
+                          children: [
+                            Checkbox(
+                              value: _includeMargin,
+                              onChanged: (v) => setState(() => _includeMargin = v ?? false),
+                              // color del check/relleno cuando está activo
+                              fillColor: MaterialStateProperty.resolveWith<Color?>((states) {
+                                if (states.contains(MaterialState.selected)) return Color.fromARGB(255, 24, 124, 255);
+                                if (states.contains(MaterialState.disabled)) return Colors.grey;
+                                return Colors.white24;
+                              }),
+                              // color del borde cuando está inactivo (aplicable en algunas plataformas)
+                              side: BorderSide(color: Colors.white30, width: 1),
+                              splashRadius: 18,
+                            ),
+                            const SizedBox(width: 8),
+                            Text(t('margin', fallback: 'Margen')),
+                          ],
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: ElevatedButton.icon(
+                            icon: _processing ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2)) : const Icon(Icons.save),
+                            label: Text(t('save_share', fallback: 'Guardar y Compartir')),
+                            onPressed: (!_processing && isValid) ? _saveAndShare : null,
+                          style: ElevatedButton.styleFrom(
+                            shape: const RoundedRectangleBorder(
+                              borderRadius: BorderRadius.all(Radius.circular(10)),
+                            ),
+                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+                            backgroundColor: const ui.Color.fromARGB(255, 255, 255, 255),
+                            foregroundColor: Colors.black87,
+                          ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _pickColor(bool foreground) async {
+    final choices = <Color>[
+      Colors.black,
+      Colors.white,
+      Colors.red,
+      Colors.green,
+      Colors.blue,
+      Colors.amber,
+      Colors.purple,
+      Colors.cyan,
+    ];
+    final color = await showDialog<Color?>(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: Text(widget.getText('pick_color', fallback: 'Elegir color')),
+        content: Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: choices.map((c) {
+            return GestureDetector(
+              onTap: () => Navigator.of(context).pop(c),
+              child: Container(width: 36, height: 36, color: c),
+            );
+          }).toList(),
+        ),
+      ),
+    );
+    if (color != null) {
+      setState(() {
+        if (foreground) _fg = color; else _bg = color;
+      });
+    }
+  }
+
+  @override
+  void onWindowClose() {}
+}

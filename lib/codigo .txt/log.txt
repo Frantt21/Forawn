@@ -1,0 +1,73 @@
+logs cuando permanezco en spotify_screen:
+[SpotifyScreen] buscarCanciones: query="no te veo"
+[SpotifyScreen UI] Buscar: no te veo
+[SpotifyScreen] spotifysearch status=200
+[SpotifyScreen] spotifysearch returned 20 items
+[SpotifyScreen] first item keys: [title, duration, popularity, preview, url]
+[SpotifyScreen UI] Resultados: 20, sin url: 0
+[SpotifyScreen] queueDownload for item: {title: Casa De Leones - No Te Veo - Digital Single, duration: 4:16, popularity: 66%, preview: https://p.scdn.co/mp3-preview/6828a8e66079436dca31144337a742a9310292b7?cid=acc6302297e040aeb6e4ac1fbdfd62c3, url: https://open.spotify.com/track/40EDOraCqoiMf14TzODihf, image: https://i.pinimg.com/originals/fb/5f/a1/fb5fa1f38f80cbbb7856f1993bc1da7f.jpg}
+[SpotifyScreen] folder writable test OK
+[SpotifyScreen] enqueuing task 1761751015042 title="Casa De Leones - No Te Veo - Digital Single" url="https://open.spotify.com/track/40EDOraCqoiMf14TzODihf" image="https://i.pinimg.com/originals/fb/5f/a1/fb5fa1f38f80cbbb7856f1993bc1da7f.jpg"
+[SpotifyScreen UI] Encolada: Casa De Leones - No Te Veo - Digital Single
+[DownloadManager] addTask 1761751015042 "Casa De Leones - No Te Veo - Digital Single" source="https://open.spotify.com/track/40EDOraCqoiMf14TzODihf"
+[DownloadManager] scheduleQueue running=0 queued=1 canStart=2
+[DownloadManager] status counts queued=1 running=0 completed=0 failed=0
+[DownloadManager] _startTask begin 1761751015042 "Casa De Leones - No Te Veo - Digital Single"
+[DownloadManager] _updateTask persist 1761751015042 status=DownloadStatus.running progress=0.0 error=null
+2
+[DownloadManager] persisted 1 tasks
+[DownloadManager] toolsDir="C:\Users\Edwin\Desktop\Programacion\forawn\build\windows\x64\runner\Debug\tools"
+[DownloadManager] downloadFolder="C:\Users\Edwin\Desktop\musica"
+[DownloadManager] trying spotify direct for task 1761751015042
+[DownloadManager] spotifydl request: https://api.dorratz.com/spotifydl?url=https%3A%2F%2Fopen.spotify.com%2Ftrack%2F40EDOraCqoiMf14TzODihf
+[DownloadManager] spotifydl status: 200
+[DownloadManager] spotifydl response keys: [creator, name, artists, image, duration_ms, download_url]
+[DownloadManager] fetching download_url: https://api.fabdl.com/spotify/download-mp3/feb6313649cbe8316a5d617e4f01c378
+[DownloadManager] download_url status: 200
+[DownloadManager] spotify direct saved file: C:\Users\Edwin\Desktop\musica\Casa_De_Leones_-_No_Te_Veo_-_Digital_Single.mp3
+[DownloadManager] _updateTask persist 1761751015042 status=DownloadStatus.completed progress=1.0 error=null
+[DownloadManager] persisted 1 tasks
+[DownloadManager] spotify direct success 1761751015042 -> C:\Users\Edwin\Desktop\musica\Casa_De_Leones_-_No_Te_Veo_-_Digital_Single.mp3
+[DownloadManager] scheduleQueue running=0 queued=0 canStart=2
+[DownloadManager] status counts queued=0 running=0 completed=1 failed=0
+[DownloadManager] loadPersisted start
+[DownloadManager] loaded 1 tasks from prefs
+[DownloadManager] scheduleQueue running=0 queued=0 canStart=2
+[DownloadManager] status counts queued=0 running=0 completed=1 failed=0
+
+logs cuando cambio de spotify_screen a DownloadStatus_screen:
+[SpotifyScreen] buscarCanciones: query="azul"
+[SpotifyScreen UI] Buscar: azul
+[SpotifyScreen] spotifysearch status=200
+[SpotifyScreen] spotifysearch returned 20 items
+[SpotifyScreen] first item keys: [title, duration, popularity, preview, url]
+[SpotifyScreen UI] Resultados: 20, sin url: 0
+[SpotifyScreen] queueDownload for item: {title: Zoé - Azul, duration: 3:14, popularity: 74%, preview: null, url: https://open.spotify.com/track/7ffkdwy4EvMSeUnPVSyqqw, image: https://i.pinimg.com/originals/40/6b/d9/406bd9224c62e7c1c7e143d9d3e728ee.jpg}
+[SpotifyScreen] folder writable test OK
+[SpotifyScreen] enqueuing task 1761751079758 title="Zoé - Azul" url="https://open.spotify.com/track/7ffkdwy4EvMSeUnPVSyqqw" image="https://i.pinimg.com/originals/40/6b/d9/406bd9224c62e7c1c7e143d9d3e728ee.jpg"
+[SpotifyScreen UI] Encolada: Zoé - Azul
+[DownloadManager] addTask 1761751079758 "Zoé - Azul" source="https://open.spotify.com/track/7ffkdwy4EvMSeUnPVSyqqw"
+[DownloadManager] scheduleQueue running=0 queued=1 canStart=2
+[DownloadManager] status counts queued=1 running=0 completed=1 failed=0
+[DownloadManager] _startTask begin 1761751079758 "Zoé - Azul"
+[DownloadManager] _updateTask persist 1761751079758 status=DownloadStatus.running progress=0.0 error=null
+2
+[DownloadManager] persisted 2 tasks
+[DownloadManager] toolsDir="C:\Users\Edwin\Desktop\Programacion\forawn\build\windows\x64\runner\Debug\tools"
+[DownloadManager] downloadFolder="C:\Users\Edwin\Desktop\musica"
+[DownloadManager] trying spotify direct for task 1761751079758
+[DownloadManager] spotifydl request: https://api.dorratz.com/spotifydl?url=https%3A%2F%2Fopen.spotify.com%2Ftrack%2F7ffkdwy4EvMSeUnPVSyqqw
+[DownloadManager] loadPersisted start
+[DownloadManager] loaded 2 tasks from prefs
+[DownloadManager] scheduleQueue running=1 queued=0 canStart=1
+[DownloadManager] status counts queued=0 running=1 completed=1 failed=0
+[DownloadManager] spotifydl status: 200
+[DownloadManager] spotifydl response keys: [creator, name, artists, image, duration_ms, download_url]
+[DownloadManager] fetching download_url: https://api.fabdl.com/spotify/download-mp3/99f15a01c6dea7fad0423ac3bca00748
+[DownloadManager] download_url status: 200
+[DownloadManager] spotify direct saved file: C:\Users\Edwin\Desktop\musica\Zoé_-_Azul.mp3
+[DownloadManager] _updateTask persist 1761751079758 status=DownloadStatus.completed progress=1.0 error=null
+[DownloadManager] persisted 2 tasks
+[DownloadManager] spotify direct success 1761751079758 -> C:\Users\Edwin\Desktop\musica\Zoé_-_Azul.mp3
+[DownloadManager] scheduleQueue running=1 queued=0 canStart=1
+[DownloadManager] status counts queued=0 running=1 completed=1 failed=0

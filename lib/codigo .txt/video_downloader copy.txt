@@ -1,0 +1,851 @@
+// lib/screen/video_downloader.dart
+import 'dart:async';
+import 'dart:convert';
+import 'dart:io';
+import 'dart:typed_data';
+import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
+import 'package:file_picker/file_picker.dart';
+import 'package:path/path.dart' as p;
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:window_manager/window_manager.dart';
+
+typedef TextGetter = String Function(String key, {String? fallback});
+
+class DownloadItem {
+  final String id;
+  final String title;
+  final String url;
+  final String? formatId; // chosen format_id from yt-dlp
+  String status;
+  double progress; // 0.0 - 1.0
+  String message;
+  String? outputPath;
+  DownloadItem({
+    required this.id,
+    required this.title,
+    required this.url,
+    this.formatId,
+    this.status = 'queued',
+    this.progress = 0.0,
+    this.message = '',
+    this.outputPath,
+  });
+}
+
+class _VideoDownloaderScreenState extends State<VideoDownloaderScreen> with WindowListener {
+  final TextEditingController _controller = TextEditingController();
+  final List<DownloadItem> _queue = [];
+  bool _isProcessingQueue = false;
+  String? _downloadFolder;
+  SharedPreferences? _prefs;
+
+  // UI state
+  bool _loadingMeta = false;
+  bool _probingFormats = false;
+  String? _videoTitle;
+  Uint8List? _thumbnailBytes;
+  List<Map<String, dynamic>> _formats = [];
+  Map<String, String> _formatLabels = {}; // format_id -> label
+  final ValueNotifier<Map<String, String>> _formatLabelsNotifier = ValueNotifier({});
+  String? _selectedFormatId;
+  bool _processing = false;
+
+  @override
+  void initState() {
+    super.initState();
+    windowManager.addListener(this);
+    _loadPrefs();
+  }
+
+  @override
+  void dispose() {
+    windowManager.removeListener(this);
+    _controller.dispose();
+    _formatLabelsNotifier.dispose();
+    super.dispose();
+  }
+
+  Future<void> _loadPrefs() async {
+    try {
+      _prefs ??= await SharedPreferences.getInstance();
+      final folder = _prefs!.getString('video_download_folder');
+      if (folder != null && folder.isNotEmpty) _downloadFolder = folder;
+    } catch (_) {}
+  }
+
+  Future<void> _saveFolderPref() async {
+    try {
+      _prefs ??= await SharedPreferences.getInstance();
+      if (_downloadFolder != null) await _prefs!.setString('video_download_folder', _downloadFolder!);
+    } catch (_) {}
+  }
+
+  Future<void> _selectDownloadFolder() async {
+    final path = await FilePicker.platform.getDirectoryPath();
+    if (path == null) return;
+    _downloadFolder = p.normalize(path);
+    await _saveFolderPref();
+    setState(() {});
+  }
+
+  Future<void> _minimize() async => await windowManager.minimize();
+  Future<void> _maximizeRestore() async {
+    final isMax = await windowManager.isMaximized();
+    if (isMax) await windowManager.unmaximize(); else await windowManager.maximize();
+  }
+
+  bool _isValidUrl(String s) {
+    final t = s.trim();
+    if (t.isEmpty) return false;
+    try {
+      final u = Uri.parse(t);
+      return u.hasScheme && u.isAbsolute;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  // --- Process runner / yt-dlp integration ---
+  String _findBaseDir() {
+    try {
+      final exeDir = p.dirname(Platform.resolvedExecutable);
+      if (Directory(p.join(exeDir, 'tools')).existsSync()) return exeDir;
+    } catch (_) {}
+    final currentDir = Directory.current.path;
+    if (Directory(p.join(currentDir, 'tools')).existsSync()) return currentDir;
+
+    final candidates = <String>[
+      p.join(currentDir, 'build', 'windows', 'x64', 'runner', 'Debug'),
+      p.join(currentDir, 'build', 'windows', 'runner', 'Debug'),
+      p.join(currentDir, 'build', 'windows', 'x64', 'runner', 'Release'),
+      p.join(currentDir, 'build', 'windows', 'runner', 'Release'),
+      p.normalize(p.current),
+    ];
+    for (final base in candidates) {
+      if (Directory(p.join(base, 'tools')).existsSync()) return base;
+    }
+    return '';
+  }
+
+  String _findToolsDir() => _findBaseDir().isEmpty ? '' : p.join(_findBaseDir(), 'tools');
+
+  Future<int> _runProcessStreamed({
+    required String executable,
+    required List<String> arguments,
+    String? workingDirectory,
+    void Function(String)? onStdout,
+    void Function(String)? onStderr,
+    void Function(String)? onProgressLine,
+    bool runInShell = false,
+  }) async {
+    final proc = await Process.start(
+      executable,
+      arguments,
+      workingDirectory: workingDirectory,
+      runInShell: runInShell,
+    );
+
+    void handle(Stream<List<int>> stream, void Function(String)? handler, {bool progress = false}) {
+      final buffer = BytesBuilder();
+      stream.listen((chunk) {
+        buffer.add(chunk);
+        final bytes = buffer.toBytes();
+        int lastNewline = -1;
+        for (int i = 0; i < bytes.length; i++) {
+          if (bytes[i] == 10) lastNewline = i;
+        }
+        if (lastNewline >= 0) {
+          final lineBytes = bytes.sublist(0, lastNewline + 1);
+          final remaining = bytes.sublist(lastNewline + 1);
+          buffer.clear();
+          if (remaining.isNotEmpty) buffer.add(remaining);
+          String line;
+          try {
+            line = const Utf8Decoder(allowMalformed: true).convert(lineBytes);
+          } catch (_) {
+            line = latin1.decode(lineBytes, allowInvalid: true);
+          }
+          line = line.replaceAll('\r\n', '\n').trimRight();
+          if (handler != null && line.isNotEmpty) handler(line);
+          if (progress && onProgressLine != null && line.isNotEmpty) onProgressLine(line);
+        }
+      }, onDone: () {
+        final rem = buffer.toBytes();
+        if (rem.isNotEmpty) {
+          String tail;
+          try {
+            tail = const Utf8Decoder(allowMalformed: true).convert(rem);
+          } catch (_) {
+            tail = latin1.decode(rem, allowInvalid: true);
+          }
+          tail = tail.replaceAll('\r\n', '\n').trimRight();
+          if (handler != null && tail.isNotEmpty) handler(tail);
+          if (progress && onProgressLine != null && tail.isNotEmpty) onProgressLine(tail);
+        }
+      }, onError: (err, _) {
+        if (handler != null) handler('Stream error: $err');
+      }, cancelOnError: true);
+    }
+
+    handle(proc.stdout, onStdout, progress: true);
+    handle(proc.stderr, onStderr, progress: true);
+    final code = await proc.exitCode;
+    return code;
+  }
+
+  // --- parse yt-dlp -j output line-by-line and return FIRST valid JSON object ---
+  Future<Map<String, dynamic>?> _ytdlpMetadata({
+    required String toolsDir,
+    required String url,
+    required void Function(String) logger,
+  }) async {
+    final ytdlp = p.join(toolsDir, 'yt-dlp.exe');
+    final args = [url, '-j', '--no-playlist', '--ignore-errors'];
+    final outBuf = StringBuffer();
+    final code = await _runProcessStreamed(
+      executable: ytdlp,
+      arguments: args,
+      workingDirectory: toolsDir,
+      onStdout: (l) => outBuf.writeln(l),
+      onStderr: (l) => logger('yt-dlp meta err: $l'),
+      onProgressLine: (l) => logger('meta: $l'),
+      runInShell: false,
+    );
+    if (code != 0) {
+      logger('yt-dlp metadata exit code $code');
+      return null;
+    }
+
+    final out = outBuf.toString();
+    if (out.trim().isEmpty) return null;
+
+    final lines = out.split('\n').map((s) => s.trim()).where((s) => s.isNotEmpty);
+    for (final line in lines) {
+      try {
+        final decoded = jsonDecode(line);
+        if (decoded is Map<String, dynamic>) {
+          return decoded;
+        } else {
+          logger('Skipping non-object JSON metadata line');
+        }
+      } catch (e) {
+        logger('JSON parse error for a metadata line: $e');
+      }
+    }
+
+    logger('No valid JSON metadata found in yt-dlp output');
+    return null;
+  }
+
+  // parse formats list into a user-presentable list
+  Future<List<Map<String, dynamic>>> _probeFormats(String url, void Function(String) logger) async {
+    final toolsDir = _findToolsDir();
+    final List<Map<String, dynamic>> res = [];
+    if (toolsDir.isEmpty) return res;
+    final meta = await _ytdlpMetadata(toolsDir: toolsDir, url: url, logger: logger);
+    if (meta == null) return res;
+    final formats = meta['formats'] as List<dynamic>? ?? [];
+    for (final f in formats.whereType<Map<String, dynamic>>()) {
+      final it = <String, dynamic>{
+        'format_id': f['format_id'],
+        'ext': f['ext'],
+        'height': f['height'],
+        'width': f['width'],
+        'format_note': f['format_note'],
+        'acodec': f['acodec'],
+        'vcodec': f['vcodec'],
+        'filesize': f['filesize'],
+      };
+      res.add(it);
+    }
+    // sort: prefer highest resolution first
+    res.sort((a, b) {
+      final ah = (a['height'] ?? 0) is int ? (a['height'] ?? 0) as int : int.tryParse('${a['height'] ?? 0}') ?? 0;
+      final bh = (b['height'] ?? 0) is int ? (b['height'] ?? 0) as int : int.tryParse('${b['height'] ?? 0}') ?? 0;
+      return bh.compareTo(ah);
+    });
+    return res;
+  }
+
+  String _formatLabel(Map<String, dynamic> f) {
+    final height = (f['height'] is int) ? f['height'] as int : (int.tryParse('${f['height'] ?? 0}') ?? 0);
+    final width = (f['width'] is int) ? f['width'] as int : (int.tryParse('${f['width'] ?? 0}') ?? 0);
+    final ext = f['ext']?.toString() ?? '';
+    final size = f['filesize'];
+    String sizeStr = '';
+    if (size is int && size > 0) {
+      final mb = size / (1024 * 1024);
+      sizeStr = ' • ${mb.toStringAsFixed(1)} MB';
+    }
+    if (height == 0 && (f['acodec'] != null && (f['vcodec'] == null || f['vcodec'] == 'none'))) {
+      return 'Audio • ${f['acodec'] ?? ''}$sizeStr';
+    }
+    return height > 0 ? '${height}p • ${width}×${height} px • $ext$sizeStr' : 'Unknown • $ext$sizeStr';
+  }
+
+  Future<bool> _ytDlpDownloadWithProgressItem({
+    required String toolsDir,
+    required DownloadItem item,
+    required void Function(String) logger,
+    required void Function(double, String) onProgress, // percent, text
+  }) async {
+    final ytdlp = p.join(toolsDir, 'yt-dlp.exe');
+    final ffmpegExe = p.join(toolsDir, 'ffmpeg', 'bin', 'ffmpeg.exe');
+    final hasYtdlp = File(ytdlp).existsSync();
+    final hasFfmpeg = File(ffmpegExe).existsSync();
+
+    if (!hasYtdlp) {
+      logger('❌ yt-dlp not found in $toolsDir');
+      return false;
+    }
+
+    // Let yt-dlp decide initial extension; use .%(ext)s
+    final outTemplate = p.join(
+      _downloadFolder ?? Directory.systemTemp.path,
+      '${_safeBase(item.title)}.%(ext)s',
+    );
+
+    // Build args: if item.formatId provided, use it; otherwise let yt-dlp pick best
+    final args = <String>[
+      item.url,
+      '-o',
+      outTemplate,
+      '--no-playlist',
+      if (item.formatId != null) ...['-f', item.formatId!] else ...['-f', 'bestvideo+bestaudio/best'],
+      '--newline',
+      '--ignore-errors',
+      '--no-overwrites',
+      '--add-header',
+      'User-Agent: Mozilla/5.0',
+      '--add-header',
+      'Referer: https://www.youtube.com',
+      '--geo-bypass',
+      '--force-ipv4',
+    ];
+
+    // Do not force recode here — user selected exact format_id which should match desired container.
+    if (hasFfmpeg) {
+      args.addAll(['--ffmpeg-location', ffmpegExe]);
+    }
+
+    logger('→ Starting yt-dlp: ${p.basename(ytdlp)} ${args.join(' ')}');
+
+    bool error403 = false;
+    double lastProgress = 0.0;
+
+    void progressLineHandler(String line) {
+      final pct = _parseYtdlpPercent(line);
+      if (pct != null) {
+        lastProgress = pct;
+        onProgress(pct, '${(pct * 100).toStringAsFixed(1)}%');
+        return;
+      }
+      final low = line.toLowerCase();
+      if (low.contains('destination')) {
+        onProgress(lastProgress, widget.getText('saving_file', fallback: 'Saving file...'));
+      } else if (low.contains('merging') || low.contains('post-processing') || low.contains('extract audio')) {
+        onProgress(lastProgress, widget.getText('processing', fallback: 'Processing...'));
+      } else if (low.contains('403') || low.contains('forbidden')) {
+        error403 = true;
+        logger('403 / forbidden detected in yt-dlp output');
+      } else if (low.contains('error') || low.contains('failed')) {
+        logger('yt-dlp reported: $line');
+      }
+    }
+
+    final exitCode = await _runProcessStreamed(
+      executable: ytdlp,
+      arguments: args,
+      workingDirectory: toolsDir,
+      onStdout: (l) => logger('yt-dlp: $l'),
+      onStderr: (l) => logger('yt-dlp err: $l'),
+      onProgressLine: progressLineHandler,
+      runInShell: false,
+    );
+
+    logger('yt-dlp finished with code $exitCode');
+    return exitCode == 0 && !error403;
+  }
+
+  double? _parseYtdlpPercent(String line) {
+    final re = RegExp(r'(\d{1,3}\.\d+|\d{1,3})%');
+    final m = re.firstMatch(line);
+    if (m != null) return double.tryParse(m.group(1)!)! / 100.0;
+    final re2 = RegExp(r'\[download\].*?(\d{1,3}\.\d+|\d{1,3})%');
+    final m2 = re2.firstMatch(line);
+    if (m2 != null) return double.tryParse(m2.group(1)!)! / 100.0;
+    return null;
+  }
+
+  String _safeBase(String s) => s.replaceAll(RegExp(r'[\\/:*?"<>|]'), '_').replaceAll(RegExp(r'\s+'), '_');
+
+  // Queue management
+  Future<void> _addToQueue(String url, String title, {String? formatId}) async {
+    final id = DateTime.now().millisecondsSinceEpoch.toString();
+    final item = DownloadItem(id: id, title: title, url: url, formatId: formatId);
+    setState(() => _queue.add(item));
+    _processQueue();
+  }
+
+  Future<void> _processQueue() async {
+    if (_isProcessingQueue) return;
+    _isProcessingQueue = true;
+    final toolsDir = _findToolsDir();
+    if (toolsDir.isEmpty) {
+      for (final it in _queue.where((q) => q.status == 'queued')) {
+        setState(() {
+          it.status = 'failed';
+          it.message = widget.getText('tools_not_found', fallback: 'Tools folder not found');
+        });
+      }
+      _isProcessingQueue = false;
+      return;
+    }
+
+    while (true) {
+      final nextIndex = _queue.indexWhere((q) => q.status == 'queued');
+      if (nextIndex == -1) break;
+      final next = _queue[nextIndex];
+      setState(() {
+        next.status = 'starting';
+        next.progress = 0.0;
+        next.message = widget.getText('starting', fallback: 'Starting...');
+      });
+
+      if (_downloadFolder == null) {
+        final path = await FilePicker.platform.getDirectoryPath();
+        if (path == null) {
+          setState(() {
+            next.status = 'cancelled';
+            next.message = widget.getText('download_cancelled', fallback: 'Download cancelled by user');
+          });
+          continue;
+        }
+        _downloadFolder = p.normalize(path);
+        await _saveFolderPref();
+      }
+
+      final logger = (String s) {
+        setState(() {
+          next.message = s;
+        });
+      };
+
+      final success = await _ytDlpDownloadWithProgressItem(
+        toolsDir: toolsDir,
+        item: next,
+        logger: logger,
+        onProgress: (pct, text) {
+          setState(() {
+            next.progress = pct.clamp(0.0, 1.0);
+            next.message = text;
+            next.status = 'downloading';
+          });
+        },
+      );
+
+      if (!success) {
+        setState(() {
+          next.status = 'failed';
+          next.message = widget.getText('download_error', fallback: 'Download error');
+          next.progress = 0.0;
+        });
+        continue;
+      }
+
+      final dir = Directory(_downloadFolder!);
+      final files = dir
+          .listSync()
+          .whereType<File>()
+          .where((f) => p.basename(f.path).startsWith(_safeBase(next.title)))
+          .toList();
+
+      if (files.isEmpty) {
+        setState(() {
+          next.status = 'completed';
+          next.message = widget.getText('completed_no_file', fallback: 'Completed (no file found)');
+          next.progress = 1.0;
+        });
+        continue;
+      }
+
+      files.sort((a, b) => b.statSync().modified.compareTo(a.statSync().modified));
+      final found = files.first;
+
+      setState(() {
+        next.outputPath = found.path;
+        next.status = 'completed';
+        next.message = widget.getText('download_complete', fallback: 'Download complete') + ': ${found.path}';
+        next.progress = 1.0;
+      });
+    }
+
+    _isProcessingQueue = false;
+  }
+
+  // UI actions
+  Future<void> _onInspectUrl() async {
+    final url = _controller.text.trim();
+    if (url.isEmpty) return;
+    if (!_isValidUrl(url)) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(widget.getText('invalid_url', fallback: 'Invalid URL'))));
+      return;
+    }
+
+    final toolsDir = _findToolsDir();
+    if (toolsDir.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(widget.getText('tools_not_found', fallback: 'Tools not found'))));
+      return;
+    }
+
+    setState(() {
+      _loadingMeta = true;
+      _videoTitle = null;
+      _thumbnailBytes = null;
+      _formats = [];
+      _formatLabels = {};
+      _selectedFormatId = null;
+      _formatLabelsNotifier.value = {};
+    });
+
+    try {
+      final meta = await _ytdlpMetadata(toolsDir: toolsDir, url: url, logger: (_) {});
+      if (meta == null) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(widget.getText('meta_error', fallback: 'Could not fetch metadata'))));
+        setState(() => _loadingMeta = false);
+        return;
+      }
+
+      final title = (meta['title'] ?? url).toString();
+      Uint8List? thumbBytes;
+      try {
+        if (meta['thumbnail'] != null && (meta['thumbnail'] as String).isNotEmpty) {
+          final thumbUrl = meta['thumbnail'] as String;
+          final uri = Uri.tryParse(thumbUrl);
+          if (uri != null) {
+            final client = HttpClient();
+            final req = await client.getUrl(uri);
+            final resp = await req.close();
+            if (resp.statusCode == 200) {
+              thumbBytes = await consolidateHttpClientResponseBytes(resp);
+            }
+            client.close();
+          }
+        }
+      } catch (_) {
+        thumbBytes = null;
+      }
+
+      setState(() {
+        _videoTitle = title;
+        _thumbnailBytes = thumbBytes;
+        _loadingMeta = false;
+        _probingFormats = true;
+      });
+
+      // Probe formats and update ValueNotifier as results arrive.
+      unawaited(_probeFormats(url, (s) {}).then((formats) {
+        final Map<String, String> labels = {};
+        for (final f in formats) {
+          try {
+            final fid = f['format_id']?.toString() ?? '';
+            if (fid.isEmpty) continue;
+            labels[fid] = _formatLabel(f);
+          } catch (_) {}
+        }
+        _formats = formats;
+        _formatLabels = labels;
+        _formatLabelsNotifier.value = Map<String, String>.from(labels);
+        setState(() {
+          _probingFormats = false;
+        });
+      }).catchError((_) {
+        _formats = [];
+        _formatLabels = {};
+        _formatLabelsNotifier.value = {};
+        setState(() {
+          _probingFormats = false;
+        });
+      }));
+
+      // Show dialog immediately; it will reactively update when notifier changes.
+      await _showFormatsDialog(url);
+    } catch (e) {
+      setState(() {
+        _loadingMeta = false;
+        _probingFormats = false;
+      });
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('${widget.getText('inspect_error', fallback: 'Error inspecting')}: $e')));
+    }
+  }
+
+  Future<void> _showFormatsDialog(String url) async {
+    String? chosenFormat = _selectedFormatId;
+    final sel = await showDialog<bool>(
+      context: context,
+      builder: (ctx) {
+        return StatefulBuilder(builder: (ctx2, setStateDialog) {
+          return AlertDialog(
+            backgroundColor: Colors.grey[900],
+            title: Text(widget.getText('choose_resolution', fallback: 'Choose resolution')),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                if (_videoTitle != null)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 8),
+                    child: Row(children: [
+                      if (_thumbnailBytes != null)
+                        Container(width: 100, height: 56, color: Colors.black26, child: Image.memory(_thumbnailBytes!, fit: BoxFit.cover))
+                      else
+                        Container(width: 100, height: 56, color: Colors.black26, child: const Icon(Icons.image, color: Colors.white24)),
+                      const SizedBox(width: 8),
+                      Expanded(child: Text(_videoTitle!, style: const TextStyle(fontWeight: FontWeight.w600))),
+                    ]),
+                  ),
+                const SizedBox(height: 6),
+                // Reactive dropdown: updates when _formatLabelsNotifier changes
+                ValueListenableBuilder<Map<String, String>>(
+                  valueListenable: _formatLabelsNotifier,
+                  builder: (ctx3, labels, _) {
+                    if (_probingFormats && labels.isEmpty) {
+                      return Row(children: [const CircularProgressIndicator(strokeWidth: 2), const SizedBox(width: 8), Text(widget.getText('probing_formats', fallback: 'Probing available formats...'))]);
+                    }
+                    if (labels.isEmpty) {
+                      return Padding(padding: const EdgeInsets.only(top: 8), child: Text(widget.getText('no_formats_yet', fallback: 'No formats available')));
+                    }
+                    // ensure chosenFormat has a sensible default
+                    if (chosenFormat == null || !labels.containsKey(chosenFormat)) chosenFormat = labels.keys.first;
+                    return DropdownButton<String>(
+                      isExpanded: true,
+                      value: chosenFormat,
+                      dropdownColor: Colors.grey[900],
+                      items: labels.entries.map((e) {
+                        return DropdownMenuItem<String>(value: e.key, child: Text(e.value, overflow: TextOverflow.ellipsis));
+                      }).toList(),
+                      onChanged: (v) => setStateDialog(() => chosenFormat = v),
+                    );
+                  },
+                ),
+              ],
+            ),
+            actions: [
+              TextButton(onPressed: () => Navigator.of(ctx).pop(false), child: Text(widget.getText('cancel', fallback: 'Cancel'))),
+              ElevatedButton(
+                onPressed: () => Navigator.of(ctx).pop(true),
+                child: Text(widget.getText('download', fallback: 'Download')),
+              ),
+            ],
+          );
+        });
+      },
+    );
+
+    if (sel == true) {
+      final title = _videoTitle ?? url;
+      await _addToQueue(url, title, formatId: chosenFormat);
+      setState(() => _selectedFormatId = chosenFormat);
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(widget.getText('added_to_queue', fallback: 'Added to queue'))));
+    }
+  }
+
+  // UI
+  @override
+  Widget build(BuildContext context) {
+    final get = widget.getText;
+    return Scaffold(
+      backgroundColor: Colors.transparent,
+      body: Column(
+        children: [
+          // Title bar
+          GestureDetector(
+            behavior: HitTestBehavior.translucent,
+            onPanStart: (_) => windowManager.startDragging(),
+            child: Container(
+              height: 42,
+              padding: const EdgeInsets.symmetric(horizontal: 10),
+              child: Row(
+                children: [
+                  SizedBox(
+                    width: 36,
+                    height: 36,
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(8),
+                      child: Container(color: Colors.black26, alignment: Alignment.center, child: const Icon(Icons.video_library, color: Colors.cyanAccent)),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(child: Text(get('video_downloader_title', fallback: 'Video Downloader'), style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600))),
+                  IconButton(
+                    tooltip: get('folder_button', fallback: 'Folder'),
+                    icon: const Icon(Icons.folder_open),
+                    onPressed: _selectDownloadFolder,
+                  ),
+                  IconButton(tooltip: get('minimize', fallback: 'Minimize'), icon: const Icon(Icons.remove, size: 18), onPressed: _minimize),
+                  IconButton(tooltip: get('maximize', fallback: 'Maximize'), icon: const Icon(Icons.crop_square, size: 18), onPressed: _maximizeRestore),
+                  IconButton(tooltip: get('back', fallback: 'Back'), icon: const Icon(Icons.arrow_back, size: 18), onPressed: () => Navigator.of(context).maybePop()),
+                  const SizedBox(width: 8),
+                ],
+              ),
+            ),
+          ),
+
+          Expanded(
+            child: SafeArea(
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  // URL input + inspect button
+                  Container(
+                    decoration: BoxDecoration(color: Colors.black12, borderRadius: BorderRadius.circular(12)),
+                    padding: const EdgeInsets.all(8),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: TextField(
+                            controller: _controller,
+                            decoration: InputDecoration(
+                              hintText: get('video_url_label', fallback: 'YouTube URL'),
+                              border: InputBorder.none,
+                            ),
+                            onSubmitted: (_) => _onInspectUrl(),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        ElevatedButton.icon(
+                          icon: _loadingMeta ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2)) : const Icon(Icons.search),
+                          label: Text(get('inspect_button', fallback: 'Inspect')),
+                          onPressed: _loadingMeta ? null : _onInspectUrl,
+                          style: ElevatedButton.styleFrom(
+                            shape: const RoundedRectangleBorder(borderRadius: BorderRadius.all(Radius.circular(10))),
+                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+                            backgroundColor: const Color.fromARGB(255, 255, 255, 255),
+                            foregroundColor: Colors.black87,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+
+                  // Preview: thumbnail + title + actions
+                  if (_loadingMeta)
+                    Center(child: Column(children: [const SizedBox(height: 20), const CircularProgressIndicator(), const SizedBox(height: 8), Text(get('loading_meta', fallback: 'Fetching metadata...'))])),
+                  if (!_loadingMeta && (_videoTitle != null || _thumbnailBytes != null))
+                    Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(color: Colors.black12, borderRadius: BorderRadius.circular(10), border: Border.all(color: Colors.white.withOpacity(0.04))),
+                      child: Row(
+                        children: [
+                          Container(
+                            width: 160,
+                            height: 90,
+                            color: Colors.black26,
+                            child: _thumbnailBytes != null ? Image.memory(_thumbnailBytes!, fit: BoxFit.cover) : const Center(child: Icon(Icons.image, color: Colors.white24)),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                              Text(_videoTitle ?? get('no_title', fallback: 'Untitled'), style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
+                              const SizedBox(height: 8),
+                              Row(children: [
+                                ElevatedButton.icon(
+                                  icon: const Icon(Icons.download),
+                                  label: Text(get('choose_resolution', fallback: 'Choose resolution')),
+                                  onPressed: _showFormatsDialogWrapper,
+                                ),
+                                const SizedBox(width: 8),
+                                ElevatedButton.icon(
+                                  icon: const Icon(Icons.folder_open),
+                                  label: Text(get('go_downloads', fallback: 'Go to downloads')),
+                                  onPressed: _openDownloadsFolder,
+                                ),
+                              ])
+                            ]),
+                          )
+                        ],
+                      ),
+                    ),
+                  const SizedBox(height: 12),
+
+                  if (_probingFormats) Row(children: [const CircularProgressIndicator(strokeWidth: 2), const SizedBox(width: 8), Text(get('probing_formats', fallback: 'Probing available formats...'))]),
+                  if (!_probingFormats && _formats.isNotEmpty)
+                    Padding(padding: const EdgeInsets.only(top: 8), child: Text('${_formats.length} ${get('formats_found', fallback: 'formats found')}')),
+
+                  const Spacer(),
+
+                  // Queue / downloads list
+                  Expanded(
+                    child: _queue.isEmpty
+                        ? Center(child: Text(get('no_downloads', fallback: 'No downloads queued'), style: const TextStyle(fontSize: 16)))
+                        : ListView.builder(
+                            itemCount: _queue.length,
+                            itemBuilder: (context, i) {
+                              final it = _queue[i];
+                              return Card(
+                                child: ListTile(
+                                  title: Text(it.title),
+                                  subtitle: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      const SizedBox(height: 6),
+                                      LinearProgressIndicator(value: it.progress),
+                                      const SizedBox(height: 6),
+                                      Text('${it.status} • ${it.message}', style: const TextStyle(fontFamily: 'Courier', fontSize: 12)),
+                                    ],
+                                  ),
+                                  trailing: IconButton(
+                                    icon: const Icon(Icons.clear, color: Colors.redAccent),
+                                    onPressed: () {
+                                      setState(() {
+                                        if (it.status == 'downloading') {
+                                          it.status = 'cancelling';
+                                        } else {
+                                          _queue.removeAt(i);
+                                        }
+                                      });
+                                    },
+                                  ),
+                                ),
+                              );
+                            },
+                          ),
+                  ),
+                ]),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // wrapper so button uses current url context
+  void _showFormatsDialogWrapper() => _showFormatsDialog(_controller.text.trim());
+
+  void _openDownloadsFolder() {
+    if (_downloadFolder != null && _downloadFolder!.isNotEmpty) {
+      try {
+        if (Platform.isWindows) {
+          Process.run('explorer', [_downloadFolder!]);
+        } else if (Platform.isMacOS) {
+          Process.run('open', [_downloadFolder!]);
+        } else if (Platform.isLinux) {
+          Process.run('xdg-open', [_downloadFolder!]);
+        }
+      } catch (_) {}
+    } else {
+      _selectDownloadFolder();
+    }
+  }
+}
+
+// Keep the widget class declaration to satisfy imports elsewhere
+class VideoDownloaderScreen extends StatefulWidget {
+  final TextGetter getText;
+  final String currentLang;
+  const VideoDownloaderScreen({super.key, required this.getText, required this.currentLang});
+  @override
+  State<VideoDownloaderScreen> createState() => _VideoDownloaderScreenState();
+}
