@@ -503,7 +503,7 @@ class DownloadManager extends ChangeNotifier {
   ) async {
     try {
       final apiUrl =
-          'https://api.dorratz.com/spotifydl?url=${Uri.encodeComponent(t.sourceUrl)}';
+          'yourapi';
       debugPrint('[DownloadManager] spotifydl request: $apiUrl');
       final res = await http
           .get(Uri.parse(apiUrl))
