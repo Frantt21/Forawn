@@ -94,7 +94,7 @@ class _AiImageScreenState extends State<AiImageScreen> with WindowListener {
   String _buildApiUrl(String prompt, String ratio) {
     final encoded = Uri.encodeComponent(prompt);
     final r = Uri.encodeComponent(ratio);
-    return 'https://api.dorratz.com/v3/ai-image?prompt=$encoded&ratio=$r';
+    return 'yourapi';
   }
 
   Future<void> _generateImage() async {
