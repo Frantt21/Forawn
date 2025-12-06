@@ -38,7 +38,7 @@ class _ForaaiScreenState extends State<ForaaiScreen> {
       'openai/gpt-oss-20b:free'; // Cambia si quieres otro modelo
   // Reemplaza el valor siguiente por tu API key antes de compilar
   static const String _apiKey =
-      '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';
+      'api_key_here';
 
   @override
   void initState() {
@@ -178,7 +178,7 @@ class _ForaaiScreenState extends State<ForaaiScreen> {
     // Validar API key hardcodeada
     if (_apiKey.isEmpty ||
         _apiKey ==
-            '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') {
+            'apy_key_here') {
       setState(() {
         session.messages.add(
           ChatMessage(
