@@ -7,6 +7,7 @@ import 'package:http/http.dart' as http;
 import 'package:path/path.dart' as p;
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/download_task.dart';
+import '../config/api_config.dart';
 
 class DownloadManager extends ChangeNotifier {
   static final DownloadManager _instance = DownloadManager._internal();
@@ -22,6 +23,12 @@ class DownloadManager extends ChangeNotifier {
 
   List<DownloadTask> get tasks => List.unmodifiable(_tasks);
   List<DownloadTask> get tasksReversed => List.unmodifiable(_tasks.reversed);
+
+  // Método para refrescar el estado de UI globalmente
+  void refreshStatus() {
+    debugPrint('[DownloadManager] refreshStatus called - notifying listeners');
+    notifyListeners();
+  }
 
   // persistencia y carga
   Future<void> loadPersisted() async {
@@ -419,7 +426,10 @@ class DownloadManager extends ChangeNotifier {
         debugPrint(
           '[DownloadManager] task completed (mp3) ${t.id} -> ${t.localPath}',
         );
-        Future.microtask(() => _scheduleQueue());
+        Future.microtask(() {
+          _scheduleQueue();
+          refreshStatus();
+        });
         return;
       }
 
@@ -457,7 +467,10 @@ class DownloadManager extends ChangeNotifier {
           debugPrint(
             '[DownloadManager] converted and completed ${t.id} -> ${t.localPath}',
           );
-          Future.microtask(() => _scheduleQueue());
+          Future.microtask(() {
+            _scheduleQueue();
+            refreshStatus();
+          });
           return;
         } else {
           throw Exception('conversion failed');
@@ -473,7 +486,10 @@ class DownloadManager extends ChangeNotifier {
         debugPrint(
           '[DownloadManager] completed without conversion ${t.id} -> ${t.localPath}',
         );
-        Future.microtask(() => _scheduleQueue());
+        Future.microtask(() {
+          _scheduleQueue();
+          refreshStatus();
+        });
         return;
       }
     } catch (e, st) {
@@ -491,7 +507,10 @@ class DownloadManager extends ChangeNotifier {
         await _savePersisted();
         notifyListeners();
       }
-      Future.microtask(() => _scheduleQueue());
+      Future.microtask(() {
+        _scheduleQueue();
+        refreshStatus();
+      });
     }
   }
 
@@ -502,8 +521,9 @@ class DownloadManager extends ChangeNotifier {
     String safeBase,
   ) async {
     try {
+      final encodedUrl = Uri.encodeComponent(t.sourceUrl ?? '');
       final apiUrl =
-          'yourapi';
+          '${ApiConfig.dorratzBaseUrl}/spotifydl?url=$encodedUrl';
       debugPrint('[DownloadManager] spotifydl request: $apiUrl');
       final res = await http
           .get(Uri.parse(apiUrl))

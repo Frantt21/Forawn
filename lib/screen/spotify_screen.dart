@@ -811,47 +811,48 @@ class _SpotifyScreenState extends State<SpotifyScreen> with WindowListener {
                             }
 
                             return Card(
-                              child: ListTile(
+                                color: const Color.fromARGB(255, 30, 30, 30),
+                                child: ListTile(
                                 leading: imageUrl.isNotEmpty
-                                    ? ClipRRect(
-                                        borderRadius: BorderRadius.circular(6),
-                                        child: Image.network(
-                                          imageUrl,
-                                          width: 50,
-                                          height: 50,
-                                          fit: BoxFit.cover,
-                                        ),
-                                      )
-                                    : const Icon(Icons.music_note),
+                                  ? ClipRRect(
+                                    borderRadius: BorderRadius.circular(6),
+                                    child: Image.network(
+                                      imageUrl,
+                                      width: 50,
+                                      height: 50,
+                                      fit: BoxFit.cover,
+                                    ),
+                                    )
+                                  : const Icon(Icons.music_note),
                                 title: Text(nombre),
                                 subtitle: Column(
                                   crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
-                                    Text('$artista • $duration'),
-                                    if (task != null &&
-                                        task.errorMessage != null &&
-                                        task.errorMessage!.isNotEmpty)
-                                      Padding(
-                                        padding: const EdgeInsets.only(top: 6),
-                                        child: Text(
-                                          'Error: ${task.errorMessage}',
-                                          style: const TextStyle(
-                                            color: Colors.redAccent,
-                                            fontSize: 12,
-                                          ),
-                                        ),
+                                  Text('$artista • $duration'),
+                                  if (task != null &&
+                                    task.errorMessage != null &&
+                                    task.errorMessage!.isNotEmpty)
+                                    Padding(
+                                    padding: const EdgeInsets.only(top: 6),
+                                    child: Text(
+                                      'Error: ${task.errorMessage}',
+                                      style: const TextStyle(
+                                      color: Colors.redAccent,
+                                      fontSize: 12,
                                       ),
+                                    ),
+                                    ),
                                   ],
                                 ),
                                 trailing: Row(
                                   mainAxisSize: MainAxisSize.min,
                                   children: [
-                                    statusChip(),
-                                    const SizedBox(width: 8),
-                                    IconButton(
-                                      icon: const Icon(Icons.download),
-                                      onPressed: () => _queueDownload(c),
-                                    ),
+                                  statusChip(),
+                                  const SizedBox(width: 8),
+                                  IconButton(
+                                    icon: const Icon(Icons.download),
+                                    onPressed: () => _queueDownload(c),
+                                  ),
                                   ],
                                 ),
                               ),
