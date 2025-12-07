@@ -46,3 +46,5 @@ app.*.map.json
 
 lib/config/api_config.dart
 
+FLUTTER_ACRYLIC_FIX.md
+lib/main-testeffects.dart
