@@ -6,6 +6,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:window_manager/window_manager.dart';
 import 'main.dart' show checkForUpdate;
 import 'package:flutter_acrylic/flutter_acrylic.dart' as acrylic;
+import 'widgets/elegant_notification.dart';
 
 typedef TextGetter = String Function(String key, {String? fallback});
 typedef LanguageSelector = Future<void> Function(String code);
@@ -207,7 +208,10 @@ class _SettingsScreenState extends State<SettingsScreen> with WindowListener {
     final topLeft = rb.localToGlobal(Offset.zero);
     final items = availableKeys.map((key) {
       final label = widget.getText('effect_$key', fallback: key.capitalize());
-      return PopupMenuItem<String>(value: key, child: Text(label));
+      return PopupMenuItem<String>(
+        value: key,
+        child: Text(label),
+      );
     }).toList();
 
     final selected = await showMenu<String>(
@@ -220,6 +224,9 @@ class _SettingsScreenState extends State<SettingsScreen> with WindowListener {
       ),
       items: items,
       color: Colors.grey[900],
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(10),
+      ),
     );
 
     _effectMenuOpen = false;
@@ -360,12 +367,13 @@ class _SettingsScreenState extends State<SettingsScreen> with WindowListener {
       Navigator.pop(context, code);
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            widget.getText('error_saving', fallback: 'Error saving language'),
-          ),
-        ),
+      showElegantNotification(
+        context,
+        widget.getText('error_saving', fallback: 'Error saving language'),
+        backgroundColor: const Color(0xFFE53935),
+        textColor: Colors.white,
+        icon: Icons.error_outline,
+        iconColor: Colors.white,
       );
     } finally {
       if (mounted) setState(() => _saving = null);
@@ -406,6 +414,9 @@ class _SettingsScreenState extends State<SettingsScreen> with WindowListener {
           .toList(),
       elevation: 4,
       color: Colors.grey[900],
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(10),
+      ),
     );
 
     setState(() {

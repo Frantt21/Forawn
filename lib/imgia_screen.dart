@@ -8,6 +8,7 @@ import 'package:path/path.dart' as p;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:typed_data';
 import 'package:window_manager/window_manager.dart';
+import 'config/api_config.dart';
 
 typedef TextGetter = String Function(String key, {String? fallback});
 
@@ -94,7 +95,7 @@ class _AiImageScreenState extends State<AiImageScreen> with WindowListener {
   String _buildApiUrl(String prompt, String ratio) {
     final encoded = Uri.encodeComponent(prompt);
     final r = Uri.encodeComponent(ratio);
-    return 'yourapi';
+    return '${ApiConfig.dorratzBaseUrl}/v3/ai-image?prompt=$encoded&ratio=$r';
   }
 
   Future<void> _generateImage() async {

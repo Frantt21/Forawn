@@ -2,6 +2,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import '../models/note.dart';
 import '../db/notes_database.dart';
+import '../widgets/elegant_notification.dart';
 
 typedef TextGetter = String Function(String key, {String? fallback});
 
@@ -38,21 +39,13 @@ class _TrashScreenState extends State<TrashScreen> {
   Future<void> _restore(Note note) async {
     await _db.restoreFromTrash(note.id!);
     _loadTrash();
-    ScaffoldMessenger.of(context).clearSnackBars();
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(
-          widget.getText('moved_to_trash', fallback: 'Nota restaurada'),
-        ),
-        action: SnackBarAction(
-          label: widget.getText('unpin', fallback: 'Deshacer'),
-          onPressed: () async {
-            await _db.moveToTrash(note.id!);
-            _loadTrash();
-          },
-        ),
-        duration: const Duration(seconds: 4),
-      ),
+    showElegantNotification(
+      context,
+      widget.getText('moved_to_trash', fallback: 'Nota restaurada'),
+      backgroundColor: const Color(0xFF2C2C2C),
+      textColor: Colors.white,
+      icon: Icons.restore,
+      iconColor: Colors.blue,
     );
   }
 
@@ -82,39 +75,29 @@ class _TrashScreenState extends State<TrashScreen> {
     );
     if (confirmed != true) return;
 
-    final backup = note.toMap();
     await _db.deleteNotePermanently(note.id!);
     _loadTrash();
 
-    ScaffoldMessenger.of(context).clearSnackBars();
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(
-          widget.getText('delete', fallback: 'Nota eliminada permanentemente'),
-        ),
-        action: SnackBarAction(
-          label: widget.getText('unpin', fallback: 'Deshacer'),
-          onPressed: () async {
-            final map = Map<String, dynamic>.from(backup);
-            map.remove('id');
-            await _db.importNotes([map], ignoreConflicts: true);
-            _loadTrash();
-          },
-        ),
-        duration: const Duration(seconds: 6),
-      ),
+    showElegantNotification(
+      context,
+      widget.getText('delete', fallback: 'Nota eliminada permanentemente'),
+      backgroundColor: const Color(0xFFE53935),
+      textColor: Colors.white,
+      icon: Icons.delete_outline,
+      iconColor: Colors.white,
     );
   }
 
   Future<void> _emptyTrash() async {
     final notes = await _trashFuture;
     if (notes.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            widget.getText('no_notes', fallback: 'La papelera ya está vacía'),
-          ),
-        ),
+      showElegantNotification(
+        context,
+        widget.getText('no_notes', fallback: 'La papelera ya está vacía'),
+        backgroundColor: const Color(0xFF2C2C2C),
+        textColor: Colors.white,
+        icon: Icons.info_outline,
+        iconColor: Colors.white70,
       );
       return;
     }
@@ -144,32 +127,18 @@ class _TrashScreenState extends State<TrashScreen> {
     );
     if (confirm != true) return;
 
-    final backupList = notes.map((n) => n.toMap()).toList();
     for (final n in notes) {
       await _db.deleteNotePermanently(n.id!);
     }
     _loadTrash();
 
-    ScaffoldMessenger.of(context).clearSnackBars();
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(
-          '${widget.getText('empty_trash', fallback: 'Papelera vaciada')} (${notes.length})',
-        ),
-        action: SnackBarAction(
-          label: widget.getText('unpin', fallback: 'Deshacer'),
-          onPressed: () async {
-            final maps = backupList.map((m) {
-              final copy = Map<String, dynamic>.from(m);
-              copy.remove('id');
-              return copy;
-            }).toList();
-            await _db.importNotes(maps, ignoreConflicts: true);
-            _loadTrash();
-          },
-        ),
-        duration: const Duration(seconds: 8),
-      ),
+    showElegantNotification(
+      context,
+      '${widget.getText('empty_trash', fallback: 'Papelera vaciada')} (${notes.length})',
+      backgroundColor: const Color(0xFF2C2C2C),
+      textColor: Colors.white,
+      icon: Icons.delete_sweep,
+      iconColor: Colors.orange,
     );
   }
 

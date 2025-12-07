@@ -7,6 +7,7 @@ import 'package:file_picker/file_picker.dart';
 import 'package:path/path.dart' as p;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:window_manager/window_manager.dart';
+import 'config/api_config.dart';
 
 typedef TextGetter = String Function(String key, {String? fallback});
 
@@ -163,7 +164,7 @@ class _TranslateScreenState extends State<TranslateScreen> with WindowListener {
     final encoded = Uri.encodeComponent(text);
     final c = Uri.encodeComponent(countryKey);
     return Uri.parse(
-      'yourapi',
+      '${ApiConfig.dorratzBaseUrl}/v3/translate?text=$encoded&country=$c',
     );
   }
 
@@ -486,21 +487,24 @@ class _TranslateScreenState extends State<TranslateScreen> with WindowListener {
                         Text(get('country_label', fallback: 'Country')),
                         const SizedBox(width: 8),
                         // Localized dropdown using keys and _countryLabels
-                        DropdownButton<String>(
-                          value: _selectedCountryKey,
-                          underline: const SizedBox.shrink(),
-                          items: _countryKeys.map((key) {
-                            final label =
-                                _countryLabels[key] ?? _prettyKey(key);
-                            return DropdownMenuItem<String>(
-                              value: key,
-                              child: Text(label),
-                            );
-                          }).toList(),
-                          onChanged: (v) {
-                            if (v == null) return;
-                            setState(() => _selectedCountryKey = v);
-                          },
+                        ClipRRect(
+                          borderRadius: BorderRadius.circular(10),
+                          child: DropdownButton<String>(
+                            value: _selectedCountryKey,
+                            underline: const SizedBox.shrink(),
+                            items: _countryKeys.map((key) {
+                              final label =
+                                  _countryLabels[key] ?? _prettyKey(key);
+                              return DropdownMenuItem<String>(
+                                value: key,
+                                child: Text(label),
+                              );
+                            }).toList(),
+                            onChanged: (v) {
+                              if (v == null) return;
+                              setState(() => _selectedCountryKey = v);
+                            },
+                          ),
                         ),
                       ],
                     ),

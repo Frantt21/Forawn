@@ -9,6 +9,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uuid/uuid.dart';
 import 'package:image_picker/image_picker.dart';
 import '../config/api_config.dart';
+import '../widgets/elegant_notification.dart';
 
 class ForaaiScreen extends StatefulWidget {
   final String Function(String key, {String? fallback}) getText;
@@ -283,7 +284,8 @@ class _ForaaiScreenState extends State<ForaaiScreen> {
       {
         'role': 'system',
         'content':
-            'Eres Gemini 2.5 Flash, un modelo de IA avanzado de Google. Tienes capacidad para buscar en internet información actualizada. '
+            'Eres Foraai 1.0, un modelo de IA avanzado entrando por Google y Meta. Tienes capacidad para buscar en internet información actualizada. '
+            'Siempre trata de responder en el idioma que el usuario te habla.'
             'IMPORTANTE: Si el usuario te pide generar imágenes, aclárale que para eso debe usar la sección "Generación de Imágenes" de esta aplicación. '
             'Responde de forma clara, concisa y útil. Para código usa markdown. '
             'Tu límite de búsquedas diarias es de 500 (gratis). Úsalas sabiamente si se requiere información en tiempo real.',
@@ -550,12 +552,13 @@ class _ForaaiScreenState extends State<ForaaiScreen> {
 
   void _showSnackBar(String message) {
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(message),
-        duration: const Duration(seconds: 3),
-        behavior: SnackBarBehavior.floating,
-      ),
+    showElegantNotification(
+      context,
+      message,
+      backgroundColor: const Color(0xFF2C2C2C),
+      textColor: Colors.white,
+      icon: Icons.info_outline,
+      iconColor: Colors.white70,
     );
   }
 
@@ -909,33 +912,36 @@ class _ForaaiScreenState extends State<ForaaiScreen> {
         color: Colors.white.withOpacity(0.08),
         borderRadius: BorderRadius.circular(12),
       ),
-      child: DropdownButtonHideUnderline(
-        child: DropdownButton<AIProvider>(
-          value: _selectedProvider,
-          dropdownColor: const Color(0xFF2d2d2d),
-          icon: const Icon(
-            Icons.keyboard_arrow_down,
-            size: 14,
-            color: Colors.white54,
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(10),
+        child: DropdownButtonHideUnderline(
+          child: DropdownButton<AIProvider>(
+            value: _selectedProvider,
+            dropdownColor: const Color(0xFF2d2d2d),
+            icon: const Icon(
+              Icons.keyboard_arrow_down,
+              size: 14,
+              color: Colors.white54,
+            ),
+            isDense: true,
+            style: const TextStyle(color: Colors.white, fontSize: 11),
+            onChanged: _isLoading
+                ? null
+                : (AIProvider? newValue) {
+                    if (newValue != null) {
+                      setState(() {
+                        _selectedProvider = newValue;
+                        _selectedImage = null;
+                      });
+                    }
+                  },
+            items: AIProvider.values.map((AIProvider provider) {
+              return DropdownMenuItem<AIProvider>(
+                value: provider,
+                child: Text(ApiConfig.getProviderName(provider)),
+              );
+            }).toList(),
           ),
-          isDense: true,
-          style: const TextStyle(color: Colors.white, fontSize: 11),
-          onChanged: _isLoading
-              ? null
-              : (AIProvider? newValue) {
-                  if (newValue != null) {
-                    setState(() {
-                      _selectedProvider = newValue;
-                      _selectedImage = null;
-                    });
-                  }
-                },
-          items: AIProvider.values.map((AIProvider provider) {
-            return DropdownMenuItem<AIProvider>(
-              value: provider,
-              child: Text(ApiConfig.getProviderName(provider)),
-            );
-          }).toList(),
         ),
       ),
     );
@@ -1192,13 +1198,13 @@ class CodeElementBuilder extends MarkdownElementBuilder {
                 InkWell(
                   onTap: () {
                     Clipboard.setData(ClipboardData(text: textContent));
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(
-                        content: Text(
-                          getText('code_copied', fallback: 'Copiado'),
-                        ),
-                        duration: const Duration(seconds: 2),
-                      ),
+                    showElegantNotification(
+                      context,
+                      getText('code_copied', fallback: 'Copiado'),
+                      backgroundColor: const Color(0xFF2C2C2C),
+                      textColor: Colors.white,
+                      icon: Icons.check_circle_outline,
+                      iconColor: Colors.green,
                     );
                   },
                   child: const Row(

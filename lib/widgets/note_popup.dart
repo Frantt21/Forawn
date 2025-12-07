@@ -531,16 +531,19 @@ class _EditableCategoryFieldState extends State<_EditableCategoryField> {
     return Row(
       children: [
         Expanded(
-          child: DropdownButtonFormField<String?>(
-            initialValue: widget.categories.contains(_selected) ? _selected : null,
-            items: items,
-            onChanged: (v) {
-              _selected = v;
-              widget.onChanged(v);
-            },
-            decoration: baseDecoration.copyWith(contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6)),
-            dropdownColor: Colors.black87,
-            style: const TextStyle(color: Colors.white70),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(10),
+            child: DropdownButtonFormField<String?>(
+              initialValue: widget.categories.contains(_selected) ? _selected : null,
+              items: items,
+              onChanged: (v) {
+                _selected = v;
+                widget.onChanged(v);
+              },
+              decoration: baseDecoration.copyWith(contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6)),
+              dropdownColor: Colors.black87,
+              style: const TextStyle(color: Colors.white70),
+            ),
           ),
         ),
         const SizedBox(width: 6),

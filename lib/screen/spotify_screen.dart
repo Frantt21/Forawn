@@ -8,6 +8,7 @@ import 'package:path/path.dart' as p;
 import 'package:window_manager/window_manager.dart';
 import '../config/api_config.dart';
 import '../models/download_task.dart';
+import '../widgets/elegant_notification.dart';
 import '../services/download_manager.dart';
 import 'downloads_screen.dart';
 
@@ -355,26 +356,28 @@ class _SpotifyScreenState extends State<SpotifyScreen> with WindowListener {
           .length;
       _uiLog('Resultados: ${_canciones.length}, sin url: $missingUrlCount');
       if (missingUrlCount > 0) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              widget.getText(
-                'warning_missing_url',
-                fallback: 'Algunas canciones no tienen URL',
-              ),
-            ),
+        showElegantNotification(
+          context,
+          widget.getText(
+            'warning_missing_url',
+            fallback: 'Algunas canciones no tienen URL',
           ),
+          backgroundColor: const Color(0xFFFFA500),
+          textColor: Colors.white,
+          icon: Icons.warning_amber,
+          iconColor: Colors.white,
         );
       }
     } catch (e, st) {
       debugPrint('[SpotifyScreen] buscarCanciones error: $e\n$st');
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              widget.getText('search_error', fallback: 'Error en búsqueda'),
-            ),
-          ),
+        showElegantNotification(
+          context,
+          widget.getText('error', fallback: 'Error: $e'),
+          backgroundColor: const Color(0xFFE53935),
+          textColor: Colors.white,
+          icon: Icons.error_outline,
+          iconColor: Colors.white,
         );
       }
     } finally {
@@ -427,15 +430,16 @@ class _SpotifyScreenState extends State<SpotifyScreen> with WindowListener {
     await prefs.setString('download_folder', norm);
     _uiLog('Carpeta guardada: $norm');
     if (mounted) setState(() {});
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(
-          widget.getText(
-            'download_folder_set',
-            fallback: 'Carpeta de descargas establecida',
-          ),
-        ),
+    showElegantNotification(
+      context,
+      widget.getText(
+        'download_folder_set',
+        fallback: 'Carpeta de descargas establecida',
       ),
+      backgroundColor: const Color(0xFF2C2C2C),
+      textColor: Colors.white,
+      icon: Icons.folder_open,
+      iconColor: Colors.blue,
     );
     debugPrint('[SpotifyScreen] download_folder saved: $norm');
   }
@@ -451,15 +455,16 @@ class _SpotifyScreenState extends State<SpotifyScreen> with WindowListener {
       final carpeta = await FilePicker.platform.getDirectoryPath();
       if (carpeta == null) {
         _uiLog('Descarga cancelada por usuario (no hay carpeta)');
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              widget.getText(
-                'download_cancelled',
-                fallback: 'Descarga cancelada',
-              ),
-            ),
+        showElegantNotification(
+          context,
+          widget.getText(
+            'download_cancelled',
+            fallback: 'Descarga cancelada',
           ),
+          backgroundColor: const Color(0xFFE53935),
+          textColor: Colors.white,
+          icon: Icons.cancel,
+          iconColor: Colors.white,
         );
         return;
       }
@@ -468,15 +473,16 @@ class _SpotifyScreenState extends State<SpotifyScreen> with WindowListener {
       debugPrint(
         '[SpotifyScreen] user selected download folder: $downloadFolder',
       );
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            widget.getText(
-              'download_folder_set',
-              fallback: 'Carpeta de descargas establecida',
-            ),
-          ),
+      showElegantNotification(
+        context,
+        widget.getText(
+          'download_folder_set',
+          fallback: 'Carpeta de descargas establecida',
         ),
+        backgroundColor: const Color(0xFF2C2C2C),
+        textColor: Colors.white,
+        icon: Icons.folder_open,
+        iconColor: Colors.blue,
       );
     }
 
@@ -489,15 +495,16 @@ class _SpotifyScreenState extends State<SpotifyScreen> with WindowListener {
       debugPrint('[SpotifyScreen] folder writable test OK');
     } catch (e) {
       debugPrint('[SpotifyScreen] download folder writable test failed: $e');
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            widget.getText(
-              'download_folder_invalid',
-              fallback: 'Carpeta inválida o sin permisos',
-            ),
-          ),
+      showElegantNotification(
+        context,
+        widget.getText(
+          'download_folder_invalid',
+          fallback: 'Carpeta inválida o sin permisos',
         ),
+        backgroundColor: const Color(0xFFE53935),
+        textColor: Colors.white,
+        icon: Icons.error_outline,
+        iconColor: Colors.white,
       );
       return;
     }
@@ -529,12 +536,13 @@ class _SpotifyScreenState extends State<SpotifyScreen> with WindowListener {
     );
     _uiLog('Encolada: ${task.title}');
     DownloadManager().addTask(task);
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(
-          widget.getText('download_queued', fallback: 'Download queued'),
-        ),
-      ),
+    showElegantNotification(
+      context,
+      widget.getText('download_queued', fallback: 'Download queued'),
+      backgroundColor: const Color(0xFF2C2C2C),
+      textColor: Colors.white,
+      icon: Icons.check_circle_outline,
+      iconColor: Colors.green,
     );
   }
 

@@ -10,6 +10,7 @@ import 'package:file_picker/file_picker.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:path/path.dart' as p;
 import 'package:window_manager/window_manager.dart';
+import 'config/api_config.dart';
 
 typedef TextGetter = String Function(String key, {String? fallback});
 
@@ -118,7 +119,7 @@ class _R34ScreenState extends State<R34Screen> with WindowListener {
 
   String _buildApiUrl(String q) {
     final encoded = Uri.encodeComponent(q);
-    return 'yourapi';
+    return '${ApiConfig.dorratzBaseUrl}/v2/rule34-s?q=$encoded';
   }
 
   Future<void> _search() async {

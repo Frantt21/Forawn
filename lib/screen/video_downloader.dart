@@ -12,6 +12,7 @@ import 'package:window_manager/window_manager.dart';
 import '../models/download_task.dart';
 import '../services/download_manager.dart';
 import 'downloads_screen.dart';
+import '../widgets/elegant_notification.dart';
 
 typedef TextGetter = String Function(String key, {String? fallback});
 
@@ -85,15 +86,16 @@ class _VideoDownloaderScreenState extends State<VideoDownloaderScreen>
     await _prefs!.setString('video_download_folder', _downloadFolder!);
     setState(() {});
 
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(
-          widget.getText(
-            'download_folder_set',
-            fallback: 'Video download folder set',
-          ),
-        ),
+    showElegantNotification(
+      context,
+      widget.getText(
+        'download_folder_set',
+        fallback: 'Video download folder set',
       ),
+      backgroundColor: const Color(0xFF2C2C2C),
+      textColor: Colors.white,
+      icon: Icons.folder_open,
+      iconColor: Colors.blue,
     );
   }
 
@@ -336,12 +338,13 @@ class _VideoDownloaderScreenState extends State<VideoDownloaderScreen>
       formatId: formatId,
     );
     DownloadManager().addTask(task);
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(
-          widget.getText('added_to_queue', fallback: 'Added to download queue'),
-        ),
-      ),
+    showElegantNotification(
+      context,
+      widget.getText('added_to_queue', fallback: 'Added to download queue'),
+      backgroundColor: const Color(0xFF2C2C2C),
+      textColor: Colors.white,
+      icon: Icons.check_circle_outline,
+      iconColor: Colors.green,
     );
   }
 
@@ -350,22 +353,26 @@ class _VideoDownloaderScreenState extends State<VideoDownloaderScreen>
     final url = _controller.text.trim();
     if (url.isEmpty) return;
     if (!_isValidUrl(url)) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(widget.getText('invalid_url', fallback: 'Invalid URL')),
-        ),
+      showElegantNotification(
+        context,
+        widget.getText('invalid_url', fallback: 'Invalid URL'),
+        backgroundColor: const Color(0xFFE53935),
+        textColor: Colors.white,
+        icon: Icons.error_outline,
+        iconColor: Colors.white,
       );
       return;
     }
 
     final toolsDir = _findToolsDir();
     if (toolsDir.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            widget.getText('tools_not_found', fallback: 'Tools not found'),
-          ),
-        ),
+      showElegantNotification(
+        context,
+        widget.getText('tools_not_found', fallback: 'Tools not found'),
+        backgroundColor: const Color(0xFFE53935),
+        textColor: Colors.white,
+        icon: Icons.error_outline,
+        iconColor: Colors.white,
       );
       return;
     }
@@ -565,21 +572,24 @@ class _VideoDownloaderScreenState extends State<VideoDownloaderScreen>
                           !labels.containsKey(chosenFormat)) {
                         chosenFormat = labels.keys.first;
                       }
-                      return DropdownButton<String>(
-                        isExpanded: true,
-                        value: chosenFormat,
-                        dropdownColor: Colors.grey[900],
-                        items: labels.entries.map((e) {
-                          return DropdownMenuItem<String>(
-                            value: e.key,
-                            child: Text(
-                              e.value,
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                          );
-                        }).toList(),
-                        onChanged: (v) =>
-                            setStateDialog(() => chosenFormat = v),
+                      return ClipRRect(
+                        borderRadius: BorderRadius.circular(10),
+                        child: DropdownButton<String>(
+                          isExpanded: true,
+                          value: chosenFormat,
+                          dropdownColor: Colors.grey[900],
+                          items: labels.entries.map((e) {
+                            return DropdownMenuItem<String>(
+                              value: e.key,
+                              child: Text(
+                                e.value,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            );
+                          }).toList(),
+                          onChanged: (v) =>
+                              setStateDialog(() => chosenFormat = v),
+                        ),
                       );
                     },
                   ),

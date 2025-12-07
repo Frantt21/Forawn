@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import '../db/notes_database.dart';
+import '../widgets/elegant_notification.dart';
 
 typedef TextGetter = String Function(String key, {String? fallback});
 
@@ -48,9 +49,23 @@ class _SettingsScreen2State extends State<SettingsScreen2> {
       final list = json.decode(controller.text) as List<dynamic>;
       final maps = list.cast<Map<String, dynamic>>();
       await _db.importNotes(maps, ignoreConflicts: true);
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(widget.getText('import_done', fallback: 'Importación completada'))));
+      showElegantNotification(
+        context,
+        widget.getText('import_done', fallback: 'Importación completada'),
+        backgroundColor: const Color(0xFF2C2C2C),
+        textColor: Colors.white,
+        icon: Icons.check_circle_outline,
+        iconColor: Colors.green,
+      );
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(widget.getText('invalid_json', fallback: 'JSON inválido'))));
+      showElegantNotification(
+        context,
+        widget.getText('invalid_json', fallback: 'JSON inválido'),
+        backgroundColor: const Color(0xFFE53935),
+        textColor: Colors.white,
+        icon: Icons.error_outline,
+        iconColor: Colors.white,
+      );
     }
   }
 
@@ -76,7 +91,14 @@ class _SettingsScreen2State extends State<SettingsScreen2> {
       return Future.value(true);
     });
 
-    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Papelera vaciada')));
+    showElegantNotification(
+      context,
+      'Papelera vaciada',
+      backgroundColor: const Color(0xFF2C2C2C),
+      textColor: Colors.white,
+      icon: Icons.delete_sweep,
+      iconColor: Colors.orange,
+    );
   }
 
   Future<void> _deleteDatabase() async {
@@ -93,7 +115,14 @@ class _SettingsScreen2State extends State<SettingsScreen2> {
     );
     if (confirm != true) return;
     await _db.deleteDatabaseFile();
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(widget.getText('database_deleted', fallback: 'Base de datos eliminada'))));
+    showElegantNotification(
+      context,
+      widget.getText('database_deleted', fallback: 'Base de datos eliminada'),
+      backgroundColor: const Color(0xFF2C2C2C),
+      textColor: Colors.white,
+      icon: Icons.delete_outline,
+      iconColor: Colors.red,
+    );
   }
 
   @override
