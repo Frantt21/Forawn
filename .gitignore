@@ -44,6 +44,8 @@ app.*.map.json
 /android/app/profile
 /android/app/release
 
+# API Keys and Sensitive Configuration
+# IMPORTANTE: Nunca subas tus API keys al repositorio
 lib/config/api_config.dart
 
 FLUTTER_ACRYLIC_FIX.md
