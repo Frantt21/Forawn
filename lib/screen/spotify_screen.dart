@@ -673,7 +673,6 @@ class _SpotifyScreenState extends State<SpotifyScreen> with WindowListener {
                           padding: const EdgeInsets.symmetric(vertical: 8),
                           child: Row(
                             children: [
-                              const Icon(Icons.recommend, color: Colors.amber),
                               const SizedBox(width: 8),
                               Text(
                                 '${get('recommendations_for', fallback: 'Recomendaciones basadas en')}: $_lastSearchQuery',

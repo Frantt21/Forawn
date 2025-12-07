@@ -60,12 +60,31 @@ class _SidebarNavigationState extends State<SidebarNavigation> {
         ),
       ),
     ];
-    _categories[widget.getText('tools_title', fallback: 'Herramientas')] = [
+
+    _categories[widget.getText('ias_title', fallback: 'IAs')] = [
+      NavigationItem(
+        id: 'foraai',
+        icon: Icons.auto_awesome,
+        label: widget.getText('foraai_title', fallback: 'ForaAI'),
+      ),
       NavigationItem(
         id: 'images',
         icon: Icons.image,
         label: widget.getText('ai_image_title', fallback: 'Imágenes'),
       ),
+    ];
+
+    if (widget.nsfwEnabled) {
+      _categories[widget.getText('others_title', fallback: 'Otros')] = [
+        NavigationItem(
+          id: 'r34',
+          icon: Icons.image_search,
+          label: widget.getText('r34_title', fallback: 'R34 Buscador'),
+        ),
+      ];
+    }
+
+    _categories[widget.getText('tools_title', fallback: 'Herramientas')] = [
       // NavigationItem(
       //   id: 'notes',
       //   icon: Icons.note,
@@ -81,22 +100,7 @@ class _SidebarNavigationState extends State<SidebarNavigation> {
         icon: Icons.qr_code,
         label: widget.getText('qr_title', fallback: 'Generador QR'),
       ),
-      NavigationItem(
-        id: 'foraai',
-        icon: Icons.auto_awesome,
-        label: widget.getText('foraai_title', fallback: 'ForaAI'),
-      ),
     ];
-
-    if (widget.nsfwEnabled) {
-      _categories[widget.getText('others_title', fallback: 'Otros')] = [
-        NavigationItem(
-          id: 'r34',
-          icon: Icons.image_search,
-          label: widget.getText('r34_title', fallback: 'R34 Buscador'),
-        ),
-      ];
-    }
   }
 
   @override

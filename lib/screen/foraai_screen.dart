@@ -47,6 +47,10 @@ class _ForaaiScreenState extends State<ForaaiScreen> {
     super.initState();
     _loadSessions();
     _loadRateLimits();
+    // Scroll al último mensaje después de que el widget se construya
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _scrollToBottom();
+    });
   }
 
   @override
@@ -284,7 +288,7 @@ class _ForaaiScreenState extends State<ForaaiScreen> {
       {
         'role': 'system',
         'content':
-            'Eres Foraai 1.0, un modelo de IA avanzado entrando por Google y Meta. Tienes capacidad para buscar en internet información actualizada. '
+            'Eres un modelo de IA avanzado entrando por Google y Meta. Tienes capacidad para buscar en internet información actualizada. '
             'Siempre trata de responder en el idioma que el usuario te habla.'
             'IMPORTANTE: Si el usuario te pide generar imágenes, aclárale que para eso debe usar la sección "Generación de Imágenes" de esta aplicación. '
             'Responde de forma clara, concisa y útil. Para código usa markdown. '
@@ -645,7 +649,10 @@ class _ForaaiScreenState extends State<ForaaiScreen> {
                 ),
                 selected: isSelected,
                 selectedTileColor: Colors.white.withOpacity(0.05),
-                onTap: () => setState(() => _currentSessionId = s.id),
+                onTap: () {
+                  setState(() => _currentSessionId = s.id);
+                  _scrollToBottom();
+                },
                 trailing: isSelected
                     ? IconButton(
                         icon: const Icon(
