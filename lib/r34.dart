@@ -118,7 +118,7 @@ class _R34ScreenState extends State<R34Screen> with WindowListener {
 
   String _buildApiUrl(String q) {
     final encoded = Uri.encodeComponent(q);
-    return 'https://api.dorratz.com/v2/rule34-s?q=$encoded';
+    return 'yourapi';
   }
 
   Future<void> _search() async {

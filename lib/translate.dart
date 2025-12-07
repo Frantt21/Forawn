@@ -163,7 +163,7 @@ class _TranslateScreenState extends State<TranslateScreen> with WindowListener {
     final encoded = Uri.encodeComponent(text);
     final c = Uri.encodeComponent(countryKey);
     return Uri.parse(
-      'https://api.dorratz.com/v3/translate?text=$encoded&country=$c',
+      'yourapi',
     );
   }
 
