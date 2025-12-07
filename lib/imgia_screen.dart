@@ -8,9 +8,80 @@ import 'package:path/path.dart' as p;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:typed_data';
 import 'package:window_manager/window_manager.dart';
+import 'package:uuid/uuid.dart';
 import 'config/api_config.dart';
+import 'widgets/elegant_notification.dart';
 
 typedef TextGetter = String Function(String key, {String? fallback});
+
+class ImageMessage {
+  final String id;
+  final String prompt;
+  final String ratio;
+  final String? imageUrl;
+  final Uint8List? imageBytes;
+  final bool isGenerating;
+  final String? error;
+  final DateTime timestamp;
+
+  ImageMessage({
+    String? id,
+    required this.prompt,
+    required this.ratio,
+    this.imageUrl,
+    this.imageBytes,
+    this.isGenerating = false,
+    this.error,
+    DateTime? timestamp,
+  })  : id = id ?? const Uuid().v4(),
+        timestamp = timestamp ?? DateTime.now();
+
+  ImageMessage copyWith({
+    String? prompt,
+    String? ratio,
+    String? imageUrl,
+    Uint8List? imageBytes,
+    bool? isGenerating,
+    String? error,
+  }) {
+    return ImageMessage(
+      id: id,
+      prompt: prompt ?? this.prompt,
+      ratio: ratio ?? this.ratio,
+      imageUrl: imageUrl ?? this.imageUrl,
+      imageBytes: imageBytes ?? this.imageBytes,
+      isGenerating: isGenerating ?? this.isGenerating,
+      error: error ?? this.error,
+      timestamp: timestamp,
+    );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'id': id,
+      'prompt': prompt,
+      'ratio': ratio,
+      'imageUrl': imageUrl,
+      'imageBytes': imageBytes != null ? base64Encode(imageBytes!) : null,
+      'isGenerating': isGenerating,
+      'error': error,
+      'timestamp': timestamp.toIso8601String(),
+    };
+  }
+
+  factory ImageMessage.fromJson(Map<String, dynamic> json) {
+    return ImageMessage(
+      id: json['id'] as String,
+      prompt: json['prompt'] as String,
+      ratio: json['ratio'] as String,
+      imageUrl: json['imageUrl'] as String?,
+      imageBytes: json['imageBytes'] != null ? base64Decode(json['imageBytes'] as String) : null,
+      isGenerating: json['isGenerating'] as bool? ?? false,
+      error: json['error'] as String?,
+      timestamp: DateTime.parse(json['timestamp'] as String),
+    );
+  }
+}
 
 class AiImageScreen extends StatefulWidget {
   final TextGetter getText;
@@ -30,36 +101,52 @@ class AiImageScreen extends StatefulWidget {
 
 class _AiImageScreenState extends State<AiImageScreen> with WindowListener {
   final TextEditingController _promptController = TextEditingController();
+  final ScrollController _scrollController = ScrollController();
   String _ratio = '16:9';
   bool _loading = false;
-  String? _imageUrl;
-  Uint8List? _imageBytes;
   String? _saveFolder;
   SharedPreferences? _prefs;
-  String _statusText = '';
+  List<ImageMessage> _messages = [];
 
   static const _prefsKey = 'image_download_folder';
-
-  // Input area altura y arrastre
-  double _inputHeight = 80;
-  bool _isDraggingHandle = false;
+  static const _messagesPrefsKey = 'imgia_messages';
 
   @override
   void initState() {
     super.initState();
     windowManager.addListener(this);
     _loadFolderPref();
+    _loadMessages();
 
     if (widget.onRegisterFolderAction != null) {
       widget.onRegisterFolderAction!(_selectFolder);
     }
+
+    // Scroll al último mensaje después de que el widget se construya
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _scrollToBottom();
+    });
   }
 
   @override
   void dispose() {
     windowManager.removeListener(this);
     _promptController.dispose();
+    _scrollController.dispose();
+    _saveMessages();
     super.dispose();
+  }
+
+  void _scrollToBottom() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (_scrollController.hasClients) {
+        _scrollController.animateTo(
+          _scrollController.position.maxScrollExtent,
+          duration: const Duration(milliseconds: 300),
+          curve: Curves.easeOut,
+        );
+      }
+    });
   }
 
   Future<void> _loadFolderPref() async {
@@ -80,16 +167,41 @@ class _AiImageScreenState extends State<AiImageScreen> with WindowListener {
     } catch (_) {}
   }
 
+  Future<void> _loadMessages() async {
+    try {
+      _prefs ??= await SharedPreferences.getInstance();
+      final messagesJson = _prefs!.getStringList(_messagesPrefsKey) ?? [];
+      if (!mounted) return;
+      setState(() {
+        _messages = messagesJson
+            .map((s) => ImageMessage.fromJson(jsonDecode(s)))
+            .toList();
+      });
+    } catch (_) {}
+  }
+
+  Future<void> _saveMessages() async {
+    try {
+      _prefs ??= await SharedPreferences.getInstance();
+      final messagesJson = _messages.map((m) => jsonEncode(m.toJson())).toList();
+      await _prefs!.setStringList(_messagesPrefsKey, messagesJson);
+    } catch (_) {}
+  }
+
   Future<void> _selectFolder() async {
     final dir = await FilePicker.platform.getDirectoryPath();
     if (dir == null) return;
     _saveFolder = p.normalize(dir);
     await _saveFolderPref();
     if (!mounted) return;
-    setState(() {
-      _statusText =
-          '${widget.getText('save_folder_set', fallback: 'Save folder set')}: $_saveFolder';
-    });
+    showElegantNotification(
+      context,
+      '${widget.getText('save_folder_set', fallback: 'Save folder set')}: $_saveFolder',
+      backgroundColor: const Color(0xFF2C2C2C),
+      textColor: Colors.white,
+      icon: Icons.folder_open,
+      iconColor: Colors.blue,
+    );
   }
 
   String _buildApiUrl(String prompt, String ratio) {
@@ -97,27 +209,36 @@ class _AiImageScreenState extends State<AiImageScreen> with WindowListener {
     final r = Uri.encodeComponent(ratio);
     return '${ApiConfig.dorratzBaseUrl}/v3/ai-image?prompt=$encoded&ratio=$r';
   }
-
   Future<void> _generateImage() async {
     final prompt = _promptController.text.trim();
     if (prompt.isEmpty) {
-      if (!mounted) return;
-      setState(() {
-        _statusText = widget.getText(
-          'enter_prompt',
-          fallback: 'Enter a prompt',
-        );
-      });
+      showElegantNotification(
+        context,
+        widget.getText('enter_prompt', fallback: 'Enter a prompt'),
+        backgroundColor: const Color(0xFFE53935),
+        textColor: Colors.white,
+        icon: Icons.error_outline,
+        iconColor: Colors.white,
+      );
       return;
     }
 
     if (_loading) return;
+
+    // Add message to chat
+    final messageId = const Uuid().v4();
     setState(() {
+      _messages.add(ImageMessage(
+        id: messageId,
+        prompt: prompt,
+        ratio: _ratio,
+        isGenerating: true,
+      ));
       _loading = true;
-      _imageUrl = null;
-      _imageBytes = null;
-      _statusText = widget.getText('generating', fallback: 'Generating...');
+      _promptController.clear();
     });
+    _scrollToBottom();
+    _saveMessages();
 
     try {
       final url = _buildApiUrl(prompt, _ratio);
@@ -141,35 +262,46 @@ class _AiImageScreenState extends State<AiImageScreen> with WindowListener {
         throw Exception('Image download ${imgRes.statusCode}');
       }
 
-      _imageUrl = imageLink;
-      _imageBytes = imgRes.bodyBytes;
       if (!mounted) return;
       setState(() {
-        _statusText = widget.getText('generated', fallback: 'Generated');
+        final index = _messages.indexWhere((m) => m.id == messageId);
+        if (index != -1) {
+          _messages[index] = _messages[index].copyWith(
+            imageUrl: imageLink,
+            imageBytes: imgRes.bodyBytes,
+            isGenerating: false,
+          );
+        }
+        _loading = false;
       });
+      _scrollToBottom();
+      _saveMessages();
     } catch (e) {
       if (!mounted) return;
       setState(() {
-        _statusText =
-            '${widget.getText('generate_error', fallback: 'Error generating')}: ${e.toString()}';
-      });
-    } finally {
-      if (!mounted) return;
-      setState(() {
+        final index = _messages.indexWhere((m) => m.id == messageId);
+        if (index != -1) {
+          _messages[index] = _messages[index].copyWith(
+            isGenerating: false,
+            error: e.toString(),
+          );
+        }
         _loading = false;
       });
+      _saveMessages();
     }
   }
 
-  Future<void> _saveImageToFolder() async {
-    if (_imageBytes == null) {
-      if (!mounted) return;
-      setState(() {
-        _statusText = widget.getText(
-          'no_image_to_save',
-          fallback: 'No image to save',
-        );
-      });
+  Future<void> _saveImage(ImageMessage message) async {
+    if (message.imageBytes == null) {
+      showElegantNotification(
+        context,
+        widget.getText('no_image_to_save', fallback: 'No image to save'),
+        backgroundColor: const Color(0xFFE53935),
+        textColor: Colors.white,
+        icon: Icons.error_outline,
+        iconColor: Colors.white,
+      );
       return;
     }
 
@@ -177,13 +309,14 @@ class _AiImageScreenState extends State<AiImageScreen> with WindowListener {
     if (folder.isEmpty) {
       final picked = await FilePicker.platform.getDirectoryPath();
       if (picked == null) {
-        if (!mounted) return;
-        setState(() {
-          _statusText = widget.getText(
-            'save_cancelled',
-            fallback: 'Save cancelled',
-          );
-        });
+        showElegantNotification(
+          context,
+          widget.getText('save_cancelled', fallback: 'Save cancelled'),
+          backgroundColor: const Color(0xFF2C2C2C),
+          textColor: Colors.white,
+          icon: Icons.cancel_outlined,
+          iconColor: Colors.orange,
+        );
         return;
       }
       folder = p.normalize(picked);
@@ -193,24 +326,40 @@ class _AiImageScreenState extends State<AiImageScreen> with WindowListener {
 
     try {
       final timestamp = DateTime.now().millisecondsSinceEpoch;
-      final ext = _guessExtensionFromBytes(_imageBytes!) ?? '.jpg';
+      final ext = _guessExtensionFromBytes(message.imageBytes!) ?? '.jpg';
       final fileName = 'ai_image_$timestamp$ext';
       final path = p.join(folder, fileName);
       final f = File(path);
       await f.create(recursive: true);
-      await f.writeAsBytes(_imageBytes!);
+      await f.writeAsBytes(message.imageBytes!);
+
       if (!mounted) return;
-      setState(() {
-        _statusText =
-            '${widget.getText('saved_to', fallback: 'Saved to')}: $path';
-      });
+      showElegantNotification(
+        context,
+        '${widget.getText('saved_to', fallback: 'Saved to')}: $path',
+        backgroundColor: const Color(0xFF2C2C2C),
+        textColor: Colors.white,
+        icon: Icons.save_alt,
+        iconColor: Colors.green,
+      );
     } catch (e) {
       if (!mounted) return;
-      setState(() {
-        _statusText =
-            '${widget.getText('save_error', fallback: 'Error saving')}: ${e.toString()}';
-      });
+      showElegantNotification(
+        context,
+        '${widget.getText('save_error', fallback: 'Error saving')}: $e',
+        backgroundColor: const Color(0xFFE53935),
+        textColor: Colors.white,
+        icon: Icons.error_outline,
+        iconColor: Colors.white,
+      );
     }
+  }
+
+  void _deleteMessage(String messageId) {
+    setState(() {
+      _messages.removeWhere((m) => m.id == messageId);
+    });
+    _saveMessages();
   }
 
   String? _guessExtensionFromBytes(Uint8List bytes) {
@@ -234,287 +383,386 @@ class _AiImageScreenState extends State<AiImageScreen> with WindowListener {
     return null;
   }
 
-  Future<void> _minimize() async => await windowManager.minimize();
-  Future<void> _maximizeRestore() async {
-    final isMax = await windowManager.isMaximized();
-    if (isMax) {
-      await windowManager.unmaximize();
-    } else {
-      await windowManager.maximize();
-    }
+  void _showContextMenu(ImageMessage message, Offset position) {
+    showMenu(
+      context: context,
+      position: RelativeRect.fromLTRB(
+        position.dx,
+        position.dy,
+        position.dx + 100,
+        position.dy + 100,
+      ),
+      items: [
+        if (message.imageBytes != null)
+          PopupMenuItem(
+            child: Row(
+              children: [
+                const Icon(Icons.save, size: 18),
+                const SizedBox(width: 8),
+                Text(widget.getText('save_button', fallback: 'Save')),
+              ],
+            ),
+            onTap: () => _saveImage(message),
+          ),
+        if (message.imageUrl != null)
+          PopupMenuItem(
+            child: Row(
+              children: [
+                const Icon(Icons.open_in_new, size: 18),
+                const SizedBox(width: 8),
+                Text(widget.getText('open_link', fallback: 'Open link')),
+              ],
+            ),
+            onTap: () async {
+              final uri = Uri.tryParse(message.imageUrl!);
+              if (uri != null) {
+                try {
+                  if (Platform.isWindows) {
+                    await Process.start('explorer', [uri.toString()]);
+                  } else if (Platform.isMacOS) {
+                    await Process.start('open', [uri.toString()]);
+                  } else {
+                    await Process.start('xdg-open', [uri.toString()]);
+                  }
+                } catch (_) {}
+              }
+            },
+          ),
+        PopupMenuItem(
+          child: Row(
+            children: [
+              const Icon(Icons.delete, size: 18, color: Colors.red),
+              const SizedBox(width: 8),
+              Text(
+                widget.getText('delete_button', fallback: 'Delete'),
+                style: const TextStyle(color: Colors.red),
+              ),
+            ],
+          ),
+          onTap: () => _deleteMessage(message.id),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildMessageBubble(ImageMessage message) {
+    return GestureDetector(
+      onSecondaryTapDown: (details) {
+        _showContextMenu(message, details.globalPosition);
+      },
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Prompt bubble
+          Align(
+            alignment: Alignment.centerRight,
+            child: Container(
+              margin: const EdgeInsets.symmetric(vertical: 8),
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Colors.purpleAccent.withOpacity(0.2),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(
+                  color: Colors.purpleAccent.withOpacity(0.3),
+                ),
+              ),
+              constraints: BoxConstraints(
+                maxWidth: MediaQuery.of(context).size.width * 0.7,
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  Text(
+                    message.prompt,
+                    style: const TextStyle(color: Colors.white),
+                  ),
+                  const SizedBox(height: 8),
+                  // Ratio badge
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 8,
+                      vertical: 4,
+                    ),
+                    decoration: BoxDecoration(
+                      color: Colors.white.withOpacity(0.1),
+                      borderRadius: BorderRadius.circular(6),
+                      border: Border.all(
+                        color: Colors.white.withOpacity(0.2),
+                      ),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(
+                          Icons.aspect_ratio,
+                          size: 12,
+                          color: Colors.white.withOpacity(0.6),
+                        ),
+                        const SizedBox(width: 4),
+                        Text(
+                          message.ratio,
+                          style: TextStyle(
+                            fontSize: 11,
+                            color: Colors.white.withOpacity(0.7),
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+
+          // Image response or error
+          if (message.error != null)
+            Container(
+              margin: const EdgeInsets.symmetric(vertical: 8),
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Colors.red.withOpacity(0.1),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: Colors.red.withOpacity(0.3)),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      const Icon(
+                        Icons.error_outline,
+                        color: Colors.red,
+                        size: 18,
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          message.error!,
+                          style: const TextStyle(color: Colors.red, fontSize: 12),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            )
+          else if (message.isGenerating)
+            Container(
+              margin: const EdgeInsets.symmetric(vertical: 8),
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Colors.white.withOpacity(0.05),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const SizedBox(
+                    width: 16,
+                    height: 16,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  ),
+                  const SizedBox(width: 8),
+                  Text(
+                    widget.getText('generating', fallback: 'Generating...'),
+                  ),
+                ],
+              ),
+            )
+          else if (message.imageBytes != null)
+            Container(
+              margin: const EdgeInsets.symmetric(vertical: 8),
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(
+                  color: Colors.white.withOpacity(0.1),
+                ),
+              ),
+              constraints: BoxConstraints(
+                maxWidth: MediaQuery.of(context).size.width * 0.65,
+                maxHeight: 300,
+              ),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(12),
+                child: Image.memory(
+                  message.imageBytes!,
+                  fit: BoxFit.contain,
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
   }
 
   @override
   Widget build(BuildContext context) {
     final get = widget.getText;
 
-    final Color scaffoldBg = Colors.transparent;
-
     return Scaffold(
-      backgroundColor: scaffoldBg,
+      backgroundColor: Colors.transparent,
       body: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.all(16),
-          child: Column(
-            children: [
-              Container(
-                width: double.infinity,
-                decoration: BoxDecoration(
-                  color: Colors.black12,
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: Colors.white.withOpacity(0.04)),
-                ),
-                child: Column(
-                  children: [
-                    SizedBox(
-                      height: _inputHeight,
-                      child: Padding(
-                        padding: const EdgeInsets.all(8.0),
-                        child: TextField(
-                          controller: _promptController,
-                          expands: true,
-                          maxLines: null,
-                          minLines: null,
-                          textAlignVertical: TextAlignVertical.top,
-                          decoration: InputDecoration(
-                            border: InputBorder.none,
-                            hintText: get(
-                              'prompt_hint',
-                              fallback: 'Describe the image you want',
-                            ),
-                          ),
-                          style: const TextStyle(fontSize: 14),
-                          onSubmitted: (_) {
-                            if (!_loading) _generateImage();
-                          },
-                        ),
-                      ),
-                    ),
-
-                    // botón debajo del área de texto
-                    Padding(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 8.0,
-                        vertical: 2.0,
-                      ),
-                      child: Row(
+        child: Column(
+          children: [
+            // Chat messages area
+            Expanded(
+              child: _messages.isEmpty
+                  ? Center(
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
                         children: [
-                          const Spacer(),
-                          ElevatedButton.icon(
-                            icon: _loading
-                                ? const SizedBox(
-                                    width: 16,
-                                    height: 16,
-                                    child: CircularProgressIndicator(
-                                      strokeWidth: 2,
-                                    ),
-                                  )
-                                : const Icon(Icons.image),
-                            label: Text(
-                              get('generate_button', fallback: 'Generate'),
-                            ),
-                            onPressed: _loading ? null : _generateImage,
-                            style: ElevatedButton.styleFrom(
-                              shape: const RoundedRectangleBorder(
-                                borderRadius: BorderRadius.all(
-                                  Radius.circular(10),
-                                ),
-                              ),
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 12,
-                                vertical: 12,
-                              ),
-                              backgroundColor: const Color.fromARGB(
-                                255,
-                                255,
-                                251,
-                                18,
-                              ),
-                              foregroundColor: Colors.black87,
-                            ),
+                          Icon(
+                            Icons.image_not_supported,
+                            size: 48,
+                            color: Colors.white.withOpacity(0.3),
+                          ),
+                          const SizedBox(height: 16),
+                          Text(
+                            get('no_image_ui', fallback: 'No images yet'),
+                            style: TextStyle(color: Colors.white.withOpacity(0.5)),
                           ),
                         ],
                       ),
-                    ),
-
-                    GestureDetector(
-                      behavior: HitTestBehavior.translucent,
-                      onVerticalDragStart: (_) =>
-                          setState(() => _isDraggingHandle = true),
-                      onVerticalDragUpdate: (details) {
-                        setState(() {
-                          _inputHeight = (_inputHeight + details.delta.dy)
-                              .clamp(48.0, 300.0);
-                        });
+                    )
+                  : ListView.builder(
+                      controller: _scrollController,
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+                      itemCount: _messages.length,
+                      itemBuilder: (context, index) {
+                        return _buildMessageBubble(_messages[index]);
                       },
-                      onVerticalDragEnd: (_) =>
-                          setState(() => _isDraggingHandle = false),
-                      child: Container(
-                        height: 10,
-                        alignment: Alignment.center,
-                        child: Container(
-                          width: 48,
-                          height: 4,
-                          decoration: BoxDecoration(
-                            color: _isDraggingHandle
-                                ? const Color.fromARGB(255, 255, 251, 18)
-                                : Colors.white24,
-                            borderRadius: BorderRadius.circular(4),
-                          ),
-                        ),
-                      ),
                     ),
-                  ],
-                ),
-              ),
+            ),
 
-              const SizedBox(height: 12),
-
-              Row(
+            // Input area
+            Container(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
+                  // Ratio selector
                   Container(
                     padding: const EdgeInsets.symmetric(
                       horizontal: 8,
                       vertical: 6,
                     ),
                     decoration: BoxDecoration(
-                      color: Colors.black12,
-                      borderRadius: BorderRadius.circular(10),
+                      color: Colors.white.withOpacity(0.05),
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: Colors.white.withOpacity(0.1)),
                     ),
                     child: Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        Text(get('ratio_label', fallback: 'Ratio')),
+                        Text(
+                          get('ratio_label', fallback: 'Ratio'),
+                          style: const TextStyle(fontSize: 12),
+                        ),
                         const SizedBox(width: 8),
-                        DropdownButton<String>(
-                          value: _ratio,
-                          underline: const SizedBox.shrink(),
-                          items:
-                              <String>[
-                                    '16:9',
-                                    '9:16',
-                                    '1:1',
-                                    '4:3',
-                                    '3:4',
-                                    '9:19',
-                                  ]
-                                  .map(
-                                    (r) => DropdownMenuItem(
-                                      value: r,
-                                      child: Text(r),
-                                    ),
-                                  )
-                                  .toList(),
-                          onChanged: (v) {
-                            if (v == null) return;
-                            setState(() => _ratio = v);
-                          },
+                        ClipRRect(
+                          borderRadius: BorderRadius.circular(6),
+                          child: DropdownButton<String>(
+                            borderRadius: BorderRadius.circular(8),
+                            value: _ratio,
+                            underline: const SizedBox.shrink(),
+                            dropdownColor: Colors.grey[900],
+                            items: <String>[
+                              '16:9',
+                              '9:16',
+                              '1:1',
+                              '4:3',
+                              '3:4',
+                              '9:19',
+                            ]
+                                .map(
+                                  (r) => DropdownMenuItem(
+                                    value: r,
+                                    child: Text(r),
+                                  ),
+                                )
+                                .toList(),
+                            onChanged: (v) {
+                              if (v == null) return;
+                              setState(() => _ratio = v);
+                            },
+                          ),
                         ),
                       ],
                     ),
                   ),
 
-                  const SizedBox(width: 12),
-                ],
-              ),
+                  const SizedBox(height: 12),
 
-              const SizedBox(height: 12),
-
-              if (_statusText.isNotEmpty)
-                Align(
-                  alignment: Alignment.centerLeft,
-                  child: Text(
-                    _statusText,
-                    style: const TextStyle(fontSize: 12),
-                  ),
-                ),
-
-              const SizedBox(height: 12),
-
-              Expanded(
-                child: _imageBytes != null
-                    ? Column(
-                        children: [
-                          Expanded(
-                            child: Image.memory(
-                              _imageBytes!,
-                              fit: BoxFit.contain,
-                            ),
+                  // Input container with styled input
+                  Container(
+                    decoration: BoxDecoration(
+                      color: Colors.white.withOpacity(0.05),
+                      borderRadius: BorderRadius.circular(16),
+                      border: Border.all(color: Colors.white.withOpacity(0.1)),
+                    ),
+                    padding: const EdgeInsets.all(8),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.end,
+                      children: [
+                      // Input de texto
+                      Expanded(
+                        child: TextField(
+                        controller: _promptController,
+                        style: const TextStyle(fontSize: 14),
+                        decoration: InputDecoration(
+                          hintText: get(
+                          'prompt_hint',
+                          fallback: 'Describe the image you want...',
                           ),
-                          const SizedBox(height: 8),
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              ElevatedButton.icon(
-                                icon: const Icon(Icons.save),
-                                label: Text(
-                                  get('save_button', fallback: 'Save'),
-                                ),
-                                onPressed: _saveImageToFolder,
-                                style: ElevatedButton.styleFrom(
-                                  shape: const RoundedRectangleBorder(
-                                    borderRadius: BorderRadius.all(
-                                      Radius.circular(10),
-                                    ),
-                                  ),
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 16,
-                                    vertical: 12,
-                                  ),
-                                ),
-                              ),
-                              const SizedBox(width: 12),
-                              ElevatedButton.icon(
-                                icon: const Icon(Icons.open_in_new),
-                                label: Text(
-                                  get('open_link', fallback: 'Open link'),
-                                ),
-                                onPressed: _imageUrl == null
-                                    ? null
-                                    : () async {
-                                        final uri = Uri.tryParse(_imageUrl!);
-                                        if (uri != null) {
-                                          try {
-                                            if (Platform.isWindows) {
-                                              await Process.start('explorer', [
-                                                uri.toString(),
-                                              ]);
-                                            } else if (Platform.isMacOS) {
-                                              await Process.start('open', [
-                                                uri.toString(),
-                                              ]);
-                                            } else {
-                                              await Process.start('xdg-open', [
-                                                uri.toString(),
-                                              ]);
-                                            }
-                                          } catch (_) {}
-                                        }
-                                      },
-                                style: ElevatedButton.styleFrom(
-                                  shape: const RoundedRectangleBorder(
-                                    borderRadius: BorderRadius.all(
-                                      Radius.circular(10),
-                                    ),
-                                  ),
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 16,
-                                    vertical: 12,
-                                  ),
-                                ),
-                              ),
-                            ],
+                          hintStyle: TextStyle(
+                          color: Colors.white.withOpacity(0.3),
                           ),
-                        ],
-                      )
-                    : Center(
-                        child: Text(
-                          get('no_image_ui', fallback: 'No image yet'),
+                          border: InputBorder.none,
+                          contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 16,
+                          vertical: 12,
+                          ),
+                          isDense: true,
+                        ),
+                        minLines: 1,
+                        maxLines: 6,
+                        onSubmitted: (_) {
+                          if (!_loading) _generateImage();
+                        },
                         ),
                       ),
+
+                      // Botón enviar
+                      IconButton(
+                        onPressed: _loading ? null : () => _generateImage(),
+                        icon: _loading
+                          ? const SizedBox(
+                            width: 20,
+                            height: 20,
+                            child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: Colors.white,
+                            ),
+                          )
+                          : const Icon(Icons.arrow_upward, size: 20),
+                        style: IconButton.styleFrom(
+                        backgroundColor: _loading
+                          ? Colors.grey
+                          : const Color.fromARGB(255, 255, 251, 18),
+                        foregroundColor: Colors.black87,
+                        padding: const EdgeInsets.all(8),
+                        minimumSize: const Size(36, 36),
+                        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                        ),
+                      ),
+                      ],
+                    ),
+                  ),
+                ],
               ),
-            ],
-          ),
+            ),
+          ],
         ),
       ),
     );
