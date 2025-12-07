@@ -341,5 +341,8 @@
     "image_processed": "✓ Obraz został pomyślnie przetworzony",
     "limits_reset_manually": "Limity zresetowane ręcznie",
     "loading_recommendations": "Ładowanie rekomendacji...",
-    "recommendations_for": "Rekomendacje na podstawie"
+    "recommendations_for": "Rekomendacje na podstawie",
+    "api_calls": "Wywołania API",
+    "foraai": "ForaAI",
+    "enter_url_desc": "Wprowadź URL filmu z YouTube, który chcesz pobrać."
 }

@@ -341,5 +341,8 @@
     "image_processed": "✓ Image traitée avec succès",
     "limits_reset_manually": "Limites réinitialisées manuellement",
     "loading_recommendations": "Chargement des recommandations...",
-    "recommendations_for": "Recommandations basées sur"
+    "recommendations_for": "Recommandations basées sur",
+    "api_calls": "Appels",
+    "foraai": "ForaAI",
+    "enter_url_desc": "Entrez l'URL de la vidéo YouTube que vous souhaitez télécharger."
 }

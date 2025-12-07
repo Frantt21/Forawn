@@ -341,5 +341,8 @@
     "image_processed": "✓ 이미지가 성공적으로 처리되었습니다",
     "limits_reset_manually": "한계가 수동으로 초기화되었습니다",
     "loading_recommendations": "권장사항을 로드 중...",
-    "recommendations_for": "다음을 기준으로 한 권장사항"
+    "recommendations_for": "다음을 기준으로 한 권장사항",
+    "api_calls": "API 호출",
+    "foraai": "ForaAI",
+    "enter_url_desc": "다운로드하려는 YouTube 비디오의 URL을 입력하세요."
 }

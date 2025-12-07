@@ -341,5 +341,8 @@
     "image_processed": "✓ 图像处理成功",
     "limits_reset_manually": "限制已手动重置",
     "loading_recommendations": "正在加载建议...",
-    "recommendations_for": "基于以下内容的建议"
+    "recommendations_for": "基于以下内容的建议",
+    "api_calls": "调用次数",
+    "foraai": "ForaAI",
+    "enter_url_desc": "输入您想下载的YouTube视频的URL。"
 }

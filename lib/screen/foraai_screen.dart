@@ -708,7 +708,7 @@ class _ForaaiScreenState extends State<ForaaiScreen> {
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       Text(
-                        'Llamadas: ${_apiCallsRemaining[_selectedProvider]}/${_rateLimits[_selectedProvider]}',
+                        widget.getText('api_calls', fallback: 'Llamadas: ${_apiCallsRemaining[_selectedProvider]}/${_rateLimits[_selectedProvider]}'),
                         style: TextStyle(
                           fontSize: 10,
                           color: Colors.white.withOpacity(0.4),
@@ -1065,7 +1065,7 @@ class _ForaaiScreenState extends State<ForaaiScreen> {
                         ),
                         const SizedBox(width: 8),
                         Text(
-                          'ForaAI',
+                          widget.getText('foraai', fallback: 'ForaAI'),
                           style: TextStyle(
                             fontSize: 12,
                             fontWeight: FontWeight.bold,

@@ -341,5 +341,8 @@
     "image_processed": "✓ 画像が正常に処理されました",
     "limits_reset_manually": "制限が手動でリセットされました",
     "loading_recommendations": "推奨事項を読み込み中...",
-    "recommendations_for": "推奨事項の基準"
+    "recommendations_for": "推奨事項の基準",
+    "api_calls": "APIコール",
+    "foraai": "ForaAI",
+    "enter_url_desc": "ダウンロードしたいYouTubeビデオのURLを入力してください。"
 }

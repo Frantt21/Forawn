@@ -341,5 +341,8 @@
     "image_processed": "✓ Bild erfolgreich verarbeitet",
     "limits_reset_manually": "Limits manuell zurückgesetzt",
     "loading_recommendations": "Empfehlungen werden geladen...",
-    "recommendations_for": "Empfehlungen basierend auf"
+    "recommendations_for": "Empfehlungen basierend auf",
+    "api_calls": "Anrufe",
+    "foraai": "ForaAI",
+    "enter_url_description": "Geben Sie eine YouTube-URL ein, um zu beginnen."
 }

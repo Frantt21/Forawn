@@ -341,5 +341,8 @@
     "image_processed": "✓ Изображение успешно обработано",
     "limits_reset_manually": "Лимиты сброшены вручную",
     "loading_recommendations": "Загрузка рекомендаций...",
-    "recommendations_for": "Рекомендации на основе"
+    "recommendations_for": "Рекомендации на основе",
+    "api_calls": "Вызовы API",
+    "foraai": "ForaAI",
+    "enter_url_desc": "Введите URL-адрес видео YouTube, которое вы хотите скачать."
 }
