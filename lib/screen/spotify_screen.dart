@@ -6,6 +6,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:http/http.dart' as http;
 import 'package:path/path.dart' as p;
 import 'package:window_manager/window_manager.dart';
+import '../config/api_config.dart';
 import '../models/download_task.dart';
 import '../services/download_manager.dart';
 import 'downloads_screen.dart';
@@ -106,7 +107,7 @@ class _SpotifyScreenState extends State<SpotifyScreen> with WindowListener {
     try {
       final query = 'portada $nombre $artista';
       final url = Uri.parse(
-        'https://api.dorratz.com/v2/pinterest?q=${Uri.encodeComponent(query)}',
+        '${ApiConfig.dorratzBaseUrl}/v2/pinterest?q=${Uri.encodeComponent(query)}',
       );
       final res = await _http.get(url).timeout(const Duration(seconds: 8));
       if (res.statusCode != 200) return null;
@@ -172,7 +173,7 @@ class _SpotifyScreenState extends State<SpotifyScreen> with WindowListener {
       final res = await _http
           .get(
             Uri.parse(
-              'https://api.dorratz.com/spotifysearch?query=${Uri.encodeComponent(query)}',
+              '${ApiConfig.dorratzBaseUrl}/spotifysearch?query=${Uri.encodeComponent(query)}',
             ),
           )
           .timeout(const Duration(seconds: 10));
@@ -270,7 +271,7 @@ class _SpotifyScreenState extends State<SpotifyScreen> with WindowListener {
       final res = await _http
           .get(
             Uri.parse(
-              'https://api.dorratz.com/spotifysearch?query=${Uri.encodeComponent(query)}',
+              '${ApiConfig.dorratzBaseUrl}/spotifysearch?query=${Uri.encodeComponent(query)}',
             ),
           )
           .timeout(const Duration(seconds: 10));
