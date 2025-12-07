@@ -69,6 +69,7 @@ class _ForaaiScreenState extends State<ForaaiScreen> {
 
   Future<void> _loadRateLimits() async {
     final prefs = await SharedPreferences.getInstance();
+    if (!mounted) return;
 
     for (var provider in AIProvider.values) {
       final key = 'rate_limit_${provider.name}';
@@ -149,20 +150,32 @@ class _ForaaiScreenState extends State<ForaaiScreen> {
   // ============================================================================
 
   Future<void> _loadSessions() async {
-    final prefs = await SharedPreferences.getInstance();
-    final sessionsJson = prefs.getStringList('foraai_sessions') ?? [];
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      if (!mounted) return;
+      final sessionsJson = prefs.getStringList('foraai_sessions') ?? [];
 
-    setState(() {
-      _sessions =
-          sessionsJson.map((s) => ChatSession.fromJson(jsonDecode(s))).toList()
-            ..sort((a, b) => b.timestamp.compareTo(a.timestamp));
+      setState(() {
+        _sessions =
+            sessionsJson
+                .map((s) => ChatSession.fromJson(jsonDecode(s)))
+                .toList()
+              ..sort((a, b) => b.timestamp.compareTo(a.timestamp));
 
-      if (_sessions.isNotEmpty && _currentSessionId == null) {
-        _currentSessionId = _sessions.first.id;
-      } else if (_sessions.isEmpty) {
+        if (_sessions.isNotEmpty && _currentSessionId == null) {
+          _currentSessionId = _sessions.first.id;
+        } else if (_sessions.isEmpty) {
+          _createNewSession();
+        }
+      });
+    } catch (e) {
+      debugPrint('Error loading sessions: $e');
+      // En caso de error (data corrupta), iniciamos limpio para no crashear
+      setState(() {
+        _sessions = [];
         _createNewSession();
-      }
-    });
+      });
+    }
   }
 
   Future<void> _saveSessions() async {
@@ -551,13 +564,24 @@ class _ForaaiScreenState extends State<ForaaiScreen> {
     final session = _currentSession;
 
     return Row(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         // Sidebar
         AnimatedContainer(
           duration: const Duration(milliseconds: 300),
+          curve: Curves.easeInOut,
           width: _sidebarOpen ? 260 : 0,
           color: Colors.black.withOpacity(0.2),
-          child: _sidebarOpen ? _buildSidebar() : null,
+          clipBehavior: Clip.hardEdge,
+          child: OverflowBox(
+            minWidth: 260,
+            maxWidth: 260,
+            alignment: Alignment.topLeft,
+            child: Material(
+              color: Colors.transparent,
+              child: SizedBox(width: 260, child: _buildSidebar()),
+            ),
+          ),
         ),
 
         // Chat Area

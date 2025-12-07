@@ -1,5 +1,7 @@
 // settings.dart
 import 'package:flutter/material.dart';
+import 'dart:io';
+import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:window_manager/window_manager.dart';
 import 'main.dart' show checkForUpdate;
@@ -67,14 +69,16 @@ class _SettingsScreenState extends State<SettingsScreen> with WindowListener {
   bool _effectHovered = false;
 
   // Visual prefs state
-  String _selectedEffectLabel = 'acrylic';
-  String? _currentEffectKey;
+  String _selectedEffectLabel = 'solid';
+  String _currentEffectKey = 'solid';
   Color _selectedColor = const Color(0xCC222222);
   bool _darkMode = true;
 
+  bool _isWindows11 = false;
+
   final Map<String, acrylic.WindowEffect> effects = {
     'acrylic': acrylic.WindowEffect.acrylic,
-    // 'mica': acrylic.WindowEffect.mica, // Disabled to avoid issues
+    'mica': acrylic.WindowEffect.mica,
     'solid': acrylic.WindowEffect.solid,
     'transparent': acrylic.WindowEffect.transparent,
   };
@@ -84,28 +88,72 @@ class _SettingsScreenState extends State<SettingsScreen> with WindowListener {
     super.initState();
     windowManager.addListener(this);
     _selectedLang = widget.currentLang;
-    _loadPrefs();
-    _loadVisualPrefs();
+    _init();
   }
 
-  void _loadVisualPrefs() async {
+  Future<void> _init() async {
+    await _detectWindows11();
+    _loadPrefs();
+    await _loadVisualPrefs();
+  }
+
+  Future<void> _detectWindows11() async {
+    if (!Platform.isWindows) {
+      return;
+    }
+    try {
+      final proc = await Process.start('powershell', [
+        '-NoProfile',
+        '-Command',
+        r'(Get-ItemProperty "HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion").CurrentBuild',
+      ]);
+      final output = await proc.stdout.transform(const Utf8Decoder()).join();
+      final build = int.tryParse(output.trim()) ?? 0;
+      if (mounted) {
+        setState(() {
+          _isWindows11 = build >= 22000;
+        });
+      }
+    } catch (e) {
+      debugPrint('[Windows Detection] Error: $e');
+    }
+  }
+
+  Future<void> _loadVisualPrefs() async {
+    await Future.delayed(const Duration(milliseconds: 300)); // Esperar a que se detecte SO
+    
     final prefs = await SharedPreferences.getInstance();
-    final effectName = prefs.getString(_prefEffectKey) ?? 'acrylic';
+    if (!mounted) return;
+
+    final effectName = prefs.getString(_prefEffectKey) ?? 'solid';
     final colorValue = prefs.getInt(_prefColorKey) ?? 0xCC222222;
     final dark = prefs.getBool(_prefDarkKey) ?? true;
 
-    // Encontrar la key cuyo effect.name coincida con effectName
-    final found = effects.entries.firstWhere(
-      (e) => e.value.name == effectName,
-      orElse: () => effects.entries.first,
-    );
+    // En win10 forzamos solid si no lo es
+    String finalEffectLabel = effectName;
+    if (!_isWindows11) {
+      finalEffectLabel = 'solid';
+    }
 
-    setState(() {
-      _selectedEffectLabel = found.key;
-      _currentEffectKey = found.key;
-      _selectedColor = Color(colorValue);
-      _darkMode = dark;
-    });
+    // fallback si no existe
+    if (!effects.containsKey(finalEffectLabel)) {
+      finalEffectLabel = 'solid';
+    }
+
+    if (mounted) {
+      setState(() {
+        _selectedEffectLabel = finalEffectLabel;
+        _currentEffectKey = finalEffectLabel;
+        _selectedColor = Color(colorValue);
+        _darkMode = dark;
+      });
+      debugPrint('[Settings] Loaded prefs - effect: $finalEffectLabel');
+    }
+
+    // Aplicar corrección inicial si estamos en win10 y estaba en otro efecto
+    if (!_isWindows11 && effectName != 'solid') {
+      if (mounted) await _applyEffect('solid', _selectedColor);
+    }
   }
 
   @override
@@ -137,11 +185,27 @@ class _SettingsScreenState extends State<SettingsScreen> with WindowListener {
     } catch (_) {}
   }
 
+  Future<void> _applyEffect(String label, Color color) async {
+    setState(() {
+      _selectedEffectLabel = label;
+      _currentEffectKey = label;
+      _selectedColor = color;
+    });
+    debugPrint('[Settings] Applied effect: $label, current: $_currentEffectKey');
+
+    final effect = effects[label] ?? acrylic.WindowEffect.solid;
+    await widget.onChangeWindowEffect(effect, color, dark: _darkMode);
+  }
+
   Future<void> _showEffectsMenu(BuildContext context, RenderBox rb) async {
     _effectMenuOpen = true;
     setState(() {});
+
+    // Filtrar efectos: Win10 solo solid
+    final availableKeys = _isWindows11 ? effects.keys.toList() : ['solid'];
+
     final topLeft = rb.localToGlobal(Offset.zero);
-    final items = effects.keys.map((key) {
+    final items = availableKeys.map((key) {
       final label = widget.getText('effect_$key', fallback: key.capitalize());
       return PopupMenuItem<String>(value: key, child: Text(label));
     }).toList();
@@ -162,17 +226,108 @@ class _SettingsScreenState extends State<SettingsScreen> with WindowListener {
     setState(() {});
 
     if (selected != null && selected != _selectedEffectLabel) {
-      setState(() {
-        _selectedEffectLabel = selected;
-        _currentEffectKey = selected;
-      });
-      final effect = effects[selected]!;
-      await widget.onChangeWindowEffect(
-        effect,
-        _selectedColor,
-        dark: _darkMode,
-      );
+      await _applyEffect(selected, _selectedColor);
     }
+  }
+
+  Future<void> _pickSolidColor(Color color) async {
+    setState(() {
+      _selectedColor = color;
+      _darkMode =
+          ThemeData.estimateBrightnessForColor(color) == Brightness.dark;
+    });
+    // Si estamos en modo 'solid', reaplicamos para ver el color
+    if (_selectedEffectLabel == 'solid') {
+      await _applyEffect('solid', color);
+    }
+  }
+
+  void _openCustomColorDialog() {
+    showDialog(context: context, builder: (ctx) => _msgDialog(ctx));
+  }
+
+  Widget _msgDialog(BuildContext context) {
+    Color tempColor = _selectedColor;
+    return StatefulBuilder(
+      builder: (context, setSt) {
+        return AlertDialog(
+          backgroundColor: const Color(0xFF222222),
+          title: Text(widget.getText('pick_color', fallback: 'Elige un color')),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  width: 50,
+                  height: 50,
+                  decoration: BoxDecoration(
+                    color: tempColor,
+                    shape: BoxShape.circle,
+                    border: Border.all(color: Colors.white24),
+                  ),
+                ),
+                const SizedBox(height: 20),
+                _colorSlider(
+                  widget.getText('red', fallback: 'Rojo'),
+                  tempColor.red,
+                  (v) => setSt(() => tempColor = tempColor.withRed(v.toInt())),
+                ),
+                _colorSlider(
+                  widget.getText('green', fallback: 'Verde'),
+                  tempColor.green,
+                  (v) =>
+                      setSt(() => tempColor = tempColor.withGreen(v.toInt())),
+                ),
+                _colorSlider(
+                  widget.getText('blue', fallback: 'Azul'),
+                  tempColor.blue,
+                  (v) => setSt(() => tempColor = tempColor.withBlue(v.toInt())),
+                ),
+                _colorSlider(
+                  widget.getText('opacity', fallback: 'Opacidad'),
+                  tempColor.alpha,
+                  (v) =>
+                      setSt(() => tempColor = tempColor.withAlpha(v.toInt())),
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: Text(widget.getText('cancel', fallback: 'Cancelar')),
+            ),
+            ElevatedButton(
+              onPressed: () {
+                Navigator.pop(context);
+                _pickSolidColor(tempColor);
+              },
+              child: Text(widget.getText('accept', fallback: 'Aceptar')),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  Widget _colorSlider(String label, int value, ValueChanged<double> onChanged) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          '$label: $value',
+          style: const TextStyle(fontSize: 12, color: Colors.white70),
+        ),
+        Slider(
+          value: value.toDouble(),
+          min: 0,
+          max: 255,
+          activeColor: Colors.white,
+          inactiveColor: Colors.white24,
+          onChanged: onChanged,
+        ),
+      ],
+    );
   }
 
   Future<void> _toggleNsfw(bool value) async {
@@ -501,39 +656,49 @@ class _SettingsScreenState extends State<SettingsScreen> with WindowListener {
                       ),
                       const SizedBox(height: 12),
 
-                      ElevatedButton.icon(
-                        icon: const Icon(Icons.color_lens),
-                        label: Text(
-                          get(
-                            'apply_flat_color',
-                            fallback: 'Aplicar fondo plano',
-                          ),
+                      if (_selectedEffectLabel == 'solid') ...[
+                        const SizedBox(height: 12),
+                        Row(
+                          children: [
+                            _colorOption(const Color(0xFFFFFFFF)), // Blanco
+                            const SizedBox(width: 10),
+                            _colorOption(const Color(0xFF222222)), // Default
+                            const SizedBox(width: 10),
+                            _colorOption(const Color(0xFF000000)), // Negro
+                            const SizedBox(width: 10),
+                            _colorOption(
+                              const Color(0xFF4A148C),
+                            ), // Morado opaco
+                            const SizedBox(width: 10),
+                            InkWell(
+                              onTap: _openCustomColorDialog,
+                              borderRadius: BorderRadius.circular(20),
+                              child: Container(
+                                width: 36,
+                                height: 36,
+                                decoration: BoxDecoration(
+                                  shape: BoxShape.circle,
+                                  border: Border.all(color: Colors.white54),
+                                  gradient: const LinearGradient(
+                                    colors: [
+                                      Colors.red,
+                                      Colors.green,
+                                      Colors.blue,
+                                    ],
+                                    begin: Alignment.topLeft,
+                                    end: Alignment.bottomRight,
+                                  ),
+                                ),
+                                child: const Icon(
+                                  Icons.colorize,
+                                  size: 18,
+                                  color: Colors.white,
+                                ),
+                              ),
+                            ),
+                          ],
                         ),
-                        onPressed: () async {
-                          _selectedColor = const Color(0xFF1E1E1E);
-                          _darkMode = true;
-                          _selectedEffectLabel = 'solid';
-                          _currentEffectKey = 'solid';
-                          final effect = effects[_selectedEffectLabel]!;
-                          await widget.onChangeWindowEffect(
-                            effect,
-                            _selectedColor,
-                            dark: _darkMode,
-                          );
-                          setState(() {}); // actualiza visual
-                        },
-                        style: ElevatedButton.styleFrom(
-                          shape: const RoundedRectangleBorder(
-                            borderRadius: BorderRadius.all(Radius.circular(10)),
-                          ),
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 12,
-                            vertical: 12,
-                          ),
-                          backgroundColor: Colors.grey[200],
-                          foregroundColor: Colors.black87,
-                        ),
-                      ),
+                      ],
                       const SizedBox(height: 24),
 
                       Theme(
@@ -607,13 +772,19 @@ class _SettingsScreenState extends State<SettingsScreen> with WindowListener {
                                     WidgetStateProperty.resolveWith<Color?>((
                                       states,
                                     ) {
-                                      if (states.contains(WidgetState.pressed)) {
+                                      if (states.contains(
+                                        WidgetState.pressed,
+                                      )) {
                                         return Colors.white.withOpacity(0.10);
                                       }
-                                      if (states.contains(WidgetState.hovered)) {
+                                      if (states.contains(
+                                        WidgetState.hovered,
+                                      )) {
                                         return Colors.white.withOpacity(0.06);
                                       }
-                                      if (states.contains(WidgetState.focused)) {
+                                      if (states.contains(
+                                        WidgetState.focused,
+                                      )) {
                                         return Colors.white.withOpacity(0.06);
                                       }
                                       return null;
@@ -628,6 +799,30 @@ class _SettingsScreenState extends State<SettingsScreen> with WindowListener {
             ),
           ],
         ),
+      ),
+    );
+  }
+
+  Widget _colorOption(Color color) {
+    bool isSelected = _selectedColor.value == color.value;
+    return GestureDetector(
+      onTap: () => _pickSolidColor(color),
+      child: Container(
+        width: 36,
+        height: 36,
+        decoration: BoxDecoration(
+          color: color,
+          shape: BoxShape.circle,
+          border: isSelected
+              ? Border.all(color: Colors.white, width: 2)
+              : Border.all(color: Colors.transparent),
+          boxShadow: isSelected
+              ? [const BoxShadow(color: Colors.black26, blurRadius: 4)]
+              : null,
+        ),
+        child: isSelected
+            ? const Icon(Icons.check, color: Colors.grey, size: 16)
+            : null,
       ),
     );
   }

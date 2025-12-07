@@ -46,23 +46,37 @@ Future<void> main() async {
   }
 
   // Inicializar flutter_acrylic
-  try {
-    await acrylic.Window.initialize();
-    await acrylic.Window.hideWindowControls();
-    gNativeAcrylicAvailable = true;
-    final prefs = await SharedPreferences.getInstance();
-    final savedEffect = prefs.getString(_prefEffectKey) ?? 'acrylic';
-    final savedColor = Color(prefs.getInt(_prefColorKey) ?? 0xCC222222);
-    final savedDark = prefs.getBool(_prefDarkKey) ?? true;
-    await acrylic.Window.setEffect(
-      effect: acrylic.WindowEffect.values.firstWhere(
-        (e) => e.name == savedEffect,
-        orElse: () => acrylic.WindowEffect.acrylic,
-      ),
-      color: savedColor,
-      dark: savedDark,
-    );
-  } catch (_) {
+  if (Platform.isWindows) {
+    try {
+      await acrylic.Window.initialize();
+      await acrylic.Window.hideWindowControls();
+      gNativeAcrylicAvailable = true;
+      final prefs = await SharedPreferences.getInstance();
+      final savedEffect = prefs.getString(_prefEffectKey) ?? 'solid';
+      final savedColor = Color(prefs.getInt(_prefColorKey) ?? 0xCC222222);
+      final savedDark = prefs.getBool(_prefDarkKey) ?? true;
+      
+      // Validar que el efecto guardado sea válido
+      acrylic.WindowEffect effect;
+      try {
+        effect = acrylic.WindowEffect.values.firstWhere(
+          (e) => e.name == savedEffect,
+          orElse: () => acrylic.WindowEffect.solid,
+        );
+      } catch (_) {
+        effect = acrylic.WindowEffect.solid;
+      }
+      
+      await acrylic.Window.setEffect(
+        effect: effect,
+        color: savedColor,
+        dark: savedDark,
+      );
+    } catch (e) {
+      debugPrint('[Acrylic Init Error] $e');
+      gNativeAcrylicAvailable = false;
+    }
+  } else {
     gNativeAcrylicAvailable = false;
   }
 
@@ -369,20 +383,14 @@ class _HomeScreenState extends State<HomeScreen> with WindowListener {
     try {
       final prefs = await SharedPreferences.getInstance();
 
-      // Si vamos a aplicar transparente, primero desactivamos el efecto actual
-      if (effect == acrylic.WindowEffect.transparent) {
-        await acrylic.Window.setEffect(
-          effect: acrylic.WindowEffect.disabled,
-          color: Colors.transparent,
-          dark: dark,
-        );
-        await Future.delayed(
-          const Duration(milliseconds: 50),
-        ); // pequeña pausa para asegurar limpieza
-      }
+      // Aplicar el efecto directamente
+      await acrylic.Window.setEffect(
+        effect: effect,
+        color: color,
+        dark: dark,
+      );
 
-      await acrylic.Window.setEffect(effect: effect, color: color, dark: dark);
-
+      // Guardar preferencias
       await prefs.setString(_prefEffectKey, effect.name);
       await prefs.setInt(_prefColorKey, color.value);
       await prefs.setBool(_prefDarkKey, dark);
