@@ -103,6 +103,7 @@ class _ElegantNotificationState extends State<ElegantNotification>
                     color: widget.textColor,
                     fontSize: 14,
                     fontWeight: FontWeight.w500,
+                    decoration: TextDecoration.none,
                   ),
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,
@@ -127,23 +128,42 @@ void showElegantNotification(
 }) {
   showGeneralDialog(
     context: context,
-    barrierDismissible: false,
+    barrierDismissible: true,
     barrierLabel: '',
     barrierColor: Colors.transparent,
     transitionDuration: const Duration(milliseconds: 300),
     pageBuilder: (context, animation, secondaryAnimation) {
-      return Align(
-        alignment: Alignment.topCenter,
-        child: Padding(
-          padding: const EdgeInsets.only(top: 16),
-          child: ElegantNotification(
-            message: message,
-            duration: duration,
-            backgroundColor: backgroundColor,
-            textColor: textColor,
-            icon: icon,
-            iconColor: iconColor,
-          ),
+      return GestureDetector(
+        onTap: () => Navigator.of(context).pop(),
+        child: Stack(
+          children: [
+            // Transparent area to allow interaction below
+            Positioned.fill(
+              child: GestureDetector(
+                onTap: () {
+                  Navigator.of(context).pop();
+                },
+              ),
+            ),
+            // Notification at top
+            Align(
+              alignment: Alignment.topCenter,
+              child: Padding(
+                padding: const EdgeInsets.only(top: 16),
+                child: GestureDetector(
+                  onTap: () => Navigator.of(context).pop(),
+                  child: ElegantNotification(
+                    message: message,
+                    duration: duration,
+                    backgroundColor: backgroundColor,
+                    textColor: textColor,
+                    icon: icon,
+                    iconColor: iconColor,
+                  ),
+                ),
+              ),
+            ),
+          ],
         ),
       );
     },
