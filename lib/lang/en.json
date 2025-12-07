@@ -324,5 +324,22 @@
     "toggle_sidebar": "Toggle sidebar",
     "foraai_input_hint": "Write a message...",
     "regenerate": "Regenerate",
-    "code_copied": "Code copied to clipboard"
+    "code_copied": "Code copied to clipboard",
+    "choose_color": "Choose color",
+    "ias_title": "AI Assistants",
+    "enter_text": "Enter text",
+    "red": "Red",
+    "green": "Green",
+    "blue": "Blue",
+    "opacity": "Opacity",
+    "copy": "Copy",
+    "images_only_gemini": "Images are only available with Gemini",
+    "select_image_error": "Error selecting image",
+    "limit_reached": "Limit reached",
+    "reset_in": "Will reset in",
+    "api_key_not_configured": "API key not configured",
+    "image_processed": "✓ Image processed successfully",
+    "limits_reset_manually": "Limits reset manually",
+    "loading_recommendations": "Loading recommendations...",
+    "recommendations_for": "Recommendations based on"
 }

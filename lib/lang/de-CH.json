@@ -325,5 +325,21 @@
     "toggle_sidebar": "Toggle Sidebar",
     "foraai_input_hint": "Schreibe eine Nachricht...",
     "regenerate": "Regenerieren",
-    "code_copied": "Code kopiert"
+    "code_copied": "Code kopiert",
+    "ias_title": "KI-Assistenten",
+    "enter_text": "Text eingeben",
+    "red": "Rot",
+    "green": "Grün",
+    "blue": "Blau",
+    "opacity": "Deckkraft",
+    "copy": "Kopieren",
+    "images_only_gemini": "Bilder sind nur mit Gemini verfügbar",
+    "select_image_error": "Fehler beim Auswählen des Bildes",
+    "limit_reached": "Limit erreicht",
+    "reset_in": "Wird zurückgesetzt in",
+    "api_key_not_configured": "API-Schlüssel nicht konfiguriert",
+    "image_processed": "✓ Bild erfolgreich verarbeitet",
+    "limits_reset_manually": "Limits manuell zurückgesetzt",
+    "loading_recommendations": "Empfehlungen werden geladen...",
+    "recommendations_for": "Empfehlungen basierend auf"
 }

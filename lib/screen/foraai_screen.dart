@@ -231,7 +231,7 @@ class _ForaaiScreenState extends State<ForaaiScreen> {
 
   Future<void> _pickImage() async {
     if (_selectedProvider != AIProvider.gemini) {
-      _showSnackBar('Las imágenes solo están disponibles con Gemini');
+      _showSnackBar(widget.getText('images_only_gemini', fallback: 'Las imágenes solo están disponibles con Gemini'));
       return;
     }
 
@@ -249,7 +249,7 @@ class _ForaaiScreenState extends State<ForaaiScreen> {
         });
       }
     } catch (e) {
-      _showSnackBar('Error al seleccionar imagen: $e');
+      _showSnackBar('${widget.getText('select_image_error', fallback: 'Error al seleccionar imagen')}: $e');
     }
   }
 
@@ -425,7 +425,7 @@ class _ForaaiScreenState extends State<ForaaiScreen> {
     // Verificar límite de llamadas
     if (!_canMakeApiCall(_selectedProvider)) {
       _showSnackBar(
-        'Límite alcanzado. Se restablecerá en ${_getTimeUntilReset(_selectedProvider)}',
+        '${widget.getText('limit_reached', fallback: 'Límite alcanzado')}. ${widget.getText('reset_in', fallback: 'Se restablecerá en')} ${_getTimeUntilReset(_selectedProvider)}',
       );
       return;
     }
@@ -433,7 +433,7 @@ class _ForaaiScreenState extends State<ForaaiScreen> {
     // Validar configuración
     if (!ApiConfig.isProviderConfigured(_selectedProvider)) {
       _showSnackBar(
-        'API key de ${ApiConfig.getProviderName(_selectedProvider)} no configurada',
+        '${widget.getText('api_key_not_configured', fallback: 'API key no configurada')}: ${ApiConfig.getProviderName(_selectedProvider)}',
       );
       return;
     }
@@ -505,7 +505,7 @@ class _ForaaiScreenState extends State<ForaaiScreen> {
         _saveSessions();
 
         if (hadImage) {
-          _showSnackBar('✓ Imagen procesada correctamente');
+          _showSnackBar(widget.getText('image_processed', fallback: '✓ Imagen procesada correctamente'));
         }
       }
     } catch (e) {
@@ -739,7 +739,7 @@ class _ForaaiScreenState extends State<ForaaiScreen> {
       }
     });
     _saveRateLimits();
-    _showSnackBar('Límites restablecidos manualmente');
+    _showSnackBar(widget.getText('limits_reset_manually', fallback: 'Límites restablecidos manualmente'));
   }
 
   Widget _buildHeader() {
