@@ -74,22 +74,17 @@ class _SidebarNavigationState extends State<SidebarNavigation> {
       ),
     ];
 
-    if (widget.nsfwEnabled) {
-      _categories[widget.getText('others_title', fallback: 'Otros')] = [
-        NavigationItem(
-          id: 'r34',
-          icon: Icons.image_search,
-          label: widget.getText('r34_title', fallback: 'R34 Buscador'),
-        ),
-      ];
-    }
-
     _categories[widget.getText('tools_title', fallback: 'Herramientas')] = [
       // NavigationItem(
       //   id: 'notes',
       //   icon: Icons.note,
       //   label: widget.getText('notes_title', fallback: 'Notas'),
       // ),
+      NavigationItem(
+        id: 'player', 
+        icon: Icons.play_circle_fill, 
+        label: widget.getText('player_reproducer', fallback: 'Reproductor'),
+      ),
       NavigationItem(
         id: 'translate',
         icon: Icons.translate,
@@ -101,6 +96,16 @@ class _SidebarNavigationState extends State<SidebarNavigation> {
         label: widget.getText('qr_title', fallback: 'Generador QR'),
       ),
     ];
+
+    if (widget.nsfwEnabled) {
+      _categories[widget.getText('others_title', fallback: 'Otros')] = [
+        NavigationItem(
+          id: 'r34',
+          icon: Icons.image_search,
+          label: widget.getText('r34_title', fallback: 'R34 Buscador'),
+        ),
+      ];
+    }
   }
 
   @override

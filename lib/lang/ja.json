@@ -345,5 +345,5 @@
     "api_calls": "APIコール",
     "foraai": "ForaAI",
     "enter_url_desc": "ダウンロードしたいYouTubeビデオのURLを入力してください。",
-    "cancelled": "キャンセルされました"
+    "player_reproducer": "プレーヤー"
 }

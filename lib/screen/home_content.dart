@@ -106,6 +106,8 @@ class _HomeContentState extends State<HomeContent> {
         return widget.getText('qr_title', fallback: 'Generador QR');
       case 'foraai':
         return widget.getText('foraai_title', fallback: 'ForaAI');
+      case 'player':
+        return widget.getText('player_reproducer', fallback: 'Reproductor');
       case 'r34':
         return widget.getText('r34_title', fallback: 'R34 Buscador');
       default:
@@ -129,6 +131,8 @@ class _HomeContentState extends State<HomeContent> {
         return Icons.qr_code;
       case 'foraai':
         return Icons.auto_awesome;
+      case 'player':
+        return Icons.play_circle_fill;
       case 'r34':
         return Icons.image_search;
       default:
