@@ -455,6 +455,7 @@ class _NotesScreenState extends State<NotesScreen> with WindowListener {
         ],
       ),
       floatingActionButton: FloatingActionButton(
+        heroTag: 'notes_add_fab',
         onPressed: _createNote,
         backgroundColor: const Color.fromARGB(255, 251, 64, 64),
         foregroundColor: Colors.black87,

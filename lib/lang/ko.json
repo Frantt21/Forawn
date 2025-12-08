@@ -344,5 +344,6 @@
     "recommendations_for": "다음을 기준으로 한 권장사항",
     "api_calls": "API 호출",
     "foraai": "ForaAI",
-    "enter_url_desc": "다운로드하려는 YouTube 비디오의 URL을 입력하세요."
+    "enter_url_desc": "다운로드하려는 YouTube 비디오의 URL을 입력하세요.",
+    "cancelled": "취소됨"
 }

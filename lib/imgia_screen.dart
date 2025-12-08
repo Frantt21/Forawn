@@ -278,12 +278,19 @@ class _AiImageScreenState extends State<AiImageScreen> with WindowListener {
       _saveMessages();
     } catch (e) {
       if (!mounted) return;
+      
+      // Check if request was cancelled
+      final isCancelled = e is TimeoutException && 
+          e.message == 'Request was cancelled';
+      
       setState(() {
         final index = _messages.indexWhere((m) => m.id == messageId);
         if (index != -1) {
           _messages[index] = _messages[index].copyWith(
             isGenerating: false,
-            error: e.toString(),
+            error: isCancelled 
+                ? '⏸ ${widget.getText('cancelled', fallback: 'Cancelado')}'
+                : e.toString(),
           );
         }
         _loading = false;

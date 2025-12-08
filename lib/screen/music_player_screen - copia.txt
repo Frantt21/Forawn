@@ -1,0 +1,594 @@
+import 'dart:async';
+import 'dart:io';
+import 'dart:math';
+import 'dart:typed_data';
+import 'package:flutter/material.dart';
+import 'package:file_picker/file_picker.dart';
+
+import 'package:audioplayers/audioplayers.dart';
+import 'package:path/path.dart' as p;
+import 'package:shared_preferences/shared_preferences.dart';
+
+typedef TextGetter = String Function(String key, {String? fallback});
+
+class MusicPlayerScreen extends StatefulWidget {
+  const MusicPlayerScreen({
+    super.key,
+    required this.getText,
+    this.onRegisterFolderAction,
+  });
+
+  final TextGetter getText;
+  final Function(VoidCallback)? onRegisterFolderAction;
+
+  @override
+  State<MusicPlayerScreen> createState() => _MusicPlayerScreenState();
+}
+
+class _MusicPlayerScreenState extends State<MusicPlayerScreen> {
+  final AudioPlayer _player = AudioPlayer(); // audioplayers
+  List<FileSystemEntity> _files = [];
+  bool _isLoading = false;
+  int? _currentIndex;
+  bool _showPlaylist = true;
+
+  // UI States
+  bool _isShuffle = false;
+  bool _isMuted = false;
+  bool _toggleLocked = false;
+  double _volume = 1.0;
+  LoopMode _loopMode = LoopMode.off; // manual loop
+
+  // Metadata
+  String _currentTitle = '';
+  String _currentArtist = '';
+  Uint8List? _currentArt;
+
+  // Streams
+  StreamSubscription<Duration>? _posSub;
+  StreamSubscription<PlayerState>? _stateSub;
+
+  Duration _position = Duration.zero;
+  Duration _duration = Duration.zero;
+
+  @override
+  void initState() {
+    super.initState();
+    _initPlayer();
+    _init();
+    if (widget.onRegisterFolderAction != null) {
+      widget.onRegisterFolderAction!(_selectFolder);
+    }
+  }
+
+  void _initPlayer() {
+    // No AudioSession en Windows
+    _player.setReleaseMode(ReleaseMode.stop);
+
+    _posSub = _player.onPositionChanged.listen((pos) {
+      if (mounted) setState(() => _position = pos);
+    });
+
+    _stateSub = _player.onPlayerStateChanged.listen((st) async {
+      if (!mounted) return;
+      // Manejo de fin de track manual
+      if (st == PlayerState.completed) {
+        if (_loopMode == LoopMode.one && _currentIndex != null) {
+          _playFile(_currentIndex!);
+        } else if (_loopMode != LoopMode.off && _files.isNotEmpty) {
+          // Loop all: avanzar, con wrap
+          final next = (_currentIndex ?? -1) + 1;
+          if (next < _files.length) {
+            _playFile(next);
+          } else if (_loopMode == LoopMode.all) {
+            _playFile(0);
+          }
+        }
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _posSub?.cancel();
+    _stateSub?.cancel();
+    try {
+      _player.stop();
+      _player.dispose();
+    } catch (e) {
+      debugPrint("Error disposing player: $e");
+    }
+    super.dispose();
+  }
+
+  Future<void> _init() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final folder = prefs.getString('download_folder');
+      if (folder != null && folder.isNotEmpty) {
+        await _loadFiles(folder);
+      }
+    } catch (e) {
+      debugPrint('[MusicPlayer] Error in _init: $e');
+    }
+  }
+
+  Future<void> _selectFolder() async {
+    final folder = await FilePicker.platform.getDirectoryPath();
+    if (folder != null) {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString('download_folder', folder);
+      await _loadFiles(folder);
+    }
+  }
+
+  void _togglePlaylist() {
+    if (_toggleLocked) return;
+    _toggleLocked = true;
+    setState(() => _showPlaylist = !_showPlaylist);
+    Future.delayed(const Duration(milliseconds: 350), () {
+      _toggleLocked = false;
+    });
+  }
+
+  Future<void> _loadFiles(String folderPath) async {
+    if (!mounted) return;
+    setState(() => _isLoading = true);
+
+    try {
+      final dir = Directory(folderPath);
+      if (!await dir.exists()) {
+        throw Exception("Directory not found");
+      }
+
+      final List<FileSystemEntity> allFiles = [];
+      await for (final entity in dir.list(recursive: false)) {
+        if (entity is File) {
+          final ext = p.extension(entity.path).toLowerCase();
+          if (['.mp3', '.m4a', '.wav', '.flac', '.ogg', '.aac'].contains(ext)) {
+            allFiles.add(entity);
+          }
+        }
+      }
+
+      allFiles.sort(
+        (a, b) => p
+            .basename(a.path)
+            .toLowerCase()
+            .compareTo(p.basename(b.path).toLowerCase()),
+      );
+
+      if (mounted) {
+        setState(() {
+          _files = allFiles;
+          _isLoading = false;
+        });
+
+        if (_files.isEmpty) {
+          try {
+            await _player.stop();
+          } catch (_) {}
+          _currentTitle = '';
+          _currentArtist = '';
+          _currentArt = null;
+          _position = Duration.zero;
+          _duration = Duration.zero;
+        } else {
+          // No hay playlist pre-cargada en audioplayers, reproducimos al seleccionar
+        }
+      }
+    } catch (e) {
+      debugPrint("Error loading files: $e");
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
+  Future<void> _loadMetadata(String filePath) async {
+    // Sin plugins de metadata en Windows para evitar crashes
+    if (mounted) {
+      setState(() {
+        _currentTitle = p.basename(filePath);
+        _currentArtist = widget.getText(
+          'unknown_artist',
+          fallback: 'Unknown Artist',
+        );
+        _currentArt = null;
+      });
+    }
+  }
+
+  Future<void> _playFile(int index) async {
+    if (index < 0 || index >= _files.length) return;
+    final file = _files[index] as File;
+    final uri = Uri.file(file.path);
+
+    try {
+      setState(() => _currentIndex = index);
+      await _player.stop(); // Asegura liberar anterior
+      await _player.play(DeviceFileSource(uri.toFilePath()));
+      // Duración: audioplayers no always-known; intentaremos obtenerla
+      _duration = await _player.getDuration() ?? Duration.zero;
+      _loadMetadata(file.path);
+    } catch (e) {
+      debugPrint("Error playing: $e");
+    }
+  }
+
+  String _formatDuration(Duration? duration) {
+    if (duration == null) return "--:--";
+    String twoDigits(int n) => n.toString().padLeft(2, "0");
+    String twoDigitMinutes = twoDigits(duration.inMinutes.remainder(60));
+    String twoDigitSeconds = twoDigits(duration.inSeconds.remainder(60));
+    return "${twoDigits(duration.inHours)}:$twoDigitMinutes:$twoDigitSeconds";
+  }
+
+  bool get _isPlaying => _player.state == PlayerState.playing;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        // Main Player Area
+        Expanded(
+          flex: 3,
+          child: Container(
+            padding: const EdgeInsets.all(24),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                // Album Art
+                Expanded(
+                  child: AspectRatio(
+                    aspectRatio: 1,
+                    child: Container(
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(20),
+                        color: Colors.black26,
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black45,
+                            blurRadius: 20,
+                            offset: const Offset(0, 10),
+                          ),
+                        ],
+                        image: _currentArt != null
+                            ? DecorationImage(
+                                image: MemoryImage(_currentArt!),
+                                fit: BoxFit.cover,
+                              )
+                            : null,
+                      ),
+                      child: _currentArt == null
+                          ? const Icon(
+                              Icons.music_note,
+                              size: 120,
+                              color: Colors.white12,
+                            )
+                          : null,
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 32),
+
+                // Metadata
+                Text(
+                  _currentTitle.isEmpty
+                      ? widget.getText('no_song', fallback: 'No Song Playing')
+                      : _currentTitle,
+                  style: const TextStyle(
+                    fontSize: 24,
+                    fontWeight: FontWeight.bold,
+                  ),
+                  textAlign: TextAlign.center,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  _currentArtist,
+                  style: const TextStyle(
+                    fontSize: 16,
+                    color: Colors.cyanAccent,
+                  ),
+                  textAlign: TextAlign.center,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+
+                const SizedBox(height: 32),
+
+                // Progress
+                Column(
+                  children: [
+                    SliderTheme(
+                      data: SliderTheme.of(context).copyWith(
+                        trackHeight: 4,
+                        thumbShape: const RoundSliderThumbShape(
+                          enabledThumbRadius: 6,
+                        ),
+                        activeTrackColor: Colors.cyanAccent,
+                        inactiveTrackColor: Colors.grey[800],
+                        thumbColor: Colors.white,
+                      ),
+                      child: Slider(
+                        value: min(
+                          _position.inMilliseconds.toDouble(),
+                          _duration.inMilliseconds.toDouble(),
+                        ),
+                        max: max(_duration.inMilliseconds.toDouble(), 1.0),
+                        onChanged: (value) async {
+                          final pos = Duration(milliseconds: value.toInt());
+                          await _player.seek(pos);
+                          if (!_isPlaying) await _player.resume();
+                        },
+                      ),
+                    ),
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 20),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Text(
+                            _formatDuration(_position),
+                            style: const TextStyle(color: Colors.white54),
+                          ),
+                          Text(
+                            _formatDuration(_duration),
+                            style: const TextStyle(color: Colors.white54),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+
+                const SizedBox(height: 24),
+
+                // Controls
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    IconButton(
+                      icon: Icon(
+                        Icons.shuffle,
+                        color: _isShuffle ? Colors.cyanAccent : Colors.white54,
+                      ),
+                      onPressed: () {
+                        setState(() => _isShuffle = !_isShuffle);
+                      },
+                    ),
+                    const SizedBox(width: 16),
+                    IconButton(
+                      icon: const Icon(Icons.skip_previous_rounded, size: 48),
+                      onPressed: () {
+                        if (_files.isEmpty) return;
+                        int nextIndex;
+                        if (_isShuffle) {
+                          nextIndex = Random().nextInt(_files.length);
+                        } else {
+                          final cur = _currentIndex ?? 0;
+                          nextIndex = max(0, cur - 1);
+                        }
+                        _playFile(nextIndex);
+                      },
+                    ),
+                    const SizedBox(width: 16),
+                    Container(
+                      decoration: const BoxDecoration(
+                        color: Colors.white,
+                        shape: BoxShape.circle,
+                      ),
+                      child: IconButton(
+                        icon: Icon(
+                          _isPlaying
+                              ? Icons.pause_rounded
+                              : Icons.play_arrow_rounded,
+                          color: Colors.black,
+                          size: 40,
+                        ),
+                        onPressed: () async {
+                          if (_isPlaying) {
+                            await _player.pause();
+                          } else {
+                            // Si no hay índice actual, reproduce el primero
+                            if (_currentIndex == null && _files.isNotEmpty) {
+                              await _playFile(0);
+                            } else {
+                              await _player.resume();
+                            }
+                          }
+                          setState(() {});
+                        },
+                      ),
+                    ),
+                    const SizedBox(width: 16),
+                    IconButton(
+                      icon: const Icon(Icons.skip_next_rounded, size: 48),
+                      onPressed: () {
+                        if (_files.isEmpty) return;
+                        int nextIndex;
+                        if (_isShuffle) {
+                          nextIndex = Random().nextInt(_files.length);
+                        } else {
+                          final cur = _currentIndex ?? -1;
+                          nextIndex = min(_files.length - 1, cur + 1);
+                        }
+                        _playFile(nextIndex);
+                      },
+                    ),
+                    const SizedBox(width: 16),
+                    IconButton(
+                      icon: Icon(
+                        _loopMode == LoopMode.one
+                            ? Icons.repeat_one_rounded
+                            : Icons.repeat_rounded,
+                        color: _loopMode != LoopMode.off
+                            ? Colors.cyanAccent
+                            : Colors.white54,
+                      ),
+                      onPressed: () {
+                        final modes = [
+                          LoopMode.off,
+                          LoopMode.all,
+                          LoopMode.one,
+                        ];
+                        final nextIndex =
+                            (modes.indexOf(_loopMode) + 1) % modes.length;
+                        setState(() => _loopMode = modes[nextIndex]);
+                      },
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 16),
+
+                // Volume
+                SizedBox(
+                  width: 200,
+                  child: Row(
+                    children: [
+                      Icon(
+                        _isMuted ? Icons.volume_off : Icons.volume_up,
+                        color: Colors.white54,
+                        size: 20,
+                      ),
+                      Expanded(
+                        child: SliderTheme(
+                          data: SliderTheme.of(context).copyWith(
+                            trackHeight: 2,
+                            thumbShape: const RoundSliderThumbShape(
+                              enabledThumbRadius: 6,
+                            ),
+                            activeTrackColor: Colors.white54,
+                            inactiveTrackColor: Colors.white10,
+                            thumbColor: Colors.white,
+                          ),
+                          child: Slider(
+                            value: _volume,
+                            onChanged: (value) async {
+                              setState(() {
+                                _volume = value;
+                                _isMuted = value == 0;
+                              });
+                              await _player.setVolume(value);
+                            },
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+
+        // Playlist Sidebar
+        // Reemplaza tu AnimatedContainer actual por esto:
+        // widget (reemplaza donde tengas AnimatedContainer)
+        AnimatedContainer(
+          duration: const Duration(milliseconds: 300),
+          width: _showPlaylist ? 300 : 0,
+          decoration: const BoxDecoration(
+            color: Colors.black26,
+            border: Border(left: BorderSide(color: Colors.white10)),
+          ),
+          child: Offstage(
+            offstage: !_showPlaylist,
+            child: Column(
+              children: [
+                Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: Row(
+                    children: [
+                      Icon(Icons.queue_music, color: Colors.cyanAccent),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          widget.getText(
+                            'playlist_title',
+                            fallback: 'Playlist',
+                          ),
+                          style: const TextStyle(fontWeight: FontWeight.bold),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                Expanded(
+                  child: _isLoading
+                      ? const Center(child: CircularProgressIndicator())
+                      : _files.isEmpty
+                      ? Center(
+                          child: Text(
+                            widget.getText('no_files', fallback: 'Empty'),
+                            style: const TextStyle(color: Colors.white54),
+                          ),
+                        )
+                      : ListView.builder(
+                          itemCount: _files.length,
+                          itemBuilder: (context, index) {
+                            if (index >= _files.length)
+                              return const SizedBox.shrink();
+                            final file = _files[index];
+                            final isSelected = index == _currentIndex;
+                            return ListTile(
+                              selected: isSelected,
+                              selectedTileColor: Colors.white10,
+                              leading: isSelected
+                                  ? const Icon(
+                                      Icons.graphic_eq,
+                                      color: Colors.cyanAccent,
+                                      size: 20,
+                                    )
+                                  : const Icon(
+                                      Icons.music_note,
+                                      size: 20,
+                                      color: Colors.white54,
+                                    ),
+                              title: Text(
+                                p.basename(file.path),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(
+                                  color: isSelected
+                                      ? Colors.cyanAccent
+                                      : Colors.white70,
+                                  fontWeight: isSelected
+                                      ? FontWeight.bold
+                                      : FontWeight.normal,
+                                ),
+                              ),
+                              onTap: () {
+                                if (index < _files.length) _playFile(index);
+                              },
+                            );
+                          },
+                        ),
+                ),
+              ],
+            ),
+          ),
+        ),
+
+        // Toggle strip
+        Container(
+          width: 40,
+          color: Colors.transparent,
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              IconButton(
+                icon: Icon(
+                  _showPlaylist ? Icons.chevron_right : Icons.chevron_left,
+                ),
+                onPressed: () => setState(() => _showPlaylist = !_showPlaylist),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+enum LoopMode { off, all, one }

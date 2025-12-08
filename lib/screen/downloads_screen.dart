@@ -20,90 +20,192 @@ class DownloadsScreen extends StatefulWidget {
   State<DownloadsScreen> createState() => _DownloadsScreenState();
 }
 
-class _DownloadsScreenState extends State<DownloadsScreen> with WindowListener {
+class _DownloadsScreenState extends State<DownloadsScreen> with WindowListener, WidgetsBindingObserver {
   final DownloadManager _dm = DownloadManager();
   late final VoidCallback _dmListener;
+  bool _listenerAdded = false;
+  bool _observerAdded = false;
 
   @override
   void dispose() {
     try {
-      _dm.removeListener(_dmListener);
-    } catch (_) {}
-    windowManager.removeListener(this);
+      if (_listenerAdded) {
+        _dm.removeListener(_dmListener);
+        _listenerAdded = false;
+      }
+    } catch (e) {
+      debugPrint('[DownloadsScreen] Error removing listener: $e');
+    }
+    try {
+      if (_observerAdded) {
+        WidgetsBinding.instance.removeObserver(this);
+        _observerAdded = false;
+      }
+    } catch (e) {
+      debugPrint('[DownloadsScreen] Error removing observer: $e');
+    }
+    try {
+      windowManager.removeListener(this);
+    } catch (e) {
+      debugPrint('[DownloadsScreen] Error removing window listener: $e');
+    }
     super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.paused) {
+      try {
+        if (_listenerAdded) {
+          _dm.removeListener(_dmListener);
+          _listenerAdded = false;
+        }
+      } catch (e) {
+        debugPrint('[DownloadsScreen] Error pausing listener: $e');
+      }
+    } else if (state == AppLifecycleState.resumed) {
+      try {
+        if (!_listenerAdded) {
+          _dm.addListener(_dmListener);
+          _listenerAdded = true;
+        }
+      } catch (e) {
+        debugPrint('[DownloadsScreen] Error resuming listener: $e');
+      }
+    }
   }
 
   @override
   void initState() {
     super.initState();
-    windowManager.addListener(this);
+    try {
+      windowManager.addListener(this);
+    } catch (e) {
+      debugPrint('[DownloadsScreen] Error adding window listener: $e');
+    }
+
+    try {
+      WidgetsBinding.instance.addObserver(this);
+      _observerAdded = true;
+    } catch (e) {
+      debugPrint('[DownloadsScreen] Error adding observer: $e');
+    }
 
     // define el listener correctamente
     _dmListener = () {
-      if (mounted) setState(() {});
+      try {
+        if (mounted) {
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (mounted) {
+              setState(() {});
+            }
+          });
+        }
+      } catch (e) {
+        debugPrint('[DownloadsScreen] Error in listener callback: $e');
+      }
     };
-    _dm.addListener(_dmListener);
+
+    try {
+      _dm.addListener(_dmListener);
+      _listenerAdded = true;
+    } catch (e) {
+      debugPrint('[DownloadsScreen] Error adding listener: $e');
+    }
   }
 
   Widget _buildTitleBar() {
-    final get = widget.getText;
-    return GestureDetector(
-      behavior: HitTestBehavior.translucent,
-      onPanStart: (_) => windowManager.startDragging(),
-      child: Container(
-        height: 42,
-        padding: const EdgeInsets.symmetric(horizontal: 12),
-        color: Colors.transparent,
-        child: Row(
-          children: [
-            SizedBox(
-              width: 36,
-              height: 36,
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(8),
-                child: Container(
-                  color: Colors.black26,
-                  alignment: Alignment.center,
-                  child: const Icon(Icons.download, color: Colors.cyanAccent),
+    try {
+      final get = widget.getText;
+      return GestureDetector(
+        behavior: HitTestBehavior.translucent,
+        onPanStart: (_) {
+          try {
+            windowManager.startDragging();
+          } catch (e) {
+            debugPrint('[DownloadsScreen] Error starting drag: $e');
+          }
+        },
+        child: Container(
+          height: 42,
+          padding: const EdgeInsets.symmetric(horizontal: 12),
+          color: Colors.transparent,
+          child: Row(
+            children: [
+              SizedBox(
+                width: 36,
+                height: 36,
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(8),
+                  child: Container(
+                    color: Colors.black26,
+                    alignment: Alignment.center,
+                    child: const Icon(Icons.download, color: Colors.cyanAccent),
+                  ),
                 ),
               ),
-            ),
-            const SizedBox(width: 8),
-            Expanded(
-              child: Text(
-                get('downloads_title', fallback: 'Downloads'),
-                style: const TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w600,
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  get('downloads_title', fallback: 'Downloads'),
+                  style: const TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                  ),
                 ),
               ),
-            ),
-            IconButton(
-              tooltip: get('minimize', fallback: 'Minimize'),
-              icon: const Icon(Icons.remove, size: 18),
-              onPressed: () async => await windowManager.minimize(),
-            ),
-            IconButton(
-              tooltip: get('maximize', fallback: 'Maximize'),
-              icon: const Icon(Icons.crop_square, size: 18),
-              onPressed: () async {
-                final isMax = await windowManager.isMaximized();
-                if (isMax) {
-                  await windowManager.unmaximize();
-                } else {
-                  await windowManager.maximize();
-                }
-              },
-            ),
-            IconButton(
-              tooltip: get('back', fallback: 'Back'),
-              icon: const Icon(Icons.arrow_back, size: 18),
-              onPressed: () => Navigator.of(context).maybePop(),
-            ),
-          ],
+              IconButton(
+                tooltip: get('minimize', fallback: 'Minimize'),
+                icon: const Icon(Icons.remove, size: 18),
+                onPressed: () {
+                  try {
+                    windowManager.minimize();
+                  } catch (e) {
+                    debugPrint('[DownloadsScreen] Error minimizing: $e');
+                  }
+                },
+              ),
+              IconButton(
+                tooltip: get('maximize', fallback: 'Maximize'),
+                icon: const Icon(Icons.crop_square, size: 18),
+                onPressed: () async {
+                  try {
+                    final isMax = await windowManager.isMaximized();
+                    if (isMax) {
+                      await windowManager.unmaximize();
+                    } else {
+                      await windowManager.maximize();
+                    }
+                  } catch (e) {
+                    debugPrint('[DownloadsScreen] Error maximizing: $e');
+                  }
+                },
+              ),
+              IconButton(
+                tooltip: get('back', fallback: 'Back'),
+                icon: const Icon(Icons.arrow_back, size: 18),
+                onPressed: () {
+                  try {
+                    Navigator.of(context).maybePop();
+                  } catch (e) {
+                    debugPrint('[DownloadsScreen] Error popping: $e');
+                  }
+                },
+              ),
+            ],
+          ),
         ),
-      ),
-    );
+      );
+    } catch (e) {
+      debugPrint('[DownloadsScreen] Error building title bar: $e');
+      return Container(
+        height: 42,
+        color: Colors.black26,
+        child: const Center(
+          child: Text('Title bar error'),
+        ),
+      );
+    }
   }
 
   Widget _buildEmpty() {
@@ -260,48 +362,121 @@ class _DownloadsScreenState extends State<DownloadsScreen> with WindowListener {
 
   @override
   Widget build(BuildContext context) {
-    final get = widget.getText;
-    final tasks = _dm.tasksReversed;
-    return Scaffold(
-      backgroundColor: const Color.fromARGB(255, 27, 27, 27),
-      body: Column(
-        children: [
-          _buildTitleBar(),
-          Expanded(
-            child: Padding(
-              padding: const EdgeInsets.all(12),
-              child: tasks.isEmpty
-                  ? _buildEmpty()
-                  : ListView.separated(
-                      itemCount: tasks.length,
-                      separatorBuilder: (_, __) => const SizedBox(height: 8),
-                      itemBuilder: (_, i) => _buildTaskTile(tasks[i]),
-                    ),
+    try {
+      final get = widget.getText;
+      final tasks = _dm.tasksReversed;
+      return Scaffold(
+        backgroundColor: const Color.fromARGB(255, 27, 27, 27),
+        body: Column(
+          children: [
+            _buildTitleBar(),
+            Expanded(
+              child: Padding(
+                padding: const EdgeInsets.all(12),
+                child: tasks.isEmpty
+                    ? _buildEmpty()
+                    : ListView.separated(
+                        itemCount: tasks.length,
+                        separatorBuilder: (_, __) => const SizedBox(height: 8),
+                        itemBuilder: (_, i) => _safeTaskTile(tasks[i]),
+                      ),
+              ),
             ),
-          ),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-            color: Colors.transparent,
-            child: Row(
-              children: [
-                Text(
-                  '${get('download_count', fallback: 'Total')}: ${_dm.tasks.length}',
-                  style: const TextStyle(fontSize: 12),
-                ),
-                const Spacer(),
-                TextButton.icon(
-                  onPressed: () => _dm.clearCompleted(),
-                  icon: const Icon(Icons.delete_sweep, size: 18),
-                  label: Text(get('clear_completed', fallback: 'Clear')),
-                  style: TextButton.styleFrom(
-                    foregroundColor: Colors.redAccent,
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              color: Colors.transparent,
+              child: Row(
+                children: [
+                  Text(
+                    '${get('download_count', fallback: 'Total')}: ${_dm.tasks.length}',
+                    style: const TextStyle(fontSize: 12),
                   ),
-                ),
-              ],
+                  const Spacer(),
+                  TextButton.icon(
+                    onPressed: () {
+                      try {
+                        Navigator.of(context).pushNamed('player');
+                      } catch (e) {
+                        debugPrint('[DownloadsScreen] Error navigating to player: $e');
+                      }
+                    },
+                    icon: const Icon(Icons.music_note, size: 18),
+                    label: Text(get('local_player_title', fallback: 'Player')),
+                    style: TextButton.styleFrom(
+                      foregroundColor: Colors.blueAccent,
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  TextButton.icon(
+                    onPressed: () {
+                      try {
+                        _dm.clearCompleted();
+                      } catch (e) {
+                        debugPrint('[DownloadsScreen] Error clearing completed: $e');
+                      }
+                    },
+                    icon: const Icon(Icons.delete_sweep, size: 18),
+                    label: Text(get('clear_completed', fallback: 'Clear')),
+                    style: TextButton.styleFrom(
+                      foregroundColor: Colors.redAccent,
+                    ),
+                  ),
+                ],
+              ),
             ),
+          ],
+        ),
+      );
+    } catch (e, st) {
+      debugPrint('[DownloadsScreen] Build error: $e\n$st');
+      return Scaffold(
+        backgroundColor: const Color.fromARGB(255, 27, 27, 27),
+        body: Center(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(Icons.error_outline, size: 64, color: Colors.redAccent),
+              const SizedBox(height: 16),
+              Text(
+                'Error loading downloads',
+                style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                e.toString(),
+                textAlign: TextAlign.center,
+                style: const TextStyle(fontSize: 12, color: Colors.white70),
+              ),
+              const SizedBox(height: 16),
+              ElevatedButton.icon(
+                onPressed: () {
+                  try {
+                    Navigator.of(context).pop();
+                  } catch (_) {}
+                },
+                icon: const Icon(Icons.arrow_back),
+                label: const Text('Back'),
+              ),
+            ],
           ),
-        ],
-      ),
-    );
+        ),
+      );
+    }
+  }
+
+  Widget _safeTaskTile(DownloadTask t) {
+    try {
+      return _buildTaskTile(t);
+    } catch (e) {
+      debugPrint('[DownloadsScreen] Error building task tile: $e');
+      return Card(
+        color: Colors.black12,
+        child: ListTile(
+          title: Text(t.title, maxLines: 1, overflow: TextOverflow.ellipsis),
+          subtitle: const Text('Error loading task details'),
+          trailing: const Icon(Icons.warning, color: Colors.orangeAccent),
+        ),
+      );
+    }
   }
 }

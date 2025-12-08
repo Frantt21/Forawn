@@ -10,6 +10,7 @@ import 'package:forawn/screen/qrcode_generator.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:window_manager/window_manager.dart';
 import 'screen/spotify_screen.dart';
+import 'screen/music_player_screen.dart';
 import 'settings.dart';
 import 'imgia_screen.dart';
 import 'r34.dart';
@@ -41,9 +42,7 @@ Future<void> main() async {
   try {
     sqfliteFfiInit();
     databaseFactory = databaseFactoryFfi;
-  } catch (_) {
-    // No hacer nada si falla
-  }
+  } catch (_) {}
 
   // Inicializar flutter_acrylic
   if (Platform.isWindows) {
@@ -55,7 +54,7 @@ Future<void> main() async {
       final savedEffect = prefs.getString(_prefEffectKey) ?? 'solid';
       final savedColor = Color(prefs.getInt(_prefColorKey) ?? 0xCC222222);
       final savedDark = prefs.getBool(_prefDarkKey) ?? true;
-      
+
       // Validar que el efecto guardado sea válido
       acrylic.WindowEffect effect;
       try {
@@ -66,7 +65,7 @@ Future<void> main() async {
       } catch (_) {
         effect = acrylic.WindowEffect.solid;
       }
-      
+
       await acrylic.Window.setEffect(
         effect: effect,
         color: savedColor,
@@ -317,7 +316,7 @@ class _HomeScreenState extends State<HomeScreen> with WindowListener {
     _loadNsfwPref();
     _loadRecentScreens();
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      checkForUpdate(context, widget.getText);
+      // checkForUpdate(context, widget.getText);
     });
   }
 
@@ -384,11 +383,7 @@ class _HomeScreenState extends State<HomeScreen> with WindowListener {
       final prefs = await SharedPreferences.getInstance();
 
       // Aplicar el efecto directamente
-      await acrylic.Window.setEffect(
-        effect: effect,
-        color: color,
-        dark: dark,
-      );
+      await acrylic.Window.setEffect(effect: effect, color: color, dark: dark);
 
       // Guardar preferencias
       await prefs.setString(_prefEffectKey, effect.name);
@@ -421,11 +416,17 @@ class _HomeScreenState extends State<HomeScreen> with WindowListener {
           getText: widget.getText,
           currentLang: widget.currentLangCode,
           onRegisterFolderAction: _registerFolderAction,
+          onNavigate: _handleNavigation,
         );
       case 'video':
         return VideoDownloaderScreen(
           getText: widget.getText,
           currentLang: widget.currentLangCode,
+          onRegisterFolderAction: _registerFolderAction,
+        );
+      case 'player':
+        return MusicPlayerScreen(
+          getText: widget.getText,
           onRegisterFolderAction: _registerFolderAction,
         );
       case 'images':
@@ -517,6 +518,11 @@ class _HomeScreenState extends State<HomeScreen> with WindowListener {
         return widget.getText('vid_title', fallback: 'Video');
       case 'images':
         return widget.getText('ai_image_title', fallback: 'Imágenes');
+      case 'player':
+        return widget.getText(
+          'music_player_title',
+          fallback: 'Reproductor de Música',
+        );
       case 'notes':
         return widget.getText('notes_title', fallback: 'Notas');
       case 'translate':

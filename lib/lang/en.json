@@ -344,5 +344,6 @@
     "recommendations_for": "Recommendations based on",
     "api_calls": "API Calls",
     "foraai": "ForaAI",
-    "enter_url_desc": "Enter a YouTube URL to start"
+    "enter_url_desc": "Enter a YouTube URL to start",
+    "cancelled": "Cancelled"
 }

@@ -344,5 +344,6 @@
     "recommendations_for": "Recomendações baseadas em",
     "api_calls": "Chamadas",
     "foraai": "ForaAI",
-    "enter_url_desc": "Insira a URL do vídeo do YouTube que deseja baixar."
+    "enter_url_desc": "Insira a URL do vídeo do YouTube que deseja baixar.",
+    "cancelled": "Cancelado"
 }

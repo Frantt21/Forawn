@@ -9,14 +9,14 @@ class ElegantNotification extends StatefulWidget {
   final Color iconColor;
 
   const ElegantNotification({
-    Key? key,
+    super.key,
     required this.message,
     this.duration = const Duration(seconds: 3),
     this.backgroundColor = const Color(0xFF2C2C2C),
     this.textColor = Colors.white,
     this.icon,
     this.iconColor = Colors.white,
-  }) : super(key: key);
+  });
 
   @override
   State<ElegantNotification> createState() => _ElegantNotificationState();
@@ -96,7 +96,7 @@ class _ElegantNotificationState extends State<ElegantNotification>
                 ),
                 const SizedBox(width: 12),
               ],
-              Expanded(
+              Flexible(
                 child: Text(
                   widget.message,
                   style: TextStyle(
@@ -133,37 +133,21 @@ void showElegantNotification(
     barrierColor: Colors.transparent,
     transitionDuration: const Duration(milliseconds: 300),
     pageBuilder: (context, animation, secondaryAnimation) {
-      return GestureDetector(
-        onTap: () => Navigator.of(context).pop(),
-        child: Stack(
-          children: [
-            // Transparent area to allow interaction below
-            Positioned.fill(
-              child: GestureDetector(
-                onTap: () {
-                  Navigator.of(context).pop();
-                },
-              ),
+      return Align(
+        alignment: Alignment.topCenter,
+        child: Padding(
+          padding: const EdgeInsets.only(top: 16),
+          child: GestureDetector(
+            onTap: () => Navigator.of(context).pop(),
+            child: ElegantNotification(
+              message: message,
+              duration: duration,
+              backgroundColor: backgroundColor,
+              textColor: textColor,
+              icon: icon,
+              iconColor: iconColor,
             ),
-            // Notification at top
-            Align(
-              alignment: Alignment.topCenter,
-              child: Padding(
-                padding: const EdgeInsets.only(top: 16),
-                child: GestureDetector(
-                  onTap: () => Navigator.of(context).pop(),
-                  child: ElegantNotification(
-                    message: message,
-                    duration: duration,
-                    backgroundColor: backgroundColor,
-                    textColor: textColor,
-                    icon: icon,
-                    iconColor: iconColor,
-                  ),
-                ),
-              ),
-            ),
-          ],
+          ),
         ),
       );
     },

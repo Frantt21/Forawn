@@ -54,19 +54,44 @@ class _VideoDownloaderScreenState extends State<VideoDownloaderScreen>
   @override
   void initState() {
     super.initState();
-    windowManager.addListener(this);
-    _loadPrefs();
+    try {
+      windowManager.addListener(this);
+    } catch (e) {
+      debugPrint('[VideoDownloaderScreen] Error adding window listener: $e');
+    }
+
+    try {
+      _loadPrefs();
+    } catch (e) {
+      debugPrint('[VideoDownloaderScreen] Error loading prefs: $e');
+    }
 
     if (widget.onRegisterFolderAction != null) {
-      widget.onRegisterFolderAction!(_selectDownloadFolder);
+      try {
+        widget.onRegisterFolderAction!(_selectDownloadFolder);
+      } catch (e) {
+        debugPrint('[VideoDownloaderScreen] Error registering folder action: $e');
+      }
     }
   }
 
   @override
   void dispose() {
-    windowManager.removeListener(this);
-    _controller.dispose();
-    _formatLabelsNotifier.dispose();
+    try {
+      windowManager.removeListener(this);
+    } catch (e) {
+      debugPrint('[VideoDownloaderScreen] Error removing window listener: $e');
+    }
+    try {
+      _controller.dispose();
+    } catch (e) {
+      debugPrint('[VideoDownloaderScreen] Error disposing controller: $e');
+    }
+    try {
+      _formatLabelsNotifier.dispose();
+    } catch (e) {
+      debugPrint('[VideoDownloaderScreen] Error disposing format labels: $e');
+    }
     super.dispose();
   }
 
@@ -624,14 +649,43 @@ class _VideoDownloaderScreenState extends State<VideoDownloaderScreen>
   }
 
   void _openDownloadsScreen() {
-    Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (_) => DownloadsScreen(
-          getText: widget.getText,
-          currentLang: widget.currentLang,
-        ),
-      ),
-    );
+    if (!mounted) return;
+    try {
+      if (mounted && context.mounted) {
+        Navigator.of(context).push(
+          MaterialPageRoute(
+            builder: (_) => DownloadsScreen(
+              getText: widget.getText,
+              currentLang: widget.currentLang,
+            ),
+          ),
+        ).catchError((e, st) {
+          debugPrint('[VideoDownloaderScreen] Navigation error: $e\n$st');
+          if (mounted) {
+            showElegantNotification(
+              context,
+              widget.getText('error_opening_downloads', fallback: 'No se pudo abrir Descargas'),
+              backgroundColor: const Color(0xFFE53935),
+              textColor: Colors.white,
+              icon: Icons.error_outline,
+              iconColor: Colors.white,
+            );
+          }
+        });
+      }
+    } catch (e, st) {
+      debugPrint('[VideoDownloaderScreen] openDownloads error: $e\n$st');
+      if (mounted) {
+        showElegantNotification(
+          context,
+          widget.getText('error_opening_downloads', fallback: 'No se pudo abrir Descargas'),
+          backgroundColor: const Color(0xFFE53935),
+          textColor: Colors.white,
+          icon: Icons.error_outline,
+          iconColor: Colors.white,
+        );
+      }
+    }
   }
 
   // UI
@@ -810,6 +864,7 @@ class _VideoDownloaderScreenState extends State<VideoDownloaderScreen>
         ),
       ),
       floatingActionButton: FloatingActionButton(
+        heroTag: 'video_downloads_fab',
         tooltip: get('open_downloads', fallback: 'Downloads'),
         onPressed: _openDownloadsScreen,
         backgroundColor: const Color.fromARGB(255, 224, 64, 251),

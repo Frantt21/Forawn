@@ -344,5 +344,6 @@
     "recommendations_for": "基于以下内容的建议",
     "api_calls": "调用次数",
     "foraai": "ForaAI",
-    "enter_url_desc": "输入您想下载的YouTube视频的URL。"
+    "enter_url_desc": "输入您想下载的YouTube视频的URL。",
+    "cancelled": "已取消"
 }

@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/material.dart';
@@ -10,6 +11,23 @@ import 'package:uuid/uuid.dart';
 import 'package:image_picker/image_picker.dart';
 import '../config/api_config.dart';
 import '../widgets/elegant_notification.dart';
+
+/// Simple token for cancelling HTTP requests
+class CancelToken {
+  bool _isCancelled = false;
+  
+  bool get isCancelled => _isCancelled;
+  
+  void cancel() {
+    _isCancelled = true;
+  }
+  
+  void checkCancelled() {
+    if (_isCancelled) {
+      throw TimeoutException('Request was cancelled', null);
+    }
+  }
+}
 
 class ForaaiScreen extends StatefulWidget {
   final String Function(String key, {String? fallback}) getText;
@@ -42,9 +60,14 @@ class _ForaaiScreenState extends State<ForaaiScreen> {
   final Map<AIProvider, int> _apiCallsRemaining = {};
   final Map<AIProvider, DateTime> _lastResetTime = {};
 
+  // HTTP request management
+  http.Client? _httpClient;
+  final List<CancelToken> _pendingRequests = [];
+
   @override
   void initState() {
     super.initState();
+    _httpClient = http.Client();
     _loadSessions();
     _loadRateLimits();
     // Scroll al último mensaje después de que el widget se construya
@@ -55,6 +78,15 @@ class _ForaaiScreenState extends State<ForaaiScreen> {
 
   @override
   void dispose() {
+    // Cancel all pending HTTP requests
+    for (final token in _pendingRequests) {
+      token.cancel();
+    }
+    _pendingRequests.clear();
+    
+    // Close HTTP client
+    _httpClient?.close();
+    
     _focusNode.dispose();
     _controller.dispose();
     _scrollController.dispose();
@@ -67,8 +99,8 @@ class _ForaaiScreenState extends State<ForaaiScreen> {
 
   /// Límites por proveedor (llamadas por hora)
   static const Map<AIProvider, int> _rateLimits = {
-    AIProvider.groq: 100, // Para testing, cambiar a 30 después
-    AIProvider.gemini: 100, // Para testing, cambiar a 15 después
+    AIProvider.groq: 70, // Para testing, cambiar a 30 después
+    AIProvider.gemini: 50, // Para testing, cambiar a 15 después
     AIProvider.openrouter: 0, // Para testing, cambiar a 20 después
   };
 
@@ -304,111 +336,136 @@ class _ForaaiScreenState extends State<ForaaiScreen> {
     ];
   }
 
-  Future<String> _callGroqAPI(List<Map<String, dynamic>> messages) async {
-    final response = await http.post(
-      Uri.parse(ApiConfig.getEndpointForProvider(_selectedProvider)),
-      headers: {
-        'Authorization':
-            'Bearer ${ApiConfig.getApiKeyForProvider(_selectedProvider)}',
-        'Content-Type': 'application/json',
-      },
-      body: jsonEncode({
-        'model': ApiConfig.getModelForProvider(_selectedProvider),
-        'messages': messages,
-        'temperature': 0.7,
-        'max_tokens': 1024,
-      }),
-    );
+  Future<String> _callGroqAPI(List<Map<String, dynamic>> messages, CancelToken token) async {
+    try {
+      token.checkCancelled();
+      
+      final response = await _httpClient!.post(
+        Uri.parse(ApiConfig.getEndpointForProvider(_selectedProvider)),
+        headers: {
+          'Authorization':
+              'Bearer ${ApiConfig.getApiKeyForProvider(_selectedProvider)}',
+          'Content-Type': 'application/json',
+        },
+        body: jsonEncode({
+          'model': ApiConfig.getModelForProvider(_selectedProvider),
+          'messages': messages,
+          'temperature': 0.7,
+          'max_tokens': 1024,
+        }),
+      ).timeout(const Duration(seconds: 30));
 
-    if (response.statusCode >= 200 && response.statusCode < 300) {
-      final data = jsonDecode(response.body);
-      final choices = data['choices'] as List<dynamic>?;
-      final content = choices?.isNotEmpty == true
-          ? choices![0]['message']['content']
-          : null;
+      token.checkCancelled();
 
-      return (content is String && content.trim().isNotEmpty)
-          ? content
-          : 'Error: Respuesta vacía';
-    } else {
-      String errMsg = 'Failed (${response.statusCode})';
-      try {
-        final err = jsonDecode(response.body);
-        errMsg =
-            err['error']?['message']?.toString() ??
-            err['message']?.toString() ??
-            errMsg;
-      } catch (_) {}
-      throw Exception(errMsg);
+      if (response.statusCode >= 200 && response.statusCode < 300) {
+        final data = jsonDecode(response.body);
+        final choices = data['choices'] as List<dynamic>?;
+        final content = choices?.isNotEmpty == true
+            ? choices![0]['message']['content']
+            : null;
+
+        return (content is String && content.trim().isNotEmpty)
+            ? content
+            : 'Error: Respuesta vacía';
+      } else {
+        String errMsg = 'Failed (${response.statusCode})';
+        try {
+          final err = jsonDecode(response.body);
+          errMsg =
+              err['error']?['message']?.toString() ??
+              err['message']?.toString() ??
+              errMsg;
+        } catch (_) {}
+        throw Exception(errMsg);
+      }
+    } on TimeoutException {
+      if (token.isCancelled) {
+        throw TimeoutException('Request cancelled', null);
+      }
+      rethrow;
     }
   }
 
   Future<String> _callGeminiAPI(
     List<Map<String, dynamic>> messages, {
     File? imageFile,
+    required CancelToken token,
   }) async {
-    final contents = <Map<String, dynamic>>[];
+    try {
+      token.checkCancelled();
+      
+      final contents = <Map<String, dynamic>>[];
 
-    for (var msg in messages.where((m) => m['role'] != 'system')) {
-      contents.add({
-        'role': msg['role'] == 'assistant' ? 'model' : 'user',
-        'parts': [
-          {'text': msg['content']},
-        ],
-      });
-    }
-
-    // Agregar imagen al último mensaje si existe
-    if (imageFile != null && contents.isNotEmpty) {
-      final bytes = await imageFile.readAsBytes();
-      final base64Image = base64Encode(bytes);
-
-      (contents.last['parts'] as List).add({
-        'inline_data': {'mime_type': 'image/jpeg', 'data': base64Image},
-      });
-    }
-
-    final systemMsg = messages.firstWhere(
-      (m) => m['role'] == 'system',
-      orElse: () => {'content': ''},
-    )['content'];
-    if (systemMsg!.isNotEmpty && contents.isNotEmpty) {
-      final firstPart = (contents.first['parts'] as List).first;
-      firstPart['text'] = '$systemMsg\n\n${firstPart['text']}';
-    }
-
-    // Construir URL correcta con el modelo
-    final model = ApiConfig.getModelForProvider(_selectedProvider);
-    final endpoint =
-        '${ApiConfig.getEndpointForProvider(_selectedProvider)}/$model:generateContent';
-    final apiKey = ApiConfig.getApiKeyForProvider(_selectedProvider);
-
-    final response = await http.post(
-      Uri.parse(endpoint),
-      headers: {'Content-Type': 'application/json', 'x-goog-api-key': apiKey},
-      body: jsonEncode({
-        'contents': contents,
-        'tools': [
-          {'google_search': {}},
-        ],
-        'generationConfig': {'temperature': 0.7, 'maxOutputTokens': 2048},
-      }),
-    );
-
-    if (response.statusCode >= 200 && response.statusCode < 300) {
-      final data = jsonDecode(response.body);
-      return data['candidates']?[0]?['content']?['parts']?[0]?['text'] ??
-          'Error: Respuesta vacía';
-    } else {
-      // Mostrar más detalles del error
-      String errorMsg = 'HTTP ${response.statusCode}';
-      try {
-        final errorData = jsonDecode(response.body);
-        errorMsg = errorData['error']?['message'] ?? errorMsg;
-      } catch (_) {
-        errorMsg = response.body;
+      for (var msg in messages.where((m) => m['role'] != 'system')) {
+        contents.add({
+          'role': msg['role'] == 'assistant' ? 'model' : 'user',
+          'parts': [
+            {'text': msg['content']},
+          ],
+        });
       }
-      throw Exception(errorMsg);
+
+      // Agregar imagen al último mensaje si existe
+      if (imageFile != null && contents.isNotEmpty) {
+        final bytes = await imageFile.readAsBytes();
+        final base64Image = base64Encode(bytes);
+
+        (contents.last['parts'] as List).add({
+          'inline_data': {'mime_type': 'image/jpeg', 'data': base64Image},
+        });
+      }
+
+      token.checkCancelled();
+
+      final systemMsg = messages.firstWhere(
+        (m) => m['role'] == 'system',
+        orElse: () => {'content': ''},
+      )['content'];
+      if (systemMsg!.isNotEmpty && contents.isNotEmpty) {
+        final firstPart = (contents.first['parts'] as List).first;
+        firstPart['text'] = '$systemMsg\n\n${firstPart['text']}';
+      }
+
+      // Construir URL correcta con el modelo
+      final model = ApiConfig.getModelForProvider(_selectedProvider);
+      final endpoint =
+          '${ApiConfig.getEndpointForProvider(_selectedProvider)}/$model:generateContent';
+      final apiKey = ApiConfig.getApiKeyForProvider(_selectedProvider);
+
+      final response = await _httpClient!.post(
+        Uri.parse(endpoint),
+        headers: {'Content-Type': 'application/json', 'x-goog-api-key': apiKey},
+        body: jsonEncode({
+          'contents': contents,
+          'tools': [
+            {'google_search': {}},
+          ],
+          'generationConfig': {'temperature': 0.7, 'maxOutputTokens': 2048},
+        }),
+      ).timeout(const Duration(seconds: 30));
+
+      token.checkCancelled();
+
+      if (response.statusCode >= 200 && response.statusCode < 300) {
+        final data = jsonDecode(response.body);
+        return data['candidates']?[0]?['content']?['parts']?[0]?['text'] ??
+            'Error: Respuesta vacía';
+      } else {
+        // Mostrar más detalles del error
+        String errorMsg = 'HTTP ${response.statusCode}';
+        try {
+          final errorData = jsonDecode(response.body);
+          errorMsg = errorData['error']?['message'] ?? errorMsg;
+        } catch (_) {
+          errorMsg = response.body;
+        }
+        throw Exception(errorMsg);
+      }
+    } on TimeoutException {
+      if (token.isCancelled) {
+        throw TimeoutException('Request cancelled', null);
+      }
+      rethrow;
     }
   }
 
@@ -476,15 +533,23 @@ class _ForaaiScreenState extends State<ForaaiScreen> {
       final messages = _buildMessagesForAPI(session, text);
       String result;
 
-      // Llamar a la API correspondiente
-      switch (_selectedProvider) {
-        case AIProvider.groq:
-        case AIProvider.openrouter:
-          result = await _callGroqAPI(messages);
-          break;
-        case AIProvider.gemini:
-          result = await _callGeminiAPI(messages, imageFile: _selectedImage);
-          break;
+      // Create cancel token for this request
+      final cancelToken = CancelToken();
+      _pendingRequests.add(cancelToken);
+
+      try {
+        // Llamar a la API correspondiente
+        switch (_selectedProvider) {
+          case AIProvider.groq:
+          case AIProvider.openrouter:
+            result = await _callGroqAPI(messages, cancelToken);
+            break;
+          case AIProvider.gemini:
+            result = await _callGeminiAPI(messages, imageFile: _selectedImage, token: cancelToken);
+            break;
+        }
+      } finally {
+        _pendingRequests.remove(cancelToken);
       }
 
       // Decrementar contador de llamadas
@@ -510,12 +575,17 @@ class _ForaaiScreenState extends State<ForaaiScreen> {
       }
     } catch (e) {
       if (mounted) {
+        // Check if request was cancelled
+        final isCancelled = e is TimeoutException && 
+            e.message == 'Request was cancelled';
+        
         setState(() {
           session.messages.add(
             ChatMessage(
               role: 'ai',
-              content:
-                  'Error (${ApiConfig.getProviderName(_selectedProvider)}): $e',
+              content: isCancelled 
+                  ? '⏸ ${widget.getText('cancelled', fallback: 'Cancelado')}'
+                  : 'Error (${ApiConfig.getProviderName(_selectedProvider)}): $e',
             ),
           );
           _isLoading = false;

@@ -337,12 +337,13 @@
     "select_image_error": "Error al seleccionar imagen",
     "limit_reached": "Límite alcanzado",
     "reset_in": "Se restablecerá en",
-    "api_key_not_configured": "API key no configurada",
+    "api_key_not_configured": "Clave API no configurada",
     "image_processed": "✓ Imagen procesada correctamente",
     "limits_reset_manually": "Límites restablecidos manualmente",
     "loading_recommendations": "Cargando recomendaciones...",
     "recommendations_for": "Recomendaciones basadas en",
-    "api_calls": "Llamadas",
+    "api_calls": "Llamadas a API",
     "foraai": "ForaAI",
-    "enter_url_desc": "Ingrese una URL de YouTube para comenzar"
+    "enter_url_desc": "Ingresa una URL de YouTube para comenzar",
+    "cancelled": "Cancelado"
 }
