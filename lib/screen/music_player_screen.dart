@@ -8,6 +8,7 @@ import 'package:file_picker/file_picker.dart';
 import 'package:audioplayers/audioplayers.dart';
 import 'package:path/path.dart' as p;
 import 'package:shared_preferences/shared_preferences.dart';
+import '../services/global_music_player.dart';
 
 typedef TextGetter = String Function(String key, {String? fallback});
 
@@ -26,7 +27,9 @@ class MusicPlayerScreen extends StatefulWidget {
 }
 
 class _MusicPlayerScreenState extends State<MusicPlayerScreen> {
-  final AudioPlayer _player = AudioPlayer();
+  late AudioPlayer _player;
+  late GlobalMusicPlayer _musicPlayer;
+  
   List<FileSystemEntity> _files = [];
   bool _isLoading = false;
   int? _currentIndex;
@@ -51,6 +54,9 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen> {
   @override
   void initState() {
     super.initState();
+    _musicPlayer = GlobalMusicPlayer();
+    _player = _musicPlayer.player;
+    debugPrint('[MusicPlayer] initState - Player state: ${_player.state}');
     _initPlayer();
     _init();
     if (widget.onRegisterFolderAction != null) {
@@ -61,37 +67,61 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen> {
   void _initPlayer() {
     _player.setReleaseMode(ReleaseMode.stop);
 
-    _posSub = _player.onPositionChanged.listen((pos) {
-      if (mounted) setState(() => _position = pos);
-    });
+    // Cancelar listeners previos si existen
+    _posSub?.cancel();
+    _stateSub?.cancel();
 
-    _stateSub = _player.onPlayerStateChanged.listen((st) async {
-      if (!mounted) return;
-      if (st == PlayerState.completed) {
-        if (_loopMode == LoopMode.one && _currentIndex != null) {
-          _playFile(_currentIndex!);
-        } else if (_loopMode != LoopMode.off && _files.isNotEmpty) {
-          final next = (_currentIndex ?? -1) + 1;
-          if (next < _files.length) {
-            _playFile(next);
-          } else if (_loopMode == LoopMode.all) {
-            _playFile(0);
+    _posSub = _player.onPositionChanged.listen(
+      (pos) {
+        if (mounted) {
+          setState(() => _position = pos);
+          try {
+            _musicPlayer.position.value = pos;
+          } catch (e) {
+            debugPrint('[MusicPlayer] Error updating position: $e');
           }
         }
-      }
-    });
+      },
+      onError: (error) {
+        debugPrint('[MusicPlayer] Position stream error: $error');
+      },
+    );
+
+    _stateSub = _player.onPlayerStateChanged.listen(
+      (st) async {
+        if (!mounted) return;
+        
+        try {
+          _musicPlayer.isPlaying.value = st == PlayerState.playing;
+        } catch (e) {
+          debugPrint('[MusicPlayer] Error updating isPlaying: $e');
+        }
+        
+        if (st == PlayerState.completed) {
+          if (_loopMode == LoopMode.one && _currentIndex != null) {
+            _playFile(_currentIndex!);
+          } else if (_loopMode != LoopMode.off && _files.isNotEmpty) {
+            final next = (_currentIndex ?? -1) + 1;
+            if (next < _files.length) {
+              _playFile(next);
+            } else if (_loopMode == LoopMode.all) {
+              _playFile(0);
+            }
+          }
+        }
+      },
+      onError: (error) {
+        debugPrint('[MusicPlayer] Player state stream error: $error');
+      },
+    );
   }
 
   @override
   void dispose() {
     _posSub?.cancel();
     _stateSub?.cancel();
-    try {
-      _player.stop();
-      _player.dispose();
-    } catch (e) {
-      debugPrint("Error disposing player: $e");
-    }
+    // No detenemos el reproductor aquí porque queremos que continúe sonando
+    // cuando se salga de esta pantalla
     super.dispose();
   }
 
@@ -169,28 +199,77 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen> {
   }
 
   Future<void> _loadMetadata(String filePath) async {
-    if (mounted) {
-      setState(() {
-        _currentTitle = p.basename(filePath);
-        _currentArtist = widget.getText('unknown_artist', fallback: 'Unknown Artist');
-        _currentArt = null;
-      });
+    try {
+      if (mounted) {
+        setState(() {
+          _currentTitle = p.basename(filePath);
+          _currentArtist = widget.getText('unknown_artist', fallback: 'Unknown Artist');
+          _currentArt = null;
+        });
+      }
+      try {
+        _musicPlayer.currentTitle.value = _currentTitle;
+        _musicPlayer.currentArtist.value = _currentArtist;
+      } catch (e) {
+        debugPrint('[MusicPlayer] Error updating global metadata: $e');
+      }
+    } catch (e) {
+      debugPrint('[MusicPlayer] Error loading metadata: $e');
     }
   }
 
   Future<void> _playFile(int index) async {
     if (index < 0 || index >= _files.length) return;
     final file = _files[index] as File;
-    final uri = Uri.file(file.path);
 
     try {
-      setState(() => _currentIndex = index);
-      await _player.stop();
-      await _player.play(DeviceFileSource(uri.toFilePath()));
-      _duration = await _player.getDuration() ?? Duration.zero;
+      if (mounted) {
+        setState(() => _currentIndex = index);
+      }
+      
+      debugPrint('[MusicPlayer] Playing file: ${file.path}');
+      
+      // Detener reproducción anterior
+      try {
+        await _player.stop();
+      } catch (e) {
+        debugPrint("[MusicPlayer] Error stopping player: $e");
+      }
+      
+      // Reproducir archivo
+      try {
+        await _player.play(DeviceFileSource(file.path));
+        debugPrint('[MusicPlayer] Play started successfully');
+      } catch (e) {
+        debugPrint("[MusicPlayer] Error playing file: $e");
+        if (mounted) {
+          setState(() => _currentIndex = null);
+        }
+        return;
+      }
+      
+      // Pequeño delay antes de obtener duración
+      await Future.delayed(const Duration(milliseconds: 100));
+      
+      // Obtener duración
+      try {
+        _duration = await _player.getDuration() ?? Duration.zero;
+        debugPrint('[MusicPlayer] Duration: ${_duration.inSeconds}s');
+        _musicPlayer.duration.value = _duration;
+      } catch (e) {
+        debugPrint("[MusicPlayer] Error getting duration: $e");
+        _duration = Duration.zero;
+      }
+      
       _loadMetadata(file.path);
+      
+      // Mostrar mini reproductor
+      _musicPlayer.showMiniPlayer.value = true;
     } catch (e) {
-      debugPrint("Error playing: $e");
+      debugPrint("[MusicPlayer] Unexpected error in _playFile: $e");
+      if (mounted) {
+        setState(() => _currentIndex = null);
+      }
     }
   }
 
@@ -379,6 +458,7 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen> {
                                 _isMuted = value == 0;
                               });
                               await _player.setVolume(value);
+                              _musicPlayer.volume.value = value;
                             },
                           ),
                         ),
