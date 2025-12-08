@@ -645,6 +645,15 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen> {
                         setState(() {});
                       },
                     ),
+
+                    // Show Mini Player Button
+                    IconButton(
+                      icon: const Icon(Icons.picture_in_picture, size: 24, color: Colors.purpleAccent),
+                      onPressed: () {
+                        _musicPlayer.showMiniPlayer.value = true;
+                      },
+                      tooltip: 'Mostrar mini reproductor',
+                    ),
                   ],
                 ),
                 const SizedBox(height: 16),
@@ -683,15 +692,6 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen> {
                   ),
                 ),
                 const SizedBox(height: 16),
-
-                // Show Mini Player Button
-                IconButton(
-                  icon: const Icon(Icons.picture_in_picture, size: 24, color: Colors.purpleAccent),
-                  onPressed: () {
-                    _musicPlayer.showMiniPlayer.value = true;
-                  },
-                  tooltip: 'Mostrar mini reproductor',
-                ),
               ],
             ),
           ),

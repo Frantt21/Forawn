@@ -395,21 +395,6 @@ class _DownloadsScreenState extends State<DownloadsScreen> with WindowListener, 
                   TextButton.icon(
                     onPressed: () {
                       try {
-                        Navigator.of(context).pushNamed('player');
-                      } catch (e) {
-                        debugPrint('[DownloadsScreen] Error navigating to player: $e');
-                      }
-                    },
-                    icon: const Icon(Icons.music_note, size: 18),
-                    label: Text(get('local_player_title', fallback: 'Player')),
-                    style: TextButton.styleFrom(
-                      foregroundColor: Colors.blueAccent,
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  TextButton.icon(
-                    onPressed: () {
-                      try {
                         _dm.clearCompleted();
                       } catch (e) {
                         debugPrint('[DownloadsScreen] Error clearing completed: $e');
