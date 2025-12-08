@@ -92,7 +92,7 @@ class GlobalMusicPlayer {
   
   // Estado de reproducción
   final ValueNotifier<bool> isPlaying = ValueNotifier(false);
-  final ValueNotifier<bool> showMiniPlayer = ValueNotifier(true); // Mostrar por defecto
+  final ValueNotifier<bool> showMiniPlayer = ValueNotifier(false); // Desactivado por defecto
   
   // Información de la canción actual
   final ValueNotifier<String> currentTitle = ValueNotifier('');

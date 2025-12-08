@@ -34,13 +34,15 @@ class _MiniMusicPlayerState extends State<MiniMusicPlayer> {
     const padding = 16.0;
     const minPlayerWidth = 200.0;
     const expandedPlayerWidth = 380.0;
+    const playerHeight = 250.0; // Altura aproximada cuando está expandido
     
     // Cuando está expandido, necesita más espacio
     final maxWidth = _isHovering ? expandedPlayerWidth : minPlayerWidth;
+    final maxHeight = _isHovering ? playerHeight : 60.0;
     
     // Limitar posición para que no salga de la pantalla
-    final maxLeftOffset = screenSize.width - maxWidth - padding * 2;
-    final maxBottomOffset = screenSize.height - 100;
+    final maxLeftOffset = screenSize.width - maxWidth - padding;
+    final maxBottomOffset = screenSize.height - maxHeight - padding;
     
     if (_offset.dx > maxLeftOffset || _offset.dx < -padding) {
       _offset = Offset(
@@ -64,9 +66,26 @@ class _MiniMusicPlayerState extends State<MiniMusicPlayer> {
       builder: (context, showMini, _) {
         if (!showMini) return const SizedBox.shrink();
 
+        final screenSize = MediaQuery.of(context).size;
+        const minWidth = 200.0;
+        const maxWidth = 380.0;
+        
+        // Posición base del mini player
+        final baseLeft = 16.0 + _offset.dx;
+        final baseBottom = 16.0 + _offset.dy;
+        
+        // Calcular si hay espacio suficiente para expandir a la derecha
+        final spaceToRight = screenSize.width - baseLeft - minWidth;
+        final expandLeft = spaceToRight < maxWidth - minWidth;
+        
+        // Ajustar left dinámicamente cuando se expande
+        final finalLeft = _isHovering && expandLeft 
+            ? baseLeft - (maxWidth - minWidth) 
+            : baseLeft;
+
         return Positioned(
-          bottom: 16 + _offset.dy,
-          left: 16 + _offset.dx,
+          bottom: baseBottom,
+          left: finalLeft,
           child: MouseRegion(
             onEnter: (_) {
               setState(() => _isHovering = true);

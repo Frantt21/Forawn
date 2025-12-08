@@ -3,6 +3,7 @@ import 'dart:io';
 import 'dart:math';
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:audioplayers/audioplayers.dart';
 import 'package:path/path.dart' as p;
@@ -28,6 +29,7 @@ class MusicPlayerScreen extends StatefulWidget {
 class _MusicPlayerScreenState extends State<MusicPlayerScreen> {
   late AudioPlayer _player;
   late GlobalMusicPlayer _musicPlayer;
+  late FocusNode _focusNode;
   
   List<FileSystemEntity> _files = [];
   bool _isLoading = false;
@@ -43,6 +45,7 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen> {
   @override
   void initState() {
     super.initState();
+    _focusNode = FocusNode();
     _musicPlayer = GlobalMusicPlayer();
     _player = _musicPlayer.player;
     debugPrint('[MusicPlayer] initState - Player state: ${_player.state}');
@@ -59,8 +62,6 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen> {
     
     // Listener para sincronizar cuando cambia la canción en otro lado
     _musicPlayer.currentIndex.addListener(_onCurrentIndexChanged);
-    _musicPlayer.currentTitle.addListener(_onMetadataChanged);
-    _musicPlayer.currentArtist.addListener(_onMetadataChanged);
     
     _initPlayer();
     _init();
@@ -104,46 +105,110 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen> {
       });
     }
   }
-  
-  void _onMetadataChanged() {
-    if (mounted) {
-      setState(() {
-        _currentTitle = _musicPlayer.currentTitle.value;
-        _currentArtist = _musicPlayer.currentArtist.value;
-      });
-    }
-  }
-
-  void _initPlayer() {
+    void _initPlayer() {
     _player.setReleaseMode(ReleaseMode.stop);
     
     // Registrar el callback global para auto-advance
     // Esto funciona incluso cuando no estamos en el screen del player
     _musicPlayer.onSongComplete = (currentIndex, loopMode, isShuffle) {
       _handleSongComplete(currentIndex);
+      // Actualizar UI local si estamos montados
+      if (mounted) {
+        setState(() {
+          _currentTitle = _musicPlayer.currentTitle.value;
+          _currentArtist = _musicPlayer.currentArtist.value;
+        });
+      }
     };
   }
   
   void _handleSongComplete([int? overrideIndex]) {
     final currentIndex = overrideIndex ?? _musicPlayer.currentIndex.value;
-    if (_musicPlayer.loopMode.value == LoopMode.one && currentIndex != null) {
-      _playFile(currentIndex);
-    } else if (_musicPlayer.loopMode.value != LoopMode.off && _files.isNotEmpty) {
-      final nextIdx = (currentIndex ?? -1) + 1;
-      if (nextIdx < _files.length) {
-        _playFile(nextIdx);
-      } else if (_musicPlayer.loopMode.value == LoopMode.all) {
-        _playFile(0);
+    
+    // Si estamos montados, usar _playFile que actualiza todo correctamente
+    if (mounted) {
+      if (_musicPlayer.loopMode.value == LoopMode.one && currentIndex != null) {
+        _playFile(currentIndex);
+      } else if (_musicPlayer.loopMode.value != LoopMode.off && _files.isNotEmpty) {
+        int nextIdx;
+        if (_musicPlayer.isShuffle.value) {
+          nextIdx = Random().nextInt(_files.length);
+        } else {
+          nextIdx = (currentIndex ?? -1) + 1;
+        }
+        if (nextIdx < _files.length) {
+          _playFile(nextIdx);
+        } else if (_musicPlayer.loopMode.value == LoopMode.all) {
+          _playFile(0);
+        }
       }
+    } else {
+      // Si NO estamos montados, actualizar solo el estado global
+      if (_musicPlayer.loopMode.value == LoopMode.one && currentIndex != null) {
+        _updateMetadataFromFile(currentIndex);
+      } else if (_musicPlayer.loopMode.value != LoopMode.off && _files.isNotEmpty) {
+        int nextIdx;
+        if (_musicPlayer.isShuffle.value) {
+          nextIdx = Random().nextInt(_files.length);
+        } else {
+          nextIdx = (currentIndex ?? -1) + 1;
+        }
+        if (nextIdx < _files.length) {
+          _updateMetadataFromFile(nextIdx);
+        } else if (_musicPlayer.loopMode.value == LoopMode.all) {
+          _updateMetadataFromFile(0);
+        }
+      }
+    }
+  }
+  
+  void _updateMetadataFromFile(int index) {
+    if (index < 0 || index >= _files.length) return;
+    final file = _files[index] as File;
+    
+    try {
+      final title = p.basename(file.path);
+      final artist = 'Unknown Artist';
+      
+      // Detener reproducción anterior
+      _musicPlayer.player.stop();
+      
+      // Reproducir archivo
+      _musicPlayer.player.play(DeviceFileSource(file.path));
+      
+      // Pequeño delay antes de obtener duración
+      Future.delayed(const Duration(milliseconds: 100), () {
+        _musicPlayer.player.getDuration().then((dur) {
+          _musicPlayer.duration.value = dur ?? Duration.zero;
+        });
+      });
+      
+      // Actualizar estado global
+      _musicPlayer.currentTitle.value = title;
+      _musicPlayer.currentArtist.value = artist;
+      _musicPlayer.currentIndex.value = index;
+      _musicPlayer.currentFilePath.value = file.path;
+      _musicPlayer.filesList.value = _files;
+      
+      // Si estamos montados, también actualizar el estado local
+      if (mounted) {
+        setState(() {
+          _currentTitle = title;
+          _currentArtist = artist;
+          _currentIndex = index;
+        });
+      }
+    } catch (e) {
+      debugPrint('[MusicPlayer] Error updating metadata: $e');
     }
   }
 
   @override
+  @override
   void dispose() {
     // Remover listeners de sincronización
     _musicPlayer.currentIndex.removeListener(_onCurrentIndexChanged);
-    _musicPlayer.currentTitle.removeListener(_onMetadataChanged);
-    _musicPlayer.currentArtist.removeListener(_onMetadataChanged);
+    _focusNode.dispose();
     
     // Los listeners globales persisten para el mini player
     // No detenemos el reproductor aquí porque queremos que continúe sonando
@@ -314,7 +379,13 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Row(
+    return RawKeyboardListener(
+      focusNode: _focusNode,
+      autofocus: true,
+      onKey: (event) {
+        _handleKeyboardEvent(event);
+      },
+      child: Row(
       children: [
         // Main Player Area
         Expanded(
@@ -422,14 +493,16 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen> {
                       icon: const Icon(Icons.skip_previous_rounded, size: 48),
                       onPressed: () {
                         if (_files.isEmpty) return;
-                        int nextIndex;
-                        if (_musicPlayer.isShuffle.value) {
-                          nextIndex = Random().nextInt(_files.length);
+                        
+                        // Si la canción lleva más de 3 segundos, reiniciarla
+                        if (_musicPlayer.position.value.inSeconds >= 3) {
+                          _playFile(_currentIndex ?? 0);
                         } else {
+                          // Si es menos de 3 segundos, ir a la anterior
                           final cur = _currentIndex ?? 0;
-                          nextIndex = max(0, cur - 1);
+                          final nextIndex = max(0, cur - 1);
+                          _playFile(nextIndex);
                         }
-                        _playFile(nextIndex);
                       },
                     ),
                     const SizedBox(width: 16),
@@ -613,6 +686,58 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen> {
           ),
         ),
       ],
+      ),
     );
   }
+
+  void _handleKeyboardEvent(RawKeyEvent event) {
+    // Solo procesar eventos de tecla presionada
+    if (event is! RawKeyDownEvent) return;
+    
+    final logicalKey = event.logicalKey;
+    
+    // Detectar F9 para anterior
+    if (logicalKey == LogicalKeyboardKey.f9) {
+      if (_files.isEmpty) return;
+      
+      // Si la canción lleva más de 3 segundos, reiniciarla
+      if (_musicPlayer.position.value.inSeconds >= 3) {
+        _playFile(_currentIndex ?? 0);
+      } else {
+        // Si es menos de 3 segundos, ir a la anterior
+        final cur = _currentIndex ?? 0;
+        final nextIndex = max(0, cur - 1);
+        _playFile(nextIndex);
+      }
+      return;
+    }
+    
+    // Detectar F10 para play/pausa
+    if (logicalKey == LogicalKeyboardKey.f10) {
+      if (_isPlaying) {
+        _player.pause();
+      } else {
+        if (_currentIndex != null) {
+          _player.resume();
+        }
+      }
+      return;
+    }
+    
+    // Detectar F11 para siguiente
+    if (logicalKey == LogicalKeyboardKey.f11) {
+      if (_files.isEmpty) return;
+      int nextIndex;
+      if (_musicPlayer.isShuffle.value) {
+        nextIndex = Random().nextInt(_files.length);
+      } else {
+        final cur = _currentIndex ?? -1;
+        nextIndex = min(_files.length - 1, cur + 1);
+      }
+      _playFile(nextIndex);
+      return;
+    }
+  }
 }
+
+
