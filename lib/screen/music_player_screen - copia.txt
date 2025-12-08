@@ -65,13 +65,9 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen> {
     // Listener para sincronizar cuando cambia la canción en otro lado
     _musicPlayer.currentIndex.addListener(_onCurrentIndexChanged);
     
-    // Registrar callbacks con GlobalKeyboardService
-    // Las teclas globales usarán estas funciones
-    GlobalKeyboardService().registerCallbacks(
-      playPrevious: _playPrevious,
-      playNext: _playNext,
-      togglePlayPause: _togglePlayPause,
-    );
+    // Listeners para sincronizar metadatos cuando cambian desde GlobalKeyboardService
+    _musicPlayer.currentTitle.addListener(_onMetadataChanged);
+    _musicPlayer.currentArtist.addListener(_onMetadataChanged);
     
     _initPlayer();
     _init();
@@ -115,11 +111,17 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen> {
       });
     }
   }
+
+  void _onMetadataChanged() {
+    if (mounted) {
+      setState(() {
+        _currentTitle = _musicPlayer.currentTitle.value;
+        _currentArtist = _musicPlayer.currentArtist.value;
+      });
+    }
+  }
     void _initPlayer() {
     _player.setReleaseMode(ReleaseMode.stop);
-    
-    // Listener para sincronizar play/pausa desde el estado global
-    _musicPlayer.isPlaying.addListener(_onPlayPauseChanged);
     
     // Registrar el callback global para auto-advance
     // Esto funciona incluso cuando no estamos en el screen del player
@@ -133,16 +135,6 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen> {
         });
       }
     };
-  }
-
-  void _onPlayPauseChanged() {
-    debugPrint('[MusicPlayer] Play pause changed: ${_musicPlayer.isPlaying.value}');
-    if (mounted) {
-      setState(() {
-        // Forzar rebuild para actualizar el botón play/pausa
-        debugPrint('[MusicPlayer] Updating UI - isPlaying: ${_musicPlayer.isPlaying.value}');
-      });
-    }
   }
   
   void _handleSongComplete([int? overrideIndex]) {
@@ -227,13 +219,12 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen> {
   }
 
   @override
+  @override
   void dispose() {
-    // Desregistrar callbacks del servicio de teclado global
-    GlobalKeyboardService().unregisterCallbacks();
-    
     // Remover listeners de sincronización
     _musicPlayer.currentIndex.removeListener(_onCurrentIndexChanged);
-    _musicPlayer.isPlaying.removeListener(_onPlayPauseChanged);
+    _musicPlayer.currentTitle.removeListener(_onMetadataChanged);
+    _musicPlayer.currentArtist.removeListener(_onMetadataChanged);
     _focusNode.dispose();
     
     // Los listeners globales persisten para el mini player
@@ -320,23 +311,19 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen> {
 
   Future<void> _loadMetadata(String filePath) async {
     try {
-      final title = p.basename(filePath);
-      final artist = widget.getText('unknown_artist', fallback: 'Unknown Artist');
-      
-      // Actualizar estado local
       if (mounted) {
         setState(() {
-          _currentTitle = title;
-          _currentArtist = artist;
+          _currentTitle = p.basename(filePath);
+          _currentArtist = widget.getText('unknown_artist', fallback: 'Unknown Artist');
           _currentArt = null;
         });
       }
-      
-      // Actualizar estado global
-      _musicPlayer.currentTitle.value = title;
-      _musicPlayer.currentArtist.value = artist;
-      
-      debugPrint('[MusicPlayer] Updated metadata: $title by $artist');
+      try {
+        _musicPlayer.currentTitle.value = _currentTitle;
+        _musicPlayer.currentArtist.value = _currentArtist;
+      } catch (e) {
+        debugPrint('[MusicPlayer] Error updating global metadata: $e');
+      }
     } catch (e) {
       debugPrint('[MusicPlayer] Error loading metadata: $e');
     }
@@ -385,16 +372,13 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen> {
         _musicPlayer.duration.value = Duration.zero;
       }
       
-      // IMPORTANTE: Cargar metadata ANTES de actualizar índice
-      // Esto asegura que los títulos se actualicen inmediatamente
-      await _loadMetadata(file.path);
-      
-      // Actualizar índice y datos globales
+      _loadMetadata(file.path);
       _musicPlayer.currentIndex.value = index;
       _musicPlayer.currentFilePath.value = file.path;
       _musicPlayer.filesList.value = _files;
       
-      // Agregar al historial cuando se empieza a reproducir
+      // Agregar al historial SOLO si se llama desde aquí
+      // GlobalKeyboardService ya lo agrega en su lado
       MusicHistory().addToHistory(file);
       
       // Mostrar mini reproductor
@@ -415,84 +399,7 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen> {
     return "${twoDigits(duration.inHours)}:$twoDigitMinutes:$twoDigitSeconds";
   }
 
-  bool get _isPlaying => _musicPlayer.isPlaying.value;
-
-  /// Función unificada para retroceso
-  /// Usada tanto por botones como por teclas globales
-  void _playPrevious() {
-    if (_files.isEmpty) return;
-    
-    // Si la canción lleva más de 3 segundos, reiniciarla
-    if (_musicPlayer.position.value.inSeconds >= 3) {
-      _playFile(_currentIndex ?? 0);
-    } else {
-      // Si es menos de 3 segundos, ir a la canción anterior en el historial
-      final previousTrack = MusicHistory().getPreviousTrack();
-      if (previousTrack != null) {
-        final index = _files.indexWhere((f) => (f as File).path == previousTrack.path);
-        if (index >= 0) {
-          _playFile(index);
-        }
-      } else {
-        // Si no hay historial, ir a la anterior en la playlist
-        final cur = _currentIndex ?? 0;
-        final nextIndex = max(0, cur - 1);
-        _playFile(nextIndex);
-      }
-    }
-  }
-
-  /// Función unificada para siguiente
-  /// Usada tanto por botones como por teclas globales
-  void _playNext() {
-    if (_files.isEmpty) return;
-    
-    int nextIndex;
-    if (_musicPlayer.isShuffle.value) {
-      nextIndex = Random().nextInt(_files.length);
-    } else {
-      final cur = _currentIndex ?? -1;
-      nextIndex = min(_files.length - 1, cur + 1);
-    }
-    _playFile(nextIndex);
-  }
-
-  /// Función unificada para play/pausa
-  /// Usada tanto por botones como por teclas globales
-  void _togglePlayPause() {
-    debugPrint('[MusicPlayer] Toggle play/pause pressed. Current state: ${_musicPlayer.isPlaying.value}');
-    
-    if (_isPlaying) {
-      // Pausar
-      debugPrint('[MusicPlayer] Pausing...');
-      _player.pause();
-      // Actualizar estado global y local inmediatamente
-      _musicPlayer.isPlaying.value = false;
-      if (mounted) {
-        setState(() {
-          debugPrint('[MusicPlayer] UI updated to paused');
-        });
-      }
-    } else {
-      // Reanudar o reproducir
-      if (_currentIndex == null && _files.isNotEmpty) {
-        // Si no hay canción seleccionada, reproducir la primera
-        debugPrint('[MusicPlayer] No song selected, playing first file');
-        _playFile(0);
-      } else {
-        // Si hay canción en pausa, reanudar
-        debugPrint('[MusicPlayer] Resuming...');
-        _player.resume();
-        // Actualizar estado global y local inmediatamente
-        _musicPlayer.isPlaying.value = true;
-        if (mounted) {
-          setState(() {
-            debugPrint('[MusicPlayer] UI updated to playing');
-          });
-        }
-      }
-    }
-  }
+  bool get _isPlaying => _player.state == PlayerState.playing;
 
   @override
   Widget build(BuildContext context) {
@@ -608,7 +515,29 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen> {
                     const SizedBox(width: 16),
                     IconButton(
                       icon: const Icon(Icons.skip_previous_rounded, size: 48),
-                      onPressed: _playPrevious,
+                      onPressed: () {
+                        if (_files.isEmpty) return;
+                        
+                        // Si la canción lleva más de 3 segundos, reiniciarla
+                        if (_musicPlayer.position.value.inSeconds >= 3) {
+                          GlobalKeyboardService().playFileSkipHistory(_currentIndex ?? 0);
+                        } else {
+                          // Si es menos de 3 segundos, ir a la canción anterior en el historial
+                          final previousTrack = MusicHistory().getPreviousTrack();
+                          if (previousTrack != null) {
+                            // Encontrar el índice del archivo en la lista
+                            final index = _files.indexWhere((f) => (f as File).path == previousTrack.path);
+                            if (index >= 0) {
+                              GlobalKeyboardService().playFileSkipHistory(index);
+                            }
+                          } else {
+                            // Si no hay historial, ir a la anterior en la playlist
+                            final cur = _currentIndex ?? 0;
+                            final nextIndex = max(0, cur - 1);
+                            GlobalKeyboardService().playFileSkipHistory(nextIndex);
+                          }
+                        }
+                      },
                     ),
                     const SizedBox(width: 16),
                     Container(
@@ -619,13 +548,36 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen> {
                           color: Colors.black,
                           size: 40
                         ),
-                        onPressed: _togglePlayPause,
+                        onPressed: () async {
+                          if (_isPlaying) {
+                            await _player.pause();
+                            _musicPlayer.isPlaying.value = false;
+                          } else {
+                            if (_currentIndex == null && _files.isNotEmpty) {
+                              await _playFile(0);
+                            } else {
+                              await _player.resume();
+                              _musicPlayer.isPlaying.value = true;
+                            }
+                          }
+                          setState(() {});
+                        },
                       ),
                     ),
                     const SizedBox(width: 16),
                     IconButton(
                       icon: const Icon(Icons.skip_next_rounded, size: 48),
-                      onPressed: _playNext,
+                      onPressed: () {
+                        if (_files.isEmpty) return;
+                        int nextIndex;
+                        if (_musicPlayer.isShuffle.value) {
+                          nextIndex = Random().nextInt(_files.length);
+                        } else {
+                          final cur = _currentIndex ?? -1;
+                          nextIndex = min(_files.length - 1, cur + 1);
+                        }
+                        GlobalKeyboardService().playFile(nextIndex);
+                      },
                     ),
                     const SizedBox(width: 16),
                     IconButton(
@@ -778,21 +730,54 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen> {
     
     final logicalKey = event.logicalKey;
     
-    // Detectar F9 para anterior - usa la misma función que el botón
+    // Detectar F9 para anterior
     if (logicalKey == LogicalKeyboardKey.f9) {
-      _playPrevious();
+      if (_files.isEmpty) return;
+      
+      // Si la canción lleva más de 3 segundos, reiniciarla
+      if (_musicPlayer.position.value.inSeconds >= 3) {
+        GlobalKeyboardService().playFileSkipHistory(_currentIndex ?? 0);
+      } else {
+        // Si es menos de 3 segundos, ir a la canción anterior en el historial
+        final previousTrack = MusicHistory().getPreviousTrack();
+        if (previousTrack != null) {
+          final index = _files.indexWhere((f) => (f as File).path == previousTrack.path);
+          if (index >= 0) {
+            GlobalKeyboardService().playFileSkipHistory(index);
+          }
+        } else {
+          // Si no hay historial, ir a la anterior en la playlist
+          final cur = _currentIndex ?? 0;
+          final nextIndex = max(0, cur - 1);
+          GlobalKeyboardService().playFileSkipHistory(nextIndex);
+        }
+      }
       return;
     }
     
-    // Detectar F10 para play/pausa - usa la misma función que el botón
+    // Detectar F10 para play/pausa
     if (logicalKey == LogicalKeyboardKey.f10) {
-      _togglePlayPause();
+      if (_isPlaying) {
+        _player.pause();
+      } else {
+        if (_currentIndex != null) {
+          _player.resume();
+        }
+      }
       return;
     }
     
-    // Detectar F11 para siguiente - usa la misma función que el botón
+    // Detectar F11 para siguiente
     if (logicalKey == LogicalKeyboardKey.f11) {
-      _playNext();
+      if (_files.isEmpty) return;
+      int nextIndex;
+      if (_musicPlayer.isShuffle.value) {
+        nextIndex = Random().nextInt(_files.length);
+      } else {
+        final cur = _currentIndex ?? -1;
+        nextIndex = min(_files.length - 1, cur + 1);
+      }
+      GlobalKeyboardService().playFile(nextIndex);
       return;
     }
   }

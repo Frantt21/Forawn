@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:io';
 import 'dart:typed_data';
+import 'music_history.dart';
 
 enum LoopMode { off, all, one }
 

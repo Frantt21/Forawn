@@ -1,0 +1,54 @@
+import 'dart:io';
+
+class MusicHistory {
+  static final MusicHistory _instance = MusicHistory._internal();
+
+  factory MusicHistory() {
+    return _instance;
+  }
+
+  MusicHistory._internal();
+
+  final List<File> _history = [];
+  static const int maxHistorySize = 5;
+
+  /// Agregar una canción al historial
+  void addToHistory(File file) {
+    // Si la canción ya está al principio, no la agreguemos de nuevo
+    if (_history.isNotEmpty && _history.first.path == file.path) {
+      return;
+    }
+
+    // Remover duplicados del historial
+    _history.removeWhere((f) => f.path == file.path);
+
+    // Agregar al inicio
+    _history.insert(0, file);
+
+    // Mantener máximo de 5 canciones
+    if (_history.length > maxHistorySize) {
+      _history.removeLast();
+    }
+  }
+
+  /// Obtener la canción anterior en el historial
+  File? getPreviousTrack() {
+    if (_history.length < 2) return null;
+    return _history[1]; // La segunda canción es la anterior
+  }
+
+  /// Obtener toda la lista de historial
+  List<File> getHistory() {
+    return List.from(_history);
+  }
+
+  /// Limpiar historial
+  void clearHistory() {
+    _history.clear();
+  }
+
+  /// Obtener tamaño actual del historial
+  int getHistorySize() {
+    return _history.length;
+  }
+}
