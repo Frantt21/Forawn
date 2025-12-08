@@ -31,7 +31,7 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen> {
   
   List<FileSystemEntity> _files = [];
   bool _isLoading = false;
-  bool _showPlaylist = true;
+  bool _showPlaylist = false;
   bool _toggleLocked = false;
 
   // Campos para UI local (sincronizados con global)
@@ -46,6 +46,9 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen> {
     _musicPlayer = GlobalMusicPlayer();
     _player = _musicPlayer.player;
     debugPrint('[MusicPlayer] initState - Player state: ${_player.state}');
+    
+    // Cargar estado de la playlist y otros valores cacheados
+    _loadCachedState();
     
     // Sincronizar la información de la canción actual desde el estado global
     if (_musicPlayer.currentIndex.value != null && _musicPlayer.currentIndex.value! >= 0) {
@@ -63,6 +66,34 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen> {
     _init();
     if (widget.onRegisterFolderAction != null) {
       widget.onRegisterFolderAction!(_selectFolder);
+    }
+  }
+  
+  Future<void> _loadCachedState() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      
+      // Cargar estado de playlist (default: true - abierta)
+      _showPlaylist = prefs.getBool('playlistVisible') ?? true;
+      
+      // Cargar loop mode por defecto: all (repetir todas)
+      if (_musicPlayer.loopMode.value == LoopMode.off) {
+        _musicPlayer.loopMode.value = LoopMode.all;
+      }
+      
+      debugPrint('[MusicPlayer] Playlist visible: $_showPlaylist');
+    } catch (e) {
+      debugPrint('[MusicPlayer] Error loading cached state: $e');
+    }
+  }
+  
+  Future<void> _saveCachedState() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setBool('playlistVisible', _showPlaylist);
+      debugPrint('[MusicPlayer] Cached playlist state: $_showPlaylist');
+    } catch (e) {
+      debugPrint('[MusicPlayer] Error saving cached state: $e');
     }
   }
   
@@ -86,16 +117,15 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen> {
   void _initPlayer() {
     _player.setReleaseMode(ReleaseMode.stop);
     
-    // Solo listener para auto-advance cuando termine una canción
-    _player.onPlayerStateChanged.listen((st) {
-      if (st == PlayerState.completed && mounted) {
-        _handleSongComplete();
-      }
-    });
+    // Registrar el callback global para auto-advance
+    // Esto funciona incluso cuando no estamos en el screen del player
+    _musicPlayer.onSongComplete = (currentIndex, loopMode, isShuffle) {
+      _handleSongComplete(currentIndex);
+    };
   }
   
-  void _handleSongComplete() {
-    final currentIndex = _musicPlayer.currentIndex.value;
+  void _handleSongComplete([int? overrideIndex]) {
+    final currentIndex = overrideIndex ?? _musicPlayer.currentIndex.value;
     if (_musicPlayer.loopMode.value == LoopMode.one && currentIndex != null) {
       _playFile(currentIndex);
     } else if (_musicPlayer.loopMode.value != LoopMode.off && _files.isNotEmpty) {
@@ -145,6 +175,7 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen> {
     if (_toggleLocked) return;
     _toggleLocked = true;
     setState(() => _showPlaylist = !_showPlaylist);
+    _saveCachedState(); // Guardar el nuevo estado
     Future.delayed(const Duration(milliseconds: 350), () {
       _toggleLocked = false;
     });
@@ -321,7 +352,7 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen> {
                 const SizedBox(height: 8),
                 Text(
                   _currentArtist,
-                  style: const TextStyle(fontSize: 16, color: Colors.cyanAccent),
+                  style: const TextStyle(fontSize: 16, color: Colors.purpleAccent),
                   textAlign: TextAlign.center,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
@@ -342,7 +373,7 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen> {
                               data: SliderTheme.of(context).copyWith(
                                 trackHeight: 4,
                                 thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 6),
-                                activeTrackColor: Colors.cyanAccent,
+                                activeTrackColor: Colors.purpleAccent,
                                 inactiveTrackColor: Colors.grey[800],
                                 thumbColor: Colors.white,
                               ),
@@ -379,7 +410,7 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen> {
                     IconButton(
                       icon: Icon(
                         Icons.shuffle,
-                        color: _musicPlayer.isShuffle.value ? Colors.cyanAccent : Colors.white54
+                        color: _musicPlayer.isShuffle.value ? Colors.purpleAccent : Colors.white54
                       ),
                       onPressed: () {
                         _musicPlayer.isShuffle.value = !_musicPlayer.isShuffle.value;
@@ -448,7 +479,7 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen> {
                             ? Icons.repeat_one_rounded
                             : Icons.repeat_rounded,
                         color: _musicPlayer.loopMode.value != LoopMode.off
-                            ? Colors.cyanAccent
+                            ? Colors.purpleAccent
                             : Colors.white54
                       ),
                       onPressed: () {
@@ -496,6 +527,16 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen> {
                     ],
                   ),
                 ),
+                const SizedBox(height: 16),
+
+                // Show Mini Player Button
+                IconButton(
+                  icon: const Icon(Icons.picture_in_picture, size: 24, color: Colors.purpleAccent),
+                  onPressed: () {
+                    _musicPlayer.showMiniPlayer.value = true;
+                  },
+                  tooltip: 'Mostrar mini reproductor',
+                ),
               ],
             ),
           ),
@@ -514,7 +555,7 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen> {
                   padding: const EdgeInsets.all(16),
                   child: Row(
                     children: [
-                      Icon(Icons.queue_music, color: Colors.cyanAccent),
+                      Icon(Icons.queue_music, color: Colors.purpleAccent),
                       const SizedBox(width: 8),
                       Expanded(child: Text(widget.getText('playlist_title', fallback: 'Playlist'), style: const TextStyle(fontWeight: FontWeight.bold))),
                     ],
@@ -544,9 +585,9 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen> {
                                     contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                                     minLeadingWidth: 56,
                                     leading: isSelected
-                                        ? const Icon(Icons.graphic_eq, color: Colors.cyanAccent, size: 20)
+                                        ? const Icon(Icons.graphic_eq, color: Colors.purpleAccent, size: 20)
                                         : const Icon(Icons.music_note, size: 20, color: Colors.white54),
-                                    title: Text(title, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(color: isSelected ? Colors.cyanAccent : Colors.white70, fontWeight: isSelected ? FontWeight.bold : FontWeight.normal)),
+                                    title: Text(title, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(color: isSelected ? Colors.purpleAccent : Colors.white70, fontWeight: isSelected ? FontWeight.bold : FontWeight.normal)),
                                     onTap: () {
                                       if (index < _files.length) _playFile(index);
                                     },

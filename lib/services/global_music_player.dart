@@ -21,6 +21,9 @@ class GlobalMusicPlayer {
 
   final AudioPlayer player = AudioPlayer();
   
+  // Callback para cuando termina una canción
+  Function(int? currentIndex, LoopMode loopMode, bool isShuffle)? onSongComplete;
+  
   void _initGlobalListeners() {
     // Estos listeners NUNCA se cancelan - son globales y persisten
     player.onPositionChanged.listen((pos) {
@@ -33,6 +36,10 @@ class GlobalMusicPlayer {
     
     player.onPlayerStateChanged.listen((state) {
       isPlaying.value = state == PlayerState.playing;
+      // Cuando la canción termina, llamar al callback
+      if (state == PlayerState.completed) {
+        onSongComplete?.call(currentIndex.value, loopMode.value, isShuffle.value);
+      }
     });
   }
   
@@ -85,7 +92,7 @@ class GlobalMusicPlayer {
   
   // Estado de reproducción
   final ValueNotifier<bool> isPlaying = ValueNotifier(false);
-  final ValueNotifier<bool> showMiniPlayer = ValueNotifier(false);
+  final ValueNotifier<bool> showMiniPlayer = ValueNotifier(true); // Mostrar por defecto
   
   // Información de la canción actual
   final ValueNotifier<String> currentTitle = ValueNotifier('');

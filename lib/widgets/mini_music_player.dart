@@ -20,6 +20,42 @@ class MiniMusicPlayer extends StatefulWidget {
 class _MiniMusicPlayerState extends State<MiniMusicPlayer> {
   final GlobalMusicPlayer _musicPlayer = GlobalMusicPlayer();
   bool _isHovering = false;
+  Offset _offset = const Offset(0, 0);
+  
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // Restringir offset si es muy grande
+    _limitOffset();
+  }
+  
+  void _limitOffset() {
+    final screenSize = MediaQuery.of(context).size;
+    const padding = 16.0;
+    const minPlayerWidth = 200.0;
+    const expandedPlayerWidth = 380.0;
+    
+    // Cuando está expandido, necesita más espacio
+    final maxWidth = _isHovering ? expandedPlayerWidth : minPlayerWidth;
+    
+    // Limitar posición para que no salga de la pantalla
+    final maxLeftOffset = screenSize.width - maxWidth - padding * 2;
+    final maxBottomOffset = screenSize.height - 100;
+    
+    if (_offset.dx > maxLeftOffset || _offset.dx < -padding) {
+      _offset = Offset(
+        _offset.dx.clamp(-padding, maxLeftOffset),
+        _offset.dy,
+      );
+    }
+    
+    if (_offset.dy > maxBottomOffset || _offset.dy < -padding) {
+      _offset = Offset(
+        _offset.dx,
+        _offset.dy.clamp(-padding, maxBottomOffset),
+      );
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -29,16 +65,24 @@ class _MiniMusicPlayerState extends State<MiniMusicPlayer> {
         if (!showMini) return const SizedBox.shrink();
 
         return Positioned(
-          bottom: 16,
-          left: 0,
-          right: 0,
-          child: Center(
-            child: MouseRegion(
-              onEnter: (_) {
-                setState(() => _isHovering = true);
-              },
-              onExit: (_) {
-                setState(() => _isHovering = false);
+          bottom: 16 + _offset.dy,
+          left: 16 + _offset.dx,
+          child: MouseRegion(
+            onEnter: (_) {
+              setState(() => _isHovering = true);
+            },
+            onExit: (_) {
+              setState(() => _isHovering = false);
+            },
+            child: GestureDetector(
+              onPanUpdate: (details) {
+                setState(() {
+                  _offset = Offset(
+                    _offset.dx + details.delta.dx,
+                    _offset.dy - details.delta.dy,
+                  );
+                  _limitOffset();
+                });
               },
               child: AnimatedContainer(
                 duration: const Duration(milliseconds: 300),
@@ -46,9 +90,9 @@ class _MiniMusicPlayerState extends State<MiniMusicPlayer> {
                 width: _isHovering ? 380 : 200,
                 padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
-                  color: Colors.black87,
+                  color: const Color.fromARGB(225, 30, 30, 30),
                   borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: Colors.cyanAccent, width: 1),
+                  border: Border.all(color: Colors.purpleAccent, width: 1),
                   boxShadow: [
                     BoxShadow(
                       color: Colors.black54,
@@ -59,9 +103,11 @@ class _MiniMusicPlayerState extends State<MiniMusicPlayer> {
                 ),
                 child: Material(
                   color: Colors.transparent,
-                  child: _isHovering
-                      ? _buildExpandedPlayer()
-                      : _buildCollapsedPlayer(),
+                  child: SingleChildScrollView(
+                    child: _isHovering
+                        ? _buildExpandedPlayer()
+                        : _buildCollapsedPlayer(),
+                  ),
                 ),
               ),
             ),
@@ -115,7 +161,7 @@ class _MiniMusicPlayerState extends State<MiniMusicPlayer> {
                           Text(
                             timeStr,
                             style: const TextStyle(
-                              color: Colors.cyanAccent,
+                              color: Colors.purpleAccent,
                               fontSize: 10,
                             ),
                           ),
@@ -137,44 +183,68 @@ class _MiniMusicPlayerState extends State<MiniMusicPlayer> {
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
-        // Título y artista
-        ValueListenableBuilder<String>(
-          valueListenable: _musicPlayer.currentTitle,
-          builder: (context, title, _) {
-            return ValueListenableBuilder<String>(
-              valueListenable: _musicPlayer.currentArtist,
-              builder: (context, artist, _) {
-                return Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text(
-                      title.isEmpty
-                          ? (widget.getText?.call('no_song',
-                                  fallback: 'No Song') ??
-                              'No Song')
-                          : title,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 13,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                    Text(
-                      artist.isEmpty ? 'Unknown' : artist,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                        color: Colors.grey,
-                        fontSize: 11,
-                      ),
-                    ),
-                  ],
-                );
+        // Header con botón cerrar
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Expanded(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // Título y artista
+                  ValueListenableBuilder<String>(
+                    valueListenable: _musicPlayer.currentTitle,
+                    builder: (context, title, _) {
+                      return ValueListenableBuilder<String>(
+                        valueListenable: _musicPlayer.currentArtist,
+                        builder: (context, artist, _) {
+                          return Column(
+                            mainAxisSize: MainAxisSize.min,
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                title.isEmpty
+                                    ? (widget.getText?.call('no_song',
+                                            fallback: 'No Song') ??
+                                        'No Song')
+                                    : title,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                              Text(
+                                artist.isEmpty ? 'Unknown' : artist,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(
+                                  color: Colors.grey,
+                                  fontSize: 11,
+                                ),
+                              ),
+                            ],
+                          );
+                        },
+                      );
+                    },
+                  ),
+                ],
+              ),
+            ),
+            IconButton(
+              icon: const Icon(Icons.close, color: Colors.white, size: 16),
+              onPressed: () {
+                _musicPlayer.showMiniPlayer.value = false;
               },
-            );
-          },
+              padding: EdgeInsets.zero,
+              constraints: const BoxConstraints(),
+              tooltip: 'Cerrar (click en Player para mostrar)',
+            ),
+          ],
         ),
         const SizedBox(height: 8),
 
@@ -201,7 +271,7 @@ class _MiniMusicPlayerState extends State<MiniMusicPlayer> {
                         value: position.inMilliseconds
                             .toDouble()
                             .clamp(0, duration.inMilliseconds.toDouble()),
-                        activeColor: Colors.cyanAccent,
+                        activeColor: Colors.purpleAccent,
                         inactiveColor: Colors.grey[700],
                         onChanged: (value) {
                           _musicPlayer.player
@@ -217,7 +287,7 @@ class _MiniMusicPlayerState extends State<MiniMusicPlayer> {
                           Text(
                             _formatTime(position),
                             style: const TextStyle(
-                              color: Colors.cyanAccent,
+                              color: Colors.purpleAccent,
                               fontSize: 10,
                             ),
                           ),
@@ -256,7 +326,7 @@ class _MiniMusicPlayerState extends State<MiniMusicPlayer> {
                             : Icons.repeat_one,
                     color: mode == LoopMode.off
                         ? Colors.grey
-                        : Colors.cyanAccent,
+                        : Colors.purpleAccent,
                     size: 18,
                   ),
                   onPressed: () {
@@ -279,7 +349,7 @@ class _MiniMusicPlayerState extends State<MiniMusicPlayer> {
                 return IconButton(
                   icon: Icon(
                     isPlaying ? Icons.pause : Icons.play_arrow,
-                    color: Colors.cyanAccent,
+                    color: Colors.purpleAccent,
                     size: 24,
                   ),
                   onPressed: () async {
@@ -302,7 +372,7 @@ class _MiniMusicPlayerState extends State<MiniMusicPlayer> {
                 return IconButton(
                   icon: Icon(
                     Icons.shuffle,
-                    color: isShuffle ? Colors.cyanAccent : Colors.grey,
+                    color: isShuffle ? Colors.purpleAccent : Colors.grey,
                     size: 18,
                   ),
                   onPressed: () {
@@ -319,7 +389,7 @@ class _MiniMusicPlayerState extends State<MiniMusicPlayer> {
             IconButton(
               icon: const Icon(
                 Icons.expand_less,
-                color: Colors.cyanAccent,
+                color: Colors.purpleAccent,
                 size: 18,
               ),
               onPressed: () {
@@ -341,7 +411,7 @@ class _MiniMusicPlayerState extends State<MiniMusicPlayer> {
                     children: [
                       Icon(
                         vol > 0 ? Icons.volume_up : Icons.volume_off,
-                        color: Colors.cyanAccent,
+                        color: Colors.purpleAccent,
                         size: 14,
                       ),
                       Expanded(
@@ -352,7 +422,7 @@ class _MiniMusicPlayerState extends State<MiniMusicPlayer> {
                           onChanged: (value) {
                             _musicPlayer.volume.value = value;
                           },
-                          activeColor: Colors.cyanAccent,
+                          activeColor: Colors.purpleAccent,
                           inactiveColor: Colors.grey[700],
                         ),
                       ),
