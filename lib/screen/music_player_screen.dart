@@ -1,4 +1,3 @@
-// music_player_screen.dart
 import 'dart:async';
 import 'dart:io';
 import 'dart:math';
@@ -32,24 +31,14 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen> {
   
   List<FileSystemEntity> _files = [];
   bool _isLoading = false;
-  int? _currentIndex;
   bool _showPlaylist = true;
-
-  bool _isShuffle = false;
-  bool _isMuted = false;
   bool _toggleLocked = false;
-  double _volume = 1.0;
-  LoopMode _loopMode = LoopMode.off;
 
+  // Campos para UI local (sincronizados con global)
   String _currentTitle = '';
   String _currentArtist = '';
   Uint8List? _currentArt;
-
-  StreamSubscription<Duration>? _posSub;
-  StreamSubscription<PlayerState>? _stateSub;
-
-  Duration _position = Duration.zero;
-  Duration _duration = Duration.zero;
+  int? _currentIndex;
 
   @override
   void initState() {
@@ -57,71 +46,77 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen> {
     _musicPlayer = GlobalMusicPlayer();
     _player = _musicPlayer.player;
     debugPrint('[MusicPlayer] initState - Player state: ${_player.state}');
+    
+    // Sincronizar la información de la canción actual desde el estado global
+    if (_musicPlayer.currentIndex.value != null && _musicPlayer.currentIndex.value! >= 0) {
+      _currentIndex = _musicPlayer.currentIndex.value;
+      _currentTitle = _musicPlayer.currentTitle.value;
+      _currentArtist = _musicPlayer.currentArtist.value;
+    }
+    
+    // Listener para sincronizar cuando cambia la canción en otro lado
+    _musicPlayer.currentIndex.addListener(_onCurrentIndexChanged);
+    _musicPlayer.currentTitle.addListener(_onMetadataChanged);
+    _musicPlayer.currentArtist.addListener(_onMetadataChanged);
+    
     _initPlayer();
     _init();
     if (widget.onRegisterFolderAction != null) {
       widget.onRegisterFolderAction!(_selectFolder);
     }
   }
+  
+  void _onCurrentIndexChanged() {
+    if (mounted) {
+      setState(() {
+        _currentIndex = _musicPlayer.currentIndex.value;
+      });
+    }
+  }
+  
+  void _onMetadataChanged() {
+    if (mounted) {
+      setState(() {
+        _currentTitle = _musicPlayer.currentTitle.value;
+        _currentArtist = _musicPlayer.currentArtist.value;
+      });
+    }
+  }
 
   void _initPlayer() {
     _player.setReleaseMode(ReleaseMode.stop);
-
-    // Cancelar listeners previos si existen
-    _posSub?.cancel();
-    _stateSub?.cancel();
-
-    _posSub = _player.onPositionChanged.listen(
-      (pos) {
-        if (mounted) {
-          setState(() => _position = pos);
-          try {
-            _musicPlayer.position.value = pos;
-          } catch (e) {
-            debugPrint('[MusicPlayer] Error updating position: $e');
-          }
-        }
-      },
-      onError: (error) {
-        debugPrint('[MusicPlayer] Position stream error: $error');
-      },
-    );
-
-    _stateSub = _player.onPlayerStateChanged.listen(
-      (st) async {
-        if (!mounted) return;
-        
-        try {
-          _musicPlayer.isPlaying.value = st == PlayerState.playing;
-        } catch (e) {
-          debugPrint('[MusicPlayer] Error updating isPlaying: $e');
-        }
-        
-        if (st == PlayerState.completed) {
-          if (_loopMode == LoopMode.one && _currentIndex != null) {
-            _playFile(_currentIndex!);
-          } else if (_loopMode != LoopMode.off && _files.isNotEmpty) {
-            final next = (_currentIndex ?? -1) + 1;
-            if (next < _files.length) {
-              _playFile(next);
-            } else if (_loopMode == LoopMode.all) {
-              _playFile(0);
-            }
-          }
-        }
-      },
-      onError: (error) {
-        debugPrint('[MusicPlayer] Player state stream error: $error');
-      },
-    );
+    
+    // Solo listener para auto-advance cuando termine una canción
+    _player.onPlayerStateChanged.listen((st) {
+      if (st == PlayerState.completed && mounted) {
+        _handleSongComplete();
+      }
+    });
+  }
+  
+  void _handleSongComplete() {
+    final currentIndex = _musicPlayer.currentIndex.value;
+    if (_musicPlayer.loopMode.value == LoopMode.one && currentIndex != null) {
+      _playFile(currentIndex);
+    } else if (_musicPlayer.loopMode.value != LoopMode.off && _files.isNotEmpty) {
+      final nextIdx = (currentIndex ?? -1) + 1;
+      if (nextIdx < _files.length) {
+        _playFile(nextIdx);
+      } else if (_musicPlayer.loopMode.value == LoopMode.all) {
+        _playFile(0);
+      }
+    }
   }
 
   @override
   void dispose() {
-    _posSub?.cancel();
-    _stateSub?.cancel();
+    // Remover listeners de sincronización
+    _musicPlayer.currentIndex.removeListener(_onCurrentIndexChanged);
+    _musicPlayer.currentTitle.removeListener(_onMetadataChanged);
+    _musicPlayer.currentArtist.removeListener(_onMetadataChanged);
+    
+    // Los listeners globales persisten para el mini player
     // No detenemos el reproductor aquí porque queremos que continúe sonando
-    // cuando se salga de esta pantalla
     super.dispose();
   }
 
@@ -188,8 +183,8 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen> {
           _currentTitle = '';
           _currentArtist = '';
           _currentArt = null;
-          _position = Duration.zero;
-          _duration = Duration.zero;
+          _musicPlayer.position.value = Duration.zero;
+          _musicPlayer.duration.value = Duration.zero;
         }
       }
     } catch (e) {
@@ -253,15 +248,18 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen> {
       
       // Obtener duración
       try {
-        _duration = await _player.getDuration() ?? Duration.zero;
-        debugPrint('[MusicPlayer] Duration: ${_duration.inSeconds}s');
-        _musicPlayer.duration.value = _duration;
+        final dur = await _player.getDuration() ?? Duration.zero;
+        debugPrint('[MusicPlayer] Duration: ${dur.inSeconds}s');
+        _musicPlayer.duration.value = dur;
       } catch (e) {
         debugPrint("[MusicPlayer] Error getting duration: $e");
-        _duration = Duration.zero;
+        _musicPlayer.duration.value = Duration.zero;
       }
       
       _loadMetadata(file.path);
+      _musicPlayer.currentIndex.value = index;
+      _musicPlayer.currentFilePath.value = file.path;
+      _musicPlayer.filesList.value = _files;
       
       // Mostrar mini reproductor
       _musicPlayer.showMiniPlayer.value = true;
@@ -332,34 +330,44 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen> {
                 const SizedBox(height: 32),
 
                 // Progress
-                Column(
-                  children: [
-                    SliderTheme(
-                      data: SliderTheme.of(context).copyWith(
-                        trackHeight: 4,
-                        thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 6),
-                        activeTrackColor: Colors.cyanAccent,
-                        inactiveTrackColor: Colors.grey[800],
-                        thumbColor: Colors.white,
-                      ),
-                      child: Slider(
-                        value: min(_position.inMilliseconds.toDouble(), _duration.inMilliseconds.toDouble()),
-                        max: max(_duration.inMilliseconds.toDouble(), 1.0),
-                        onChanged: (value) async {
-                          final pos = Duration(milliseconds: value.toInt());
-                          await _player.seek(pos);
-                          if (!_isPlaying) await _player.resume();
-                        },
-                      ),
-                    ),
-                    Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 20),
-                      child: Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
-                        Text(_formatDuration(_position), style: const TextStyle(color: Colors.white54)),
-                        Text(_formatDuration(_duration), style: const TextStyle(color: Colors.white54)),
-                      ]),
-                    ),
-                  ],
+                ValueListenableBuilder<Duration>(
+                  valueListenable: _musicPlayer.position,
+                  builder: (context, position, _) {
+                    return ValueListenableBuilder<Duration>(
+                      valueListenable: _musicPlayer.duration,
+                      builder: (context, duration, _) {
+                        return Column(
+                          children: [
+                            SliderTheme(
+                              data: SliderTheme.of(context).copyWith(
+                                trackHeight: 4,
+                                thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 6),
+                                activeTrackColor: Colors.cyanAccent,
+                                inactiveTrackColor: Colors.grey[800],
+                                thumbColor: Colors.white,
+                              ),
+                              child: Slider(
+                                value: min(position.inMilliseconds.toDouble(), duration.inMilliseconds.toDouble()),
+                                max: max(duration.inMilliseconds.toDouble(), 1.0),
+                                onChanged: (value) async {
+                                  final pos = Duration(milliseconds: value.toInt());
+                                  await _player.seek(pos);
+                                  if (!_isPlaying) await _player.resume();
+                                },
+                              ),
+                            ),
+                            Padding(
+                              padding: const EdgeInsets.symmetric(horizontal: 20),
+                              child: Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
+                                Text(_formatDuration(position), style: const TextStyle(color: Colors.white54)),
+                                Text(_formatDuration(duration), style: const TextStyle(color: Colors.white54)),
+                              ]),
+                            ),
+                          ],
+                        );
+                      },
+                    );
+                  },
                 ),
 
                 const SizedBox(height: 24),
@@ -369,8 +377,14 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen> {
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
                     IconButton(
-                      icon: Icon(Icons.shuffle, color: _isShuffle ? Colors.cyanAccent : Colors.white54),
-                      onPressed: () => setState(() => _isShuffle = !_isShuffle),
+                      icon: Icon(
+                        Icons.shuffle,
+                        color: _musicPlayer.isShuffle.value ? Colors.cyanAccent : Colors.white54
+                      ),
+                      onPressed: () {
+                        _musicPlayer.isShuffle.value = !_musicPlayer.isShuffle.value;
+                        setState(() {});
+                      },
                     ),
                     const SizedBox(width: 16),
                     IconButton(
@@ -378,7 +392,7 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen> {
                       onPressed: () {
                         if (_files.isEmpty) return;
                         int nextIndex;
-                        if (_isShuffle) {
+                        if (_musicPlayer.isShuffle.value) {
                           nextIndex = Random().nextInt(_files.length);
                         } else {
                           final cur = _currentIndex ?? 0;
@@ -391,15 +405,21 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen> {
                     Container(
                       decoration: const BoxDecoration(color: Colors.white, shape: BoxShape.circle),
                       child: IconButton(
-                        icon: Icon(_isPlaying ? Icons.pause_rounded : Icons.play_arrow_rounded, color: Colors.black, size: 40),
+                        icon: Icon(
+                          _isPlaying ? Icons.pause_rounded : Icons.play_arrow_rounded,
+                          color: Colors.black,
+                          size: 40
+                        ),
                         onPressed: () async {
                           if (_isPlaying) {
                             await _player.pause();
+                            _musicPlayer.isPlaying.value = false;
                           } else {
                             if (_currentIndex == null && _files.isNotEmpty) {
                               await _playFile(0);
                             } else {
                               await _player.resume();
+                              _musicPlayer.isPlaying.value = true;
                             }
                           }
                           setState(() {});
@@ -412,7 +432,7 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen> {
                       onPressed: () {
                         if (_files.isEmpty) return;
                         int nextIndex;
-                        if (_isShuffle) {
+                        if (_musicPlayer.isShuffle.value) {
                           nextIndex = Random().nextInt(_files.length);
                         } else {
                           final cur = _currentIndex ?? -1;
@@ -423,12 +443,20 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen> {
                     ),
                     const SizedBox(width: 16),
                     IconButton(
-                      icon: Icon(_loopMode == LoopMode.one ? Icons.repeat_one_rounded : Icons.repeat_rounded,
-                          color: _loopMode != LoopMode.off ? Colors.cyanAccent : Colors.white54),
+                      icon: Icon(
+                        _musicPlayer.loopMode.value == LoopMode.one
+                            ? Icons.repeat_one_rounded
+                            : Icons.repeat_rounded,
+                        color: _musicPlayer.loopMode.value != LoopMode.off
+                            ? Colors.cyanAccent
+                            : Colors.white54
+                      ),
                       onPressed: () {
                         final modes = [LoopMode.off, LoopMode.all, LoopMode.one];
-                        final nextIndex = (modes.indexOf(_loopMode) + 1) % modes.length;
-                        setState(() => _loopMode = modes[nextIndex]);
+                        final currentIndex = modes.indexOf(_musicPlayer.loopMode.value);
+                        final nextIndex = (currentIndex + 1) % modes.length;
+                        _musicPlayer.loopMode.value = modes[nextIndex];
+                        setState(() {});
                       },
                     ),
                   ],
@@ -440,7 +468,11 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen> {
                   width: 200,
                   child: Row(
                     children: [
-                      Icon(_isMuted ? Icons.volume_off : Icons.volume_up, color: Colors.white54, size: 20),
+                      Icon(
+                        _musicPlayer.isMuted.value ? Icons.volume_off : Icons.volume_up,
+                        color: Colors.white54,
+                        size: 20
+                      ),
                       Expanded(
                         child: SliderTheme(
                           data: SliderTheme.of(context).copyWith(
@@ -451,14 +483,12 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen> {
                             thumbColor: Colors.white,
                           ),
                           child: Slider(
-                            value: _volume,
+                            value: _musicPlayer.volume.value,
                             onChanged: (value) async {
-                              setState(() {
-                                _volume = value;
-                                _isMuted = value == 0;
-                              });
-                              await _player.setVolume(value);
                               _musicPlayer.volume.value = value;
+                              _musicPlayer.isMuted.value = value == 0;
+                              await _player.setVolume(value);
+                              setState(() {});
                             },
                           ),
                         ),
@@ -545,5 +575,3 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen> {
     );
   }
 }
-
-enum LoopMode { off, all, one }
