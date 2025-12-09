@@ -21,41 +21,31 @@ class _MiniMusicPlayerState extends State<MiniMusicPlayer> {
   final GlobalMusicPlayer _musicPlayer = GlobalMusicPlayer();
   bool _isHovering = false;
   Offset _offset = const Offset(0, 0);
-  
+
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
     // Restringir offset si es muy grande
     _limitOffset();
   }
-  
+
   void _limitOffset() {
     final screenSize = MediaQuery.of(context).size;
     const padding = 16.0;
-    const minPlayerWidth = 200.0;
     const expandedPlayerWidth = 380.0;
-    const playerHeight = 250.0; // Altura aproximada cuando está expandido
-    
-    // Cuando está expandido, necesita más espacio
-    final maxWidth = _isHovering ? expandedPlayerWidth : minPlayerWidth;
-    final maxHeight = _isHovering ? playerHeight : 60.0;
-    
-    // Limitar posición para que no salga de la pantalla
-    final maxLeftOffset = screenSize.width - maxWidth - padding;
-    final maxBottomOffset = screenSize.height - maxHeight - padding;
-    
+    const expandedPlayerHeight = 250.0;
+
+    // IMPORTANTE: Siempre usar tamaños expandidos para los límites
+    // Esto evita que el reproductor se salga de la pantalla al expandirse
+    final maxLeftOffset = screenSize.width - expandedPlayerWidth - padding;
+    final maxBottomOffset = screenSize.height - expandedPlayerHeight - padding;
+
     if (_offset.dx > maxLeftOffset || _offset.dx < -padding) {
-      _offset = Offset(
-        _offset.dx.clamp(-padding, maxLeftOffset),
-        _offset.dy,
-      );
+      _offset = Offset(_offset.dx.clamp(-padding, maxLeftOffset), _offset.dy);
     }
-    
+
     if (_offset.dy > maxBottomOffset || _offset.dy < -padding) {
-      _offset = Offset(
-        _offset.dx,
-        _offset.dy.clamp(-padding, maxBottomOffset),
-      );
+      _offset = Offset(_offset.dx, _offset.dy.clamp(-padding, maxBottomOffset));
     }
   }
 
@@ -69,18 +59,18 @@ class _MiniMusicPlayerState extends State<MiniMusicPlayer> {
         final screenSize = MediaQuery.of(context).size;
         const minWidth = 200.0;
         const maxWidth = 380.0;
-        
+
         // Posición base del mini player
         final baseLeft = 16.0 + _offset.dx;
         final baseBottom = 16.0 + _offset.dy;
-        
+
         // Calcular si hay espacio suficiente para expandir a la derecha
         final spaceToRight = screenSize.width - baseLeft - minWidth;
         final expandLeft = spaceToRight < maxWidth - minWidth;
-        
+
         // Ajustar left dinámicamente cuando se expande
-        final finalLeft = _isHovering && expandLeft 
-            ? baseLeft - (maxWidth - minWidth) 
+        final finalLeft = _isHovering && expandLeft
+            ? baseLeft - (maxWidth - minWidth)
             : baseLeft;
 
         return Positioned(
@@ -162,9 +152,11 @@ class _MiniMusicPlayerState extends State<MiniMusicPlayer> {
                           Expanded(
                             child: Text(
                               title.isEmpty
-                                  ? (widget.getText?.call('no_song',
-                                          fallback: 'No music') ??
-                                      'No music')
+                                  ? (widget.getText?.call(
+                                          'no_song',
+                                          fallback: 'No music',
+                                        ) ??
+                                        'No music')
                                   : title,
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
@@ -224,9 +216,11 @@ class _MiniMusicPlayerState extends State<MiniMusicPlayer> {
                             children: [
                               Text(
                                 title.isEmpty
-                                    ? (widget.getText?.call('no_song',
-                                            fallback: 'No Song') ??
-                                        'No Song')
+                                    ? (widget.getText?.call(
+                                            'no_song',
+                                            fallback: 'No Song',
+                                          ) ??
+                                          'No Song')
                                     : title,
                                 maxLines: 1,
                                 overflow: TextOverflow.ellipsis,
@@ -287,14 +281,16 @@ class _MiniMusicPlayerState extends State<MiniMusicPlayer> {
                       child: Slider(
                         min: 0,
                         max: duration.inMilliseconds.toDouble(),
-                        value: position.inMilliseconds
-                            .toDouble()
-                            .clamp(0, duration.inMilliseconds.toDouble()),
+                        value: position.inMilliseconds.toDouble().clamp(
+                          0,
+                          duration.inMilliseconds.toDouble(),
+                        ),
                         activeColor: Colors.purpleAccent,
                         inactiveColor: Colors.grey[700],
                         onChanged: (value) {
-                          _musicPlayer.player
-                              .seek(Duration(milliseconds: value.toInt()));
+                          _musicPlayer.player.seek(
+                            Duration(milliseconds: value.toInt()),
+                          );
                         },
                       ),
                     ),
@@ -341,8 +337,8 @@ class _MiniMusicPlayerState extends State<MiniMusicPlayer> {
                     mode == LoopMode.off
                         ? Icons.repeat
                         : mode == LoopMode.all
-                            ? Icons.repeat
-                            : Icons.repeat_one,
+                        ? Icons.repeat
+                        : Icons.repeat_one,
                     color: mode == LoopMode.off
                         ? Colors.grey
                         : Colors.purpleAccent,
