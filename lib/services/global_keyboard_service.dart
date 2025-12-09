@@ -153,7 +153,7 @@ class GlobalKeyboardService {
     _isNavigatingHistory = false;
   }
 
-  void _playFile(int index, {bool skipHistory = false}) {
+  void _playFile(int index, {bool skipHistory = false}) async {
     if (_files == null || index < 0 || index >= _files!.length) return;
     final file = _files![index];
 
@@ -163,7 +163,10 @@ class GlobalKeyboardService {
     );
 
     try {
-      _musicPlayer.player.play(DeviceFileSource(file.path));
+      // Detener antes de reproducir para evitar errores de MediaEngine en Windows
+      await _musicPlayer.player.stop();
+
+      await _musicPlayer.player.play(DeviceFileSource(file.path));
       _musicPlayer.currentIndex.value = index;
       _musicPlayer.currentFilePath.value = file.path;
       _musicPlayer.filesList.value = _files!;
@@ -193,6 +196,14 @@ class GlobalKeyboardService {
 
     final logicalKey = event.logicalKey;
     final physicalKey = event.physicalKey;
+
+    // Evitar conflicto con HotkeyManager (Shift+F9/F10/F11)
+    if (event.isShiftPressed &&
+        (logicalKey == LogicalKeyboardKey.f9 ||
+            logicalKey == LogicalKeyboardKey.f10 ||
+            logicalKey == LogicalKeyboardKey.f11)) {
+      return;
+    }
 
     // Media Previous (tecla multimedia nativa) o F9
     if (physicalKey == PhysicalKeyboardKey.mediaTrackPrevious ||

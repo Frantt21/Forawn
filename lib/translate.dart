@@ -527,22 +527,38 @@ class _TranslateScreenState extends State<TranslateScreen> with WindowListener {
               Expanded(
                 child: Container(
                   width: double.infinity,
-                  padding: const EdgeInsets.all(12),
                   decoration: BoxDecoration(
                     color: Colors.black12,
                     borderRadius: BorderRadius.circular(10),
                     border: Border.all(color: Colors.white.withOpacity(0.04)),
                   ),
-                  child: SingleChildScrollView(
-                    child: Text(
-                      _translated.isEmpty
-                          ? get(
-                              'no_translation',
-                              fallback: 'No translation yet',
-                            )
-                          : _translated,
-                      style: const TextStyle(fontSize: 14),
-                    ),
+                  child: Stack(
+                    children: [
+                      Positioned.fill(
+                        child: SingleChildScrollView(
+                          padding: const EdgeInsets.all(12),
+                          child: SelectableText(
+                            _translated.isEmpty
+                                ? get(
+                                    'no_translation',
+                                    fallback: 'No translation yet',
+                                  )
+                                : _translated,
+                            style: const TextStyle(fontSize: 14),
+                          ),
+                        ),
+                      ),
+                      if (_translated.isNotEmpty)
+                        Positioned(
+                          top: 4,
+                          right: 4,
+                          child: IconButton(
+                            icon: const Icon(Icons.copy, size: 18),
+                            tooltip: get('copy_tooltip', fallback: 'Copy'),
+                            onPressed: _copyToClipboard,
+                          ),
+                        ),
+                    ],
                   ),
                 ),
               ),
