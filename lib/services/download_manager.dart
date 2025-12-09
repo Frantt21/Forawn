@@ -522,8 +522,7 @@ class DownloadManager extends ChangeNotifier {
   ) async {
     try {
       final encodedUrl = Uri.encodeComponent(t.sourceUrl ?? '');
-      final apiUrl =
-          '${ApiConfig.dorratzBaseUrl}/spotifydl?url=$encodedUrl';
+      final apiUrl = '${ApiConfig.dorratzBaseUrl}/spotifydl?url=$encodedUrl';
       debugPrint('[DownloadManager] spotifydl request: $apiUrl');
       final res = await http
           .get(Uri.parse(apiUrl))
@@ -792,12 +791,18 @@ class DownloadManager extends ChangeNotifier {
       '--no-playlist',
       '--ignore-errors',
       '--no-warnings',
-      '--no-overwrites',
       '--newline',
       '--add-header',
       'User-Agent: Mozilla/5.0',
       '--add-header',
       'Referer: https://www.youtube.com',
+      // Embeber metadatos en el archivo
+      '--embed-metadata',
+      '--embed-thumbnail',
+      '--convert-thumbnails', 'jpg',
+      // Parsear título para extraer artista y canción
+      '--parse-metadata', 'title:%(artist)s - %(title)s',
+      '--parse-metadata', 'title:%(title)s',
     ];
 
     if (extractAudio && File(ffmpegExe).existsSync()) {
@@ -807,6 +812,9 @@ class DownloadManager extends ChangeNotifier {
         'mp3',
         '--ffmpeg-location',
         ffmpegExe,
+        // Asegurar que los metadatos se embeben en el MP3
+        '--embed-thumbnail',
+        '--add-metadata',
       ]);
     }
 
