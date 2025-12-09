@@ -15,13 +15,13 @@ import '../widgets/elegant_notification.dart';
 /// Simple token for cancelling HTTP requests
 class CancelToken {
   bool _isCancelled = false;
-  
+
   bool get isCancelled => _isCancelled;
-  
+
   void cancel() {
     _isCancelled = true;
   }
-  
+
   void checkCancelled() {
     if (_isCancelled) {
       throw TimeoutException('Request was cancelled', null);
@@ -83,10 +83,10 @@ class _ForaaiScreenState extends State<ForaaiScreen> {
       token.cancel();
     }
     _pendingRequests.clear();
-    
+
     // Close HTTP client
     _httpClient?.close();
-    
+
     _focusNode.dispose();
     _controller.dispose();
     _scrollController.dispose();
@@ -99,9 +99,9 @@ class _ForaaiScreenState extends State<ForaaiScreen> {
 
   /// Límites por proveedor (llamadas por hora)
   static const Map<AIProvider, int> _rateLimits = {
-    AIProvider.groq: 70, // Para testing, cambiar a 30 después
-    AIProvider.gemini: 50, // Para testing, cambiar a 15 después
-    AIProvider.openrouter: 0, // Para testing, cambiar a 20 después
+    AIProvider.groq: 50,
+    AIProvider.gemini: 30,
+    AIProvider.gpt_oss: 1000000, // Ilimitado prácticamente
   };
 
   Future<void> _loadRateLimits() async {
@@ -263,7 +263,12 @@ class _ForaaiScreenState extends State<ForaaiScreen> {
 
   Future<void> _pickImage() async {
     if (_selectedProvider != AIProvider.gemini) {
-      _showSnackBar(widget.getText('images_only_gemini', fallback: 'Las imágenes solo están disponibles con Gemini'));
+      _showSnackBar(
+        widget.getText(
+          'images_only_gemini',
+          fallback: 'Las imágenes solo están disponibles con Gemini',
+        ),
+      );
       return;
     }
 
@@ -281,7 +286,9 @@ class _ForaaiScreenState extends State<ForaaiScreen> {
         });
       }
     } catch (e) {
-      _showSnackBar('${widget.getText('select_image_error', fallback: 'Error al seleccionar imagen')}: $e');
+      _showSnackBar(
+        '${widget.getText('select_image_error', fallback: 'Error al seleccionar imagen')}: $e',
+      );
     }
   }
 
@@ -336,24 +343,29 @@ class _ForaaiScreenState extends State<ForaaiScreen> {
     ];
   }
 
-  Future<String> _callGroqAPI(List<Map<String, dynamic>> messages, CancelToken token) async {
+  Future<String> _callGroqAPI(
+    List<Map<String, dynamic>> messages,
+    CancelToken token,
+  ) async {
     try {
       token.checkCancelled();
-      
-      final response = await _httpClient!.post(
-        Uri.parse(ApiConfig.getEndpointForProvider(_selectedProvider)),
-        headers: {
-          'Authorization':
-              'Bearer ${ApiConfig.getApiKeyForProvider(_selectedProvider)}',
-          'Content-Type': 'application/json',
-        },
-        body: jsonEncode({
-          'model': ApiConfig.getModelForProvider(_selectedProvider),
-          'messages': messages,
-          'temperature': 0.7,
-          'max_tokens': 1024,
-        }),
-      ).timeout(const Duration(seconds: 30));
+
+      final response = await _httpClient!
+          .post(
+            Uri.parse(ApiConfig.getEndpointForProvider(_selectedProvider)),
+            headers: {
+              'Authorization':
+                  'Bearer ${ApiConfig.getApiKeyForProvider(_selectedProvider)}',
+              'Content-Type': 'application/json',
+            },
+            body: jsonEncode({
+              'model': ApiConfig.getModelForProvider(_selectedProvider),
+              'messages': messages,
+              'temperature': 0.7,
+              'max_tokens': 1024,
+            }),
+          )
+          .timeout(const Duration(seconds: 30));
 
       token.checkCancelled();
 
@@ -386,6 +398,84 @@ class _ForaaiScreenState extends State<ForaaiScreen> {
     }
   }
 
+  Future<String> _callGptOssAPI(
+    List<Map<String, dynamic>> messages,
+    CancelToken token,
+  ) async {
+    try {
+      token.checkCancelled();
+
+      // Convertir historial de mensajes a un solo prompt de texto
+      // El API de Dorratz espera un parámetro 'prompt' en la URL
+
+      final StringBuffer promptBuffer = StringBuffer();
+
+      for (final msg in messages) {
+        final role = msg['role'] == 'user'
+            ? 'User'
+            : (msg['role'] == 'system' ? 'System' : 'AI');
+        final content = msg['content'];
+        promptBuffer.writeln('$role: $content');
+      }
+
+      // Añadir indicador final para el modelo
+      promptBuffer.write('AI: ');
+
+      final prompt = promptBuffer.toString();
+      final encodedPrompt = Uri.encodeComponent(prompt);
+
+      // Construir URL: https://api.dorratz.com/ai/gpt?prompt=...
+      final url = '${ApiConfig.dorratzBaseUrl}?prompt=$encodedPrompt';
+
+      debugPrint('[Foraai] Call GPT OSS: $url');
+
+      final response = await _httpClient!
+          .get(Uri.parse(url))
+          .timeout(const Duration(seconds: 45));
+
+      token.checkCancelled();
+
+      if (response.statusCode >= 200 && response.statusCode < 300) {
+        // Formato esperado: {"creator": "...", "result": "..."}
+        try {
+          final data = jsonDecode(response.body);
+          final result = data['result'];
+
+          if (result != null && result is String) {
+            String cleanResult = result;
+            // Remover comillas envolventes si existen
+            if (cleanResult.startsWith('"') &&
+                cleanResult.endsWith('"') &&
+                cleanResult.length > 1) {
+              cleanResult = cleanResult.substring(1, cleanResult.length - 1);
+            }
+
+            // Decodificar caracteres escapados que la API devuelve literalmente
+            cleanResult = cleanResult
+                .replaceAll(r'\n', '\n')
+                .replaceAll(r'\"', '"')
+                .replaceAll(r'\t', '\t');
+
+            return cleanResult;
+          } else {
+            return 'Error: Formato de respuesta inesperado';
+          }
+        } catch (e) {
+          // Si no es JSON válido, tal vez devolvió texto plano?
+          if (response.body.isNotEmpty) return response.body;
+          return 'Error parseando respuesta: $e';
+        }
+      } else {
+        throw Exception('Failed (${response.statusCode}): ${response.body}');
+      }
+    } on TimeoutException {
+      if (token.isCancelled) {
+        throw TimeoutException('Request cancelled', null);
+      }
+      rethrow;
+    }
+  }
+
   Future<String> _callGeminiAPI(
     List<Map<String, dynamic>> messages, {
     File? imageFile,
@@ -393,7 +483,7 @@ class _ForaaiScreenState extends State<ForaaiScreen> {
   }) async {
     try {
       token.checkCancelled();
-      
+
       final contents = <Map<String, dynamic>>[];
 
       for (var msg in messages.where((m) => m['role'] != 'system')) {
@@ -432,17 +522,22 @@ class _ForaaiScreenState extends State<ForaaiScreen> {
           '${ApiConfig.getEndpointForProvider(_selectedProvider)}/$model:generateContent';
       final apiKey = ApiConfig.getApiKeyForProvider(_selectedProvider);
 
-      final response = await _httpClient!.post(
-        Uri.parse(endpoint),
-        headers: {'Content-Type': 'application/json', 'x-goog-api-key': apiKey},
-        body: jsonEncode({
-          'contents': contents,
-          'tools': [
-            {'google_search': {}},
-          ],
-          'generationConfig': {'temperature': 0.7, 'maxOutputTokens': 2048},
-        }),
-      ).timeout(const Duration(seconds: 30));
+      final response = await _httpClient!
+          .post(
+            Uri.parse(endpoint),
+            headers: {
+              'Content-Type': 'application/json',
+              'x-goog-api-key': apiKey,
+            },
+            body: jsonEncode({
+              'contents': contents,
+              'tools': [
+                {'google_search': {}},
+              ],
+              'generationConfig': {'temperature': 0.7, 'maxOutputTokens': 2048},
+            }),
+          )
+          .timeout(const Duration(seconds: 30));
 
       token.checkCancelled();
 
@@ -541,11 +636,17 @@ class _ForaaiScreenState extends State<ForaaiScreen> {
         // Llamar a la API correspondiente
         switch (_selectedProvider) {
           case AIProvider.groq:
-          case AIProvider.openrouter:
             result = await _callGroqAPI(messages, cancelToken);
             break;
+          case AIProvider.gpt_oss:
+            result = await _callGptOssAPI(messages, cancelToken);
+            break;
           case AIProvider.gemini:
-            result = await _callGeminiAPI(messages, imageFile: _selectedImage, token: cancelToken);
+            result = await _callGeminiAPI(
+              messages,
+              imageFile: _selectedImage,
+              token: cancelToken,
+            );
             break;
         }
       } finally {
@@ -570,20 +671,25 @@ class _ForaaiScreenState extends State<ForaaiScreen> {
         _saveSessions();
 
         if (hadImage) {
-          _showSnackBar(widget.getText('image_processed', fallback: '✓ Imagen procesada correctamente'));
+          _showSnackBar(
+            widget.getText(
+              'image_processed',
+              fallback: '✓ Imagen procesada correctamente',
+            ),
+          );
         }
       }
     } catch (e) {
       if (mounted) {
         // Check if request was cancelled
-        final isCancelled = e is TimeoutException && 
-            e.message == 'Request was cancelled';
-        
+        final isCancelled =
+            e is TimeoutException && e.message == 'Request was cancelled';
+
         setState(() {
           session.messages.add(
             ChatMessage(
               role: 'ai',
-              content: isCancelled 
+              content: isCancelled
                   ? '⏸ ${widget.getText('cancelled', fallback: 'Cancelado')}'
                   : 'Error (${ApiConfig.getProviderName(_selectedProvider)}): $e',
             ),
@@ -778,7 +884,11 @@ class _ForaaiScreenState extends State<ForaaiScreen> {
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       Text(
-                        widget.getText('api_calls', fallback: 'Llamadas: ${_apiCallsRemaining[_selectedProvider]}/${_rateLimits[_selectedProvider]}'),
+                        widget.getText(
+                          'api_calls',
+                          fallback:
+                              'Llamadas: ${_apiCallsRemaining[_selectedProvider]}/${_rateLimits[_selectedProvider]}',
+                        ),
                         style: TextStyle(
                           fontSize: 10,
                           color: Colors.white.withOpacity(0.4),
@@ -809,7 +919,12 @@ class _ForaaiScreenState extends State<ForaaiScreen> {
       }
     });
     _saveRateLimits();
-    _showSnackBar(widget.getText('limits_reset_manually', fallback: 'Límites restablecidos manualmente'));
+    _showSnackBar(
+      widget.getText(
+        'limits_reset_manually',
+        fallback: 'Límites restablecidos manualmente',
+      ),
+    );
   }
 
   Widget _buildHeader() {

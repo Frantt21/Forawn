@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:io';
 import 'dart:math';
 import 'dart:typed_data';
+import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:file_picker/file_picker.dart';
@@ -37,9 +38,16 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen> {
   late FocusNode _focusNode;
 
   List<FileSystemEntity> _files = [];
+  List<FileSystemEntity> _filteredFiles = []; // Lista filtrada para búsqueda
+
   bool _isLoading = false;
   bool _showPlaylist = false;
   bool _toggleLocked = false;
+  bool _useBlurBackground = false; // Estado para fondo difuminado
+
+  // Controlador de búsqueda
+  final TextEditingController _searchController =
+      TextEditingController(); // Controlador de búsqueda
 
   // Campos para UI local (sincronizados con global)
   String _currentTitle = '';
@@ -68,6 +76,17 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen> {
       _currentIndex = _musicPlayer.currentIndex.value;
       _currentTitle = _musicPlayer.currentTitle.value;
       _currentArtist = _musicPlayer.currentArtist.value;
+      _currentArt = _musicPlayer.currentArt.value;
+
+      // Restaurar color dominante desde el caché
+      if (_musicPlayer.currentFilePath.value.isNotEmpty) {
+        final cachedColor = AlbumColorCache().getColor(
+          _musicPlayer.currentFilePath.value,
+        );
+        if (cachedColor != null) {
+          _dominantColor = cachedColor;
+        }
+      }
     }
 
     // Listener para sincronizar cuando cambia la canción en otro lado
@@ -259,9 +278,22 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen> {
   Future<void> _init() async {
     try {
       final prefs = await SharedPreferences.getInstance();
+
+      // Cargar preferencia de fondo difuminado
+      if (mounted) {
+        setState(() {
+          _useBlurBackground = prefs.getBool('use_blur_background') ?? false;
+        });
+      }
       final folder = prefs.getString('download_folder');
       if (folder != null && folder.isNotEmpty) {
         await _loadFiles(folder);
+
+        // Verificar auto-actualización de colores
+        if (await AlbumColorCache().getAutoUpdateOnStartup()) {
+          // Ejecutar en segundo plano sin esperar
+          _preloadAllColors();
+        }
       }
     } catch (e) {
       debugPrint('[MusicPlayer] Error in _init: $e');
@@ -315,6 +347,7 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen> {
       if (mounted) {
         setState(() {
           _files = allFiles;
+          _filteredFiles = allFiles; // Inicializar lista filtrada
           _isLoading = false;
         });
 
@@ -336,6 +369,20 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen> {
       debugPrint("Error loading files: $e");
       if (mounted) setState(() => _isLoading = false);
     }
+  }
+
+  /// Filtrar archivos según búsqueda
+  void _filterFiles(String query) {
+    setState(() {
+      if (query.isEmpty) {
+        _filteredFiles = _files;
+      } else {
+        _filteredFiles = _files.where((file) {
+          final fileName = p.basename(file.path).toLowerCase();
+          return fileName.contains(query.toLowerCase());
+        }).toList();
+      }
+    });
   }
 
   Future<void> _loadMetadata(String filePath) async {
@@ -594,51 +641,93 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen> {
   }
 
   /// Mostrar menú de opciones de caché de colores
+  /// Mostrar menú de opciones de caché de colores
   void _showColorCacheMenu() {
     showDialog(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Opciones de Caché de Colores'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              'Colores en caché: ${AlbumColorCache().getStats()['totalColors']}',
-              style: const TextStyle(fontSize: 14),
-            ),
-            const SizedBox(height: 16),
-            const Text(
-              'Pre-cargar colores analiza todas las canciones y guarda sus colores para un rendimiento óptimo.',
-              style: TextStyle(fontSize: 12, color: Colors.white70),
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () async {
-              Navigator.pop(context);
-              await _preloadAllColors();
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (context, setDialogState) {
+          return FutureBuilder<bool>(
+            future: AlbumColorCache().getAutoUpdateOnStartup(),
+            builder: (context, snapshot) {
+              final autoUpdate = snapshot.data ?? false;
+
+              return AlertDialog(
+                title: const Text('Opciones de Reproductor'),
+                content: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Colores en caché: ${AlbumColorCache().getStats()['totalColors']}',
+                      style: const TextStyle(fontSize: 14),
+                    ),
+                    const SizedBox(height: 16),
+                    const Text(
+                      'Configuración:',
+                      style: TextStyle(fontWeight: FontWeight.bold),
+                    ),
+                    const SizedBox(height: 8),
+                    // Opción de fondo difuminado
+                    CheckboxListTile(
+                      title: const Text('Fondo difuminado de portada'),
+                      value: _useBlurBackground,
+                      onChanged: (value) async {
+                        if (value != null) {
+                          setState(() => _useBlurBackground = value);
+                          setDialogState(() {});
+                          final prefs = await SharedPreferences.getInstance();
+                          await prefs.setBool('use_blur_background', value);
+                        }
+                      },
+                      contentPadding: EdgeInsets.zero,
+                    ),
+                    // Opción de auto-actualización
+                    CheckboxListTile(
+                      title: const Text('Actualizar colores al abrir'),
+                      subtitle: const Text(
+                        'Puede tardar un poco más en iniciar',
+                      ),
+                      value: autoUpdate,
+                      onChanged: (value) async {
+                        if (value != null) {
+                          await AlbumColorCache().setAutoUpdateOnStartup(value);
+                          setDialogState(() {});
+                        }
+                      },
+                      contentPadding: EdgeInsets.zero,
+                    ),
+                  ],
+                ),
+                actions: [
+                  TextButton(
+                    onPressed: () async {
+                      Navigator.pop(dialogContext);
+                      await _preloadAllColors();
+                    },
+                    child: const Text('Pre-cargar Colores'),
+                  ),
+                  TextButton(
+                    onPressed: () async {
+                      Navigator.pop(dialogContext);
+                      await AlbumColorCache().clearCache();
+                      if (mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(content: Text('Caché limpiado')),
+                        );
+                      }
+                    },
+                    child: const Text('Limpiar Caché'),
+                  ),
+                  TextButton(
+                    onPressed: () => Navigator.pop(dialogContext),
+                    child: const Text('Cerrar'),
+                  ),
+                ],
+              );
             },
-            child: const Text('Pre-cargar Colores'),
-          ),
-          TextButton(
-            onPressed: () async {
-              Navigator.pop(context);
-              await AlbumColorCache().clearCache();
-              if (mounted) {
-                ScaffoldMessenger.of(
-                  context,
-                ).showSnackBar(const SnackBar(content: Text('Caché limpiado')));
-              }
-            },
-            child: const Text('Limpiar Caché'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Cerrar'),
-          ),
-        ],
+          );
+        },
       ),
     );
   }
@@ -747,12 +836,37 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen> {
             flex: 3,
             child: Stack(
               children: [
+                // Fondo difuminado (si está activado)
+                if (_useBlurBackground && _currentArt != null)
+                  Positioned.fill(
+                    child: ImageFiltered(
+                      imageFilter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
+                      child: Container(
+                        decoration: BoxDecoration(
+                          image: DecorationImage(
+                            image: MemoryImage(_currentArt!),
+                            fit: BoxFit.cover,
+                          ),
+                        ),
+                        child: Container(
+                          color: _dominantColor != null
+                              ? _dominantColor!.withOpacity(0.3)
+                              : Colors.black.withOpacity(
+                                  0.5,
+                                ), // Capa oscura encima
+                        ),
+                      ),
+                    ),
+                  ),
+
                 AnimatedContainer(
                   duration: const Duration(milliseconds: 600),
                   curve: Curves.easeInOut,
                   padding: const EdgeInsets.all(24),
-                  decoration: _dominantColor != null
+                  decoration: _dominantColor != null && !_useBlurBackground
                       ? BoxDecoration(color: _dominantColor!.withOpacity(0.08))
+                      : _useBlurBackground
+                      ? null
                       : null,
                   child: Column(
                     mainAxisAlignment: MainAxisAlignment.center,
@@ -1094,24 +1208,75 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen> {
                       ],
                     ),
                   ),
+                  // Campo de búsqueda
+                  Padding(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 8,
+                    ),
+                    child: TextField(
+                      controller: _searchController,
+                      onChanged: _filterFiles,
+                      style: const TextStyle(color: Colors.white),
+                      decoration: InputDecoration(
+                        hintText: 'Buscar canción...',
+                        hintStyle: const TextStyle(color: Colors.white54),
+                        prefixIcon: const Icon(
+                          Icons.search,
+                          color: Colors.white54,
+                        ),
+                        suffixIcon: _searchController.text.isNotEmpty
+                            ? IconButton(
+                                icon: const Icon(
+                                  Icons.clear,
+                                  color: Colors.white54,
+                                ),
+                                onPressed: () {
+                                  _searchController.clear();
+                                  _filterFiles('');
+                                },
+                              )
+                            : null,
+                        filled: true,
+                        fillColor: Colors.white10,
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                          borderSide: BorderSide.none,
+                        ),
+                        contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 16,
+                          vertical: 12,
+                        ),
+                      ),
+                    ),
+                  ),
                   Expanded(
                     child: _isLoading
                         ? const Center(child: CircularProgressIndicator())
-                        : _files.isEmpty
+                        : _filteredFiles.isEmpty
                         ? Center(
                             child: Text(
-                              widget.getText('no_files', fallback: 'Empty'),
+                              _searchController.text.isNotEmpty
+                                  ? 'No se encontraron canciones'
+                                  : widget.getText(
+                                      'no_files',
+                                      fallback: 'Empty',
+                                    ),
                               style: const TextStyle(color: Colors.white54),
                             ),
                           )
                         : ListView.builder(
-                            itemCount: _files.length,
+                            itemCount: _filteredFiles.length,
                             itemBuilder: (context, index) {
-                              if (index >= _files.length) {
+                              if (index >= _filteredFiles.length) {
                                 return const SizedBox.shrink();
                               }
-                              final file = _files[index];
-                              final isSelected = index == _currentIndex;
+                              final file = _filteredFiles[index];
+                              // Encontrar el índice real en _files para reproducir correctamente
+                              final realIndex = _files.indexWhere(
+                                (f) => f.path == file.path,
+                              );
+                              final isSelected = realIndex == _currentIndex;
                               final title = p.basename(file.path);
 
                               return LayoutBuilder(
@@ -1153,8 +1318,8 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen> {
                                       ),
                                     ),
                                     onTap: () {
-                                      if (index < _files.length) {
-                                        _playFile(index);
+                                      if (realIndex >= 0) {
+                                        _playFile(realIndex);
                                       }
                                     },
                                   );
