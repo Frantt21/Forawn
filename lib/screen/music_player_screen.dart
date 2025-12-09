@@ -11,6 +11,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../services/global_music_player.dart';
 import '../services/music_history.dart';
 import '../services/global_keyboard_service.dart';
+import '../services/album_color_cache.dart';
 import 'package:audio_metadata_reader/audio_metadata_reader.dart';
 import 'package:palette_generator/palette_generator.dart';
 
@@ -54,6 +55,9 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen> {
     _musicPlayer = GlobalMusicPlayer();
     _player = _musicPlayer.player;
     debugPrint('[MusicPlayer] initState - Player state: ${_player.state}');
+
+    // Cargar caché de colores
+    AlbumColorCache().loadCache();
 
     // Cargar estado de la playlist y otros valores cacheados
     _loadCachedState();
@@ -346,28 +350,34 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen> {
       );
       Uint8List? artwork;
 
-      if (metadata != null) {
-        if (metadata.title != null && metadata.title!.isNotEmpty) {
-          title = metadata.title!;
-        }
-        if (metadata.artist != null && metadata.artist!.isNotEmpty) {
-          artist = metadata.artist!;
-        }
-        if (metadata.pictures.isNotEmpty) {
-          artwork = metadata.pictures.first.bytes;
-        }
+      if (metadata.title?.isNotEmpty == true) {
+        title = metadata.title!;
+      }
+      if (metadata.artist?.isNotEmpty == true) {
+        artist = metadata.artist!;
+      }
+      if (metadata.pictures.isNotEmpty) {
+        artwork = metadata.pictures.first.bytes;
       }
 
-      Color? dominantColor;
-      if (artwork != null) {
+      // Intentar obtener color del caché primero
+      Color? dominantColor = AlbumColorCache().getColor(filePath);
+
+      // Si no está en caché y hay artwork, extraer el color
+      if (dominantColor == null && artwork != null) {
         try {
           final paletteGenerator = await PaletteGenerator.fromImageProvider(
             MemoryImage(artwork),
-            size: const Size(100, 100),
+            size: const Size(50, 50), // Reducido para mejor rendimiento
           );
           dominantColor =
               paletteGenerator.dominantColor?.color ??
               paletteGenerator.vibrantColor?.color;
+
+          // Guardar en caché para uso futuro
+          if (dominantColor != null) {
+            await AlbumColorCache().setColor(filePath, dominantColor);
+          }
         } catch (e) {
           debugPrint('[MusicPlayer] Error extracting color: $e');
         }
@@ -571,6 +581,145 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen> {
     }
   }
 
+  /// Mostrar menú de opciones de caché de colores
+  void _showColorCacheMenu() {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Opciones de Caché de Colores'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Colores en caché: ${AlbumColorCache().getStats()['totalColors']}',
+              style: const TextStyle(fontSize: 14),
+            ),
+            const SizedBox(height: 16),
+            const Text(
+              'Pre-cargar colores analiza todas las canciones y guarda sus colores para un rendimiento óptimo.',
+              style: TextStyle(fontSize: 12, color: Colors.white70),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () async {
+              Navigator.pop(context);
+              await _preloadAllColors();
+            },
+            child: const Text('Pre-cargar Colores'),
+          ),
+          TextButton(
+            onPressed: () async {
+              Navigator.pop(context);
+              await AlbumColorCache().clearCache();
+              if (mounted) {
+                ScaffoldMessenger.of(
+                  context,
+                ).showSnackBar(const SnackBar(content: Text('Caché limpiado')));
+              }
+            },
+            child: const Text('Limpiar Caché'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cerrar'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Pre-cargar colores de todas las canciones
+  Future<void> _preloadAllColors() async {
+    if (_files.isEmpty) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('No hay canciones cargadas')),
+        );
+      }
+      return;
+    }
+
+    final processedNotifier = ValueNotifier<int>(0);
+    final total = _files.length;
+
+    // Mostrar diálogo de progreso
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogContext) => ValueListenableBuilder<int>(
+        valueListenable: processedNotifier,
+        builder: (context, processed, _) {
+          return AlertDialog(
+            title: const Text('Procesando Colores'),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                LinearProgressIndicator(
+                  value: total > 0 ? processed / total : 0,
+                ),
+                const SizedBox(height: 16),
+                Text('$processed / $total canciones'),
+              ],
+            ),
+          );
+        },
+      ),
+    );
+
+    // Procesar archivos en segundo plano
+    try {
+      for (final fileEntity in _files) {
+        final file = fileEntity as File;
+        final filePath = file.path;
+
+        // Saltar si ya está en caché
+        if (AlbumColorCache().getColor(filePath) != null) {
+          processedNotifier.value++;
+          continue;
+        }
+
+        try {
+          final metadata = readMetadata(file, getImage: true);
+          if (metadata?.pictures.isNotEmpty == true) {
+            final artwork = metadata!.pictures.first.bytes;
+            final paletteGenerator = await PaletteGenerator.fromImageProvider(
+              MemoryImage(artwork),
+              size: const Size(50, 50),
+            );
+            final color =
+                paletteGenerator.dominantColor?.color ??
+                paletteGenerator.vibrantColor?.color;
+
+            if (color != null) {
+              await AlbumColorCache().setColor(filePath, color);
+            }
+          }
+        } catch (e) {
+          debugPrint('[ColorCache] Error processing $filePath: $e');
+        }
+
+        processedNotifier.value++;
+      }
+
+      // Guardar caché final
+      await AlbumColorCache().saveCache();
+    } finally {
+      // Cerrar diálogo
+      if (mounted) {
+        Navigator.of(context, rootNavigator: true).pop();
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('${processedNotifier.value} colores procesados'),
+          ),
+        );
+      }
+      processedNotifier.dispose();
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return RawKeyboardListener(
@@ -584,308 +733,330 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen> {
           // Main Player Area
           Expanded(
             flex: 3,
-            child: Container(
-              padding: const EdgeInsets.all(24),
-              decoration: _dominantColor != null
-                  ? BoxDecoration(
-                      gradient: RadialGradient(
-                        center: Alignment.center,
-                        radius: 1.5,
-                        colors: [
-                          _dominantColor!.withOpacity(0.3),
-                          _dominantColor!.withOpacity(0.15),
-                          Colors.transparent,
-                        ],
-                        stops: const [0.0, 0.5, 1.0],
-                      ),
-                    )
-                  : null,
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  const Spacer(flex: 1),
-
-                  // Album Art (más centrada)
-                  Flexible(
-                    flex: 5,
-                    child: AspectRatio(
-                      aspectRatio: 1,
-                      child: Container(
-                        constraints: const BoxConstraints(
-                          maxWidth: 400,
-                          maxHeight: 400,
-                        ),
-                        decoration: BoxDecoration(
-                          borderRadius: BorderRadius.circular(20),
-                          color: Colors.black26,
-                          boxShadow: _dominantColor != null
-                              ? [
-                                  BoxShadow(
-                                    color: _dominantColor!.withOpacity(0.5),
-                                    blurRadius: 40,
-                                    spreadRadius: 5,
-                                    offset: const Offset(0, 10),
-                                  ),
-                                  BoxShadow(
-                                    color: Colors.black45,
-                                    blurRadius: 20,
-                                    offset: const Offset(0, 10),
-                                  ),
-                                ]
-                              : [
-                                  BoxShadow(
-                                    color: Colors.black45,
-                                    blurRadius: 20,
-                                    offset: const Offset(0, 10),
-                                  ),
-                                ],
-                          image: _currentArt != null
-                              ? DecorationImage(
-                                  image: MemoryImage(_currentArt!),
-                                  fit: BoxFit.cover,
-                                )
-                              : null,
-                        ),
-                        child: _currentArt == null
-                            ? const Icon(
-                                Icons.music_note,
-                                size: 120,
-                                color: Colors.white12,
-                              )
-                            : null,
-                      ),
-                    ),
-                  ),
-
-                  const Spacer(flex: 1),
-
-                  // Metadata
-                  Text(
-                    _currentTitle.isEmpty
-                        ? widget.getText('no_song', fallback: 'No Song Playing')
-                        : _currentTitle,
-                    style: const TextStyle(
-                      fontSize: 24,
-                      fontWeight: FontWeight.bold,
-                    ),
-                    textAlign: TextAlign.center,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    _currentArtist,
-                    style: const TextStyle(
-                      fontSize: 16,
-                      color: Colors.purpleAccent,
-                    ),
-                    textAlign: TextAlign.center,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-
-                  const SizedBox(height: 24),
-
-                  // Progress
-                  ValueListenableBuilder<Duration>(
-                    valueListenable: _musicPlayer.position,
-                    builder: (context, position, _) {
-                      return ValueListenableBuilder<Duration>(
-                        valueListenable: _musicPlayer.duration,
-                        builder: (context, duration, _) {
-                          return Column(
-                            children: [
-                              SliderTheme(
-                                data: SliderTheme.of(context).copyWith(
-                                  trackHeight: 4,
-                                  thumbShape: const RoundSliderThumbShape(
-                                    enabledThumbRadius: 6,
-                                  ),
-                                  activeTrackColor: Colors.purpleAccent,
-                                  inactiveTrackColor: Colors.grey[800],
-                                  thumbColor: Colors.white,
-                                ),
-                                child: Slider(
-                                  value: min(
-                                    position.inMilliseconds.toDouble(),
-                                    duration.inMilliseconds.toDouble(),
-                                  ),
-                                  max: max(
-                                    duration.inMilliseconds.toDouble(),
-                                    1.0,
-                                  ),
-                                  onChanged: (value) async {
-                                    final pos = Duration(
-                                      milliseconds: value.toInt(),
-                                    );
-                                    await _player.seek(pos);
-                                    if (!_isPlaying) await _player.resume();
-                                  },
-                                ),
-                              ),
-                              Padding(
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 20,
-                                ),
-                                child: Row(
-                                  mainAxisAlignment:
-                                      MainAxisAlignment.spaceBetween,
-                                  children: [
-                                    Text(
-                                      _formatDuration(position),
-                                      style: const TextStyle(
-                                        color: Colors.white54,
-                                      ),
-                                    ),
-                                    Text(
-                                      _formatDuration(duration),
-                                      style: const TextStyle(
-                                        color: Colors.white54,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
+            child: Stack(
+              children: [
+                AnimatedContainer(
+                  duration: const Duration(milliseconds: 600),
+                  curve: Curves.easeInOut,
+                  padding: const EdgeInsets.all(24),
+                  decoration: _dominantColor != null
+                      ? BoxDecoration(
+                          gradient: RadialGradient(
+                            center: Alignment.center,
+                            radius: 1.5,
+                            colors: [
+                              _dominantColor!.withOpacity(0.15),
+                              _dominantColor!.withOpacity(0.08),
+                              Colors.transparent,
                             ],
-                          );
-                        },
-                      );
-                    },
-                  ),
-
-                  const Spacer(flex: 1),
-
-                  // Controls con colores dinámicos
-                  Row(
+                            stops: const [0.0, 0.5, 1.0],
+                          ),
+                        )
+                      : null,
+                  child: Column(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      IconButton(
-                        icon: Icon(
-                          Icons.shuffle,
-                          color: _musicPlayer.isShuffle.value
-                              ? (_dominantColor ?? Colors.purpleAccent)
-                              : Colors.white54,
-                        ),
-                        onPressed: () {
-                          _musicPlayer.isShuffle.value =
-                              !_musicPlayer.isShuffle.value;
-                          setState(() {});
-                        },
-                      ),
-                      const SizedBox(width: 8),
-                      IconButton(
-                        icon: Icon(
-                          Icons.skip_previous_rounded,
-                          size: 48,
-                          color: _dominantColor ?? Colors.white,
-                        ),
-                        onPressed: _playPrevious,
-                      ),
-                      const SizedBox(width: 8),
-                      Container(
-                        decoration: BoxDecoration(
-                          color: _dominantColor ?? Colors.white,
-                          shape: BoxShape.circle,
-                        ),
-                        child: IconButton(
-                          icon: Icon(
-                            _isPlaying
-                                ? Icons.pause_rounded
-                                : Icons.play_arrow_rounded,
-                            color: Colors.black,
-                            size: 40,
-                          ),
-                          onPressed: _togglePlayPause,
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      IconButton(
-                        icon: Icon(
-                          Icons.skip_next_rounded,
-                          size: 48,
-                          color: _dominantColor ?? Colors.white,
-                        ),
-                        onPressed: _playNext,
-                      ),
-                      const SizedBox(width: 8),
-                      IconButton(
-                        icon: Icon(
-                          _musicPlayer.loopMode.value == LoopMode.one
-                              ? Icons.repeat_one_rounded
-                              : Icons.repeat_rounded,
-                          color: _musicPlayer.loopMode.value != LoopMode.off
-                              ? (_dominantColor ?? Colors.purpleAccent)
-                              : Colors.white54,
-                        ),
-                        onPressed: () {
-                          final modes = [
-                            LoopMode.off,
-                            LoopMode.all,
-                            LoopMode.one,
-                          ];
-                          final currentIndex = modes.indexOf(
-                            _musicPlayer.loopMode.value,
-                          );
-                          final nextIndex = (currentIndex + 1) % modes.length;
-                          _musicPlayer.loopMode.value = modes[nextIndex];
-                          setState(() {});
-                        },
-                      ),
-                      const SizedBox(width: 16),
+                      const Spacer(flex: 1),
 
-                      // Volume inline
-                      Icon(
-                        _musicPlayer.isMuted.value
-                            ? Icons.volume_off
-                            : Icons.volume_up,
-                        color:
-                            _dominantColor?.withOpacity(0.7) ?? Colors.white54,
-                        size: 20,
-                      ),
-                      SizedBox(
-                        width: 120,
-                        child: SliderTheme(
-                          data: SliderTheme.of(context).copyWith(
-                            trackHeight: 2,
-                            thumbShape: const RoundSliderThumbShape(
-                              enabledThumbRadius: 5,
+                      // Album Art (más centrada)
+                      Flexible(
+                        flex: 5,
+                        child: AspectRatio(
+                          aspectRatio: 1,
+                          child: Container(
+                            constraints: const BoxConstraints(
+                              maxWidth: 400,
+                              maxHeight: 400,
                             ),
-                            activeTrackColor:
-                                _dominantColor?.withOpacity(0.7) ??
-                                Colors.white54,
-                            inactiveTrackColor: Colors.white10,
-                            thumbColor: _dominantColor ?? Colors.white,
+                            decoration: BoxDecoration(
+                              borderRadius: BorderRadius.circular(20),
+                              color: Colors.black26,
+                              boxShadow: _dominantColor != null
+                                  ? [
+                                      BoxShadow(
+                                        color: _dominantColor!.withOpacity(0.5),
+                                        blurRadius: 40,
+                                        spreadRadius: 5,
+                                        offset: const Offset(0, 10),
+                                      ),
+                                      BoxShadow(
+                                        color: Colors.black45,
+                                        blurRadius: 20,
+                                        offset: const Offset(0, 10),
+                                      ),
+                                    ]
+                                  : [
+                                      BoxShadow(
+                                        color: Colors.black45,
+                                        blurRadius: 20,
+                                        offset: const Offset(0, 10),
+                                      ),
+                                    ],
+                              image: _currentArt != null
+                                  ? DecorationImage(
+                                      image: MemoryImage(_currentArt!),
+                                      fit: BoxFit.cover,
+                                    )
+                                  : null,
+                            ),
+                            child: _currentArt == null
+                                ? const Icon(
+                                    Icons.music_note,
+                                    size: 120,
+                                    color: Colors.white12,
+                                  )
+                                : null,
                           ),
-                          child: Slider(
-                            value: _musicPlayer.volume.value,
-                            onChanged: (value) async {
-                              _musicPlayer.volume.value = value;
-                              _musicPlayer.isMuted.value = value == 0;
-                              await _player.setVolume(value);
+                        ),
+                      ),
+
+                      const Spacer(flex: 1),
+
+                      // Metadata
+                      Text(
+                        _currentTitle.isEmpty
+                            ? widget.getText(
+                                'no_song',
+                                fallback: 'No Song Playing',
+                              )
+                            : _currentTitle,
+                        style: const TextStyle(
+                          fontSize: 24,
+                          fontWeight: FontWeight.bold,
+                        ),
+                        textAlign: TextAlign.center,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        _currentArtist,
+                        style: const TextStyle(
+                          fontSize: 16,
+                          color: Colors.purpleAccent,
+                        ),
+                        textAlign: TextAlign.center,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+
+                      const SizedBox(height: 24),
+
+                      // Progress
+                      ValueListenableBuilder<Duration>(
+                        valueListenable: _musicPlayer.position,
+                        builder: (context, position, _) {
+                          return ValueListenableBuilder<Duration>(
+                            valueListenable: _musicPlayer.duration,
+                            builder: (context, duration, _) {
+                              return Column(
+                                children: [
+                                  SliderTheme(
+                                    data: SliderTheme.of(context).copyWith(
+                                      trackHeight: 4,
+                                      thumbShape: const RoundSliderThumbShape(
+                                        enabledThumbRadius: 6,
+                                      ),
+                                      activeTrackColor: Colors.purpleAccent,
+                                      inactiveTrackColor: Colors.grey[800],
+                                      thumbColor: Colors.white,
+                                    ),
+                                    child: Slider(
+                                      value: min(
+                                        position.inMilliseconds.toDouble(),
+                                        duration.inMilliseconds.toDouble(),
+                                      ),
+                                      max: max(
+                                        duration.inMilliseconds.toDouble(),
+                                        1.0,
+                                      ),
+                                      onChanged: (value) async {
+                                        final pos = Duration(
+                                          milliseconds: value.toInt(),
+                                        );
+                                        await _player.seek(pos);
+                                        if (!_isPlaying) await _player.resume();
+                                      },
+                                    ),
+                                  ),
+                                  Padding(
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 20,
+                                    ),
+                                    child: Row(
+                                      mainAxisAlignment:
+                                          MainAxisAlignment.spaceBetween,
+                                      children: [
+                                        Text(
+                                          _formatDuration(position),
+                                          style: const TextStyle(
+                                            color: Colors.white54,
+                                          ),
+                                        ),
+                                        Text(
+                                          _formatDuration(duration),
+                                          style: const TextStyle(
+                                            color: Colors.white54,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ],
+                              );
+                            },
+                          );
+                        },
+                      ),
+
+                      const Spacer(flex: 1),
+
+                      // Controls con colores dinámicos
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          IconButton(
+                            icon: Icon(
+                              Icons.shuffle,
+                              color: _musicPlayer.isShuffle.value
+                                  ? (_dominantColor ?? Colors.purpleAccent)
+                                  : Colors.white54,
+                            ),
+                            onPressed: () {
+                              _musicPlayer.isShuffle.value =
+                                  !_musicPlayer.isShuffle.value;
                               setState(() {});
                             },
                           ),
-                        ),
-                      ),
-                      const SizedBox(width: 8),
+                          const SizedBox(width: 8),
+                          IconButton(
+                            icon: Icon(
+                              Icons.skip_previous_rounded,
+                              size: 48,
+                              color: _dominantColor ?? Colors.white,
+                            ),
+                            onPressed: _playPrevious,
+                          ),
+                          const SizedBox(width: 8),
+                          Container(
+                            decoration: BoxDecoration(
+                              color: _dominantColor ?? Colors.white,
+                              shape: BoxShape.circle,
+                            ),
+                            child: IconButton(
+                              icon: Icon(
+                                _isPlaying
+                                    ? Icons.pause_rounded
+                                    : Icons.play_arrow_rounded,
+                                color: Colors.black,
+                                size: 40,
+                              ),
+                              onPressed: _togglePlayPause,
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          IconButton(
+                            icon: Icon(
+                              Icons.skip_next_rounded,
+                              size: 48,
+                              color: _dominantColor ?? Colors.white,
+                            ),
+                            onPressed: _playNext,
+                          ),
+                          const SizedBox(width: 8),
+                          IconButton(
+                            icon: Icon(
+                              _musicPlayer.loopMode.value == LoopMode.one
+                                  ? Icons.repeat_one_rounded
+                                  : Icons.repeat_rounded,
+                              color: _musicPlayer.loopMode.value != LoopMode.off
+                                  ? (_dominantColor ?? Colors.purpleAccent)
+                                  : Colors.white54,
+                            ),
+                            onPressed: () {
+                              final modes = [
+                                LoopMode.off,
+                                LoopMode.all,
+                                LoopMode.one,
+                              ];
+                              final currentIndex = modes.indexOf(
+                                _musicPlayer.loopMode.value,
+                              );
+                              final nextIndex =
+                                  (currentIndex + 1) % modes.length;
+                              _musicPlayer.loopMode.value = modes[nextIndex];
+                              setState(() {});
+                            },
+                          ),
+                          const SizedBox(width: 16),
 
-                      // Show Mini Player Button
-                      IconButton(
-                        icon: Icon(
-                          Icons.picture_in_picture,
-                          size: 24,
-                          color: _dominantColor ?? Colors.purpleAccent,
-                        ),
-                        onPressed: () {
-                          _musicPlayer.showMiniPlayer.value = true;
-                        },
-                        tooltip: 'Mostrar mini reproductor',
+                          // Volume inline
+                          Icon(
+                            _musicPlayer.isMuted.value
+                                ? Icons.volume_off
+                                : Icons.volume_up,
+                            color:
+                                _dominantColor?.withOpacity(0.7) ??
+                                Colors.white54,
+                            size: 20,
+                          ),
+                          SizedBox(
+                            width: 120,
+                            child: SliderTheme(
+                              data: SliderTheme.of(context).copyWith(
+                                trackHeight: 2,
+                                thumbShape: const RoundSliderThumbShape(
+                                  enabledThumbRadius: 5,
+                                ),
+                                activeTrackColor:
+                                    _dominantColor?.withOpacity(0.7) ??
+                                    Colors.white54,
+                                inactiveTrackColor: Colors.white10,
+                                thumbColor: _dominantColor ?? Colors.white,
+                              ),
+                              child: Slider(
+                                value: _musicPlayer.volume.value,
+                                onChanged: (value) async {
+                                  _musicPlayer.volume.value = value;
+                                  _musicPlayer.isMuted.value = value == 0;
+                                  await _player.setVolume(value);
+                                  setState(() {});
+                                },
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+
+                          // Show Mini Player Button
+                          IconButton(
+                            icon: Icon(
+                              Icons.picture_in_picture,
+                              size: 24,
+                              color: _dominantColor ?? Colors.purpleAccent,
+                            ),
+                            onPressed: () {
+                              _musicPlayer.showMiniPlayer.value = true;
+                            },
+                            tooltip: 'Mostrar mini reproductor',
+                          ),
+                        ],
                       ),
+                      const SizedBox(height: 24),
                     ],
                   ),
-                  const SizedBox(height: 24),
-                ],
-              ),
+                ),
+
+                // Botón de menú flotante
+                Positioned(
+                  top: 16,
+                  right: 16,
+                  child: IconButton(
+                    icon: const Icon(Icons.more_vert, color: Colors.white70),
+                    onPressed: _showColorCacheMenu,
+                    tooltip: 'Opciones de caché',
+                  ),
+                ),
+              ],
             ),
           ),
 
@@ -932,8 +1103,9 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen> {
                         : ListView.builder(
                             itemCount: _files.length,
                             itemBuilder: (context, index) {
-                              if (index >= _files.length)
+                              if (index >= _files.length) {
                                 return const SizedBox.shrink();
+                              }
                               final file = _files[index];
                               final isSelected = index == _currentIndex;
                               final title = p.basename(file.path);
@@ -977,8 +1149,9 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen> {
                                       ),
                                     ),
                                     onTap: () {
-                                      if (index < _files.length)
+                                      if (index < _files.length) {
                                         _playFile(index);
+                                      }
                                     },
                                   );
                                 },
