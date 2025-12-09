@@ -752,18 +752,7 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen> {
                   curve: Curves.easeInOut,
                   padding: const EdgeInsets.all(24),
                   decoration: _dominantColor != null
-                      ? BoxDecoration(
-                          gradient: RadialGradient(
-                            center: Alignment.center,
-                            radius: 1.5,
-                            colors: [
-                              _dominantColor!.withOpacity(0.15),
-                              _dominantColor!.withOpacity(0.08),
-                              Colors.transparent,
-                            ],
-                            stops: const [0.0, 0.5, 1.0],
-                          ),
-                        )
+                      ? BoxDecoration(color: _dominantColor!.withOpacity(0.08))
                       : null,
                   child: Column(
                     mainAxisAlignment: MainAxisAlignment.center,
