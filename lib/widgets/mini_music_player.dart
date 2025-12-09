@@ -94,14 +94,13 @@ class _MiniMusicPlayerState extends State<MiniMusicPlayer> {
                 });
               },
               child: AnimatedContainer(
-                duration: const Duration(milliseconds: 300),
+                duration: const Duration(milliseconds: 0),
                 curve: Curves.easeInOut,
                 width: _isHovering ? 380 : 200,
                 padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
                   color: const Color.fromARGB(225, 30, 30, 30),
                   borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: Colors.purpleAccent, width: 1),
                   boxShadow: [
                     BoxShadow(
                       color: Colors.black54,

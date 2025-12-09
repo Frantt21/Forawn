@@ -581,6 +581,18 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen> {
     }
   }
 
+  /// Calcular color con buen contraste basado en el color dominante
+  Color _getContrastColor(Color? baseColor) {
+    if (baseColor == null)
+      return Colors.black; // Negro sobre blanco por defecto
+
+    // Calcular luminancia
+    final luminance = baseColor.computeLuminance();
+
+    // Si el color es oscuro, usar blanco; si es claro, usar negro
+    return luminance > 0.5 ? Colors.black : Colors.white;
+  }
+
   /// Mostrar menú de opciones de caché de colores
   void _showColorCacheMenu() {
     showDialog(
@@ -831,9 +843,10 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen> {
                       const SizedBox(height: 8),
                       Text(
                         _currentArtist,
-                        style: const TextStyle(
+                        style: TextStyle(
                           fontSize: 16,
-                          color: Colors.purpleAccent,
+                          color: _dominantColor ?? Colors.purpleAccent,
+                          fontWeight: FontWeight.w500,
                         ),
                         textAlign: TextAlign.center,
                         maxLines: 1,
@@ -857,9 +870,11 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen> {
                                       thumbShape: const RoundSliderThumbShape(
                                         enabledThumbRadius: 6,
                                       ),
-                                      activeTrackColor: Colors.purpleAccent,
+                                      activeTrackColor:
+                                          _dominantColor ?? Colors.purpleAccent,
                                       inactiveTrackColor: Colors.grey[800],
-                                      thumbColor: Colors.white,
+                                      thumbColor:
+                                          _dominantColor ?? Colors.white,
                                     ),
                                     child: Slider(
                                       value: min(
@@ -948,7 +963,7 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen> {
                                 _isPlaying
                                     ? Icons.pause_rounded
                                     : Icons.play_arrow_rounded,
-                                color: Colors.black,
+                                color: _getContrastColor(_dominantColor),
                                 size: 40,
                               ),
                               onPressed: _togglePlayPause,

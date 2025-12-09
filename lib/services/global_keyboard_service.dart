@@ -7,8 +7,9 @@ import 'dart:io';
 import 'dart:math';
 
 class GlobalKeyboardService {
-  static final GlobalKeyboardService _instance = GlobalKeyboardService._internal();
-  
+  static final GlobalKeyboardService _instance =
+      GlobalKeyboardService._internal();
+
   factory GlobalKeyboardService() {
     return _instance;
   }
@@ -35,7 +36,9 @@ class GlobalKeyboardService {
     _playPreviousCallback = playPrevious;
     _playNextCallback = playNext;
     _togglePlayPauseCallback = togglePlayPause;
-    print('[GlobalKeyboardService] Callbacks registered from MusicPlayerScreen');
+    print(
+      '[GlobalKeyboardService] Callbacks registered from MusicPlayerScreen',
+    );
   }
 
   /// Desregistrar callbacks
@@ -49,7 +52,7 @@ class GlobalKeyboardService {
   void initialize(FocusNode focusNode, List<File>? files) {
     _focusNode = focusNode;
     _files = files;
-    
+
     // Hacer que el focus node siempre tenga focus
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _focusNode?.requestFocus();
@@ -69,7 +72,7 @@ class GlobalKeyboardService {
   void playFile(int index) {
     _playFile(index, skipHistory: false);
   }
-  
+
   /// Reproduce una canción sin agregar al historial
   /// Usado al navegar hacia atrás en el historial
   void playFileSkipHistory(int index) {
@@ -81,16 +84,18 @@ class GlobalKeyboardService {
   void _playFile(int index, {bool skipHistory = false}) {
     if (_files == null || index < 0 || index >= _files!.length) return;
     final file = _files![index];
-    
+
     print('[GlobalKeyboardService] Playing file at index $index: ${file.path}');
-    print('[GlobalKeyboardService] skipHistory=$skipHistory, _isNavigatingHistory=$_isNavigatingHistory');
-    
+    print(
+      '[GlobalKeyboardService] skipHistory=$skipHistory, _isNavigatingHistory=$_isNavigatingHistory',
+    );
+
     try {
       _musicPlayer.player.play(DeviceFileSource(file.path));
       _musicPlayer.currentIndex.value = index;
       _musicPlayer.currentFilePath.value = file.path;
       _musicPlayer.filesList.value = _files!;
-      
+
       // NO AGREGAR AL HISTORIAL AQUÍ
       // El historial se agrega desde music_player_screen._playFile
       // que es la fuente única de verdad para el historial
@@ -100,7 +105,7 @@ class GlobalKeyboardService {
       } else {
         print('[GlobalKeyboardService] Skipped history - navigating backward');
       }
-      
+
       // Actualizar metadata - extraer solo el nombre del archivo, no la ruta completa
       final fileName = file.path.split('/').last.split('\\').last;
       _musicPlayer.currentTitle.value = fileName;
@@ -113,11 +118,13 @@ class GlobalKeyboardService {
 
   void handleKeyboardEvent(RawKeyEvent event) {
     if (event is! RawKeyDownEvent) return;
-    
+
     final logicalKey = event.logicalKey;
-    
-    // F9 = Anterior
-    if (logicalKey == LogicalKeyboardKey.f9) {
+    final physicalKey = event.physicalKey;
+
+    // Media Previous (tecla multimedia nativa) o F9
+    if (physicalKey == PhysicalKeyboardKey.mediaTrackPrevious ||
+        logicalKey == LogicalKeyboardKey.f9) {
       // Si hay callback registrado, usarlo (primeros music_player_screen)
       if (_playPreviousCallback != null) {
         _playPreviousCallback!.call();
@@ -127,9 +134,10 @@ class GlobalKeyboardService {
       }
       return;
     }
-    
-    // F10 = Play/Pausa
-    if (logicalKey == LogicalKeyboardKey.f10) {
+
+    // Media Play/Pause (tecla multimedia nativa) o F10
+    if (physicalKey == PhysicalKeyboardKey.mediaPlayPause ||
+        logicalKey == LogicalKeyboardKey.f10) {
       // Si hay callback registrado, usarlo
       if (_togglePlayPauseCallback != null) {
         _togglePlayPauseCallback!.call();
@@ -139,9 +147,10 @@ class GlobalKeyboardService {
       }
       return;
     }
-    
-    // F11 = Siguiente
-    if (logicalKey == LogicalKeyboardKey.f11) {
+
+    // Media Next (tecla multimedia nativa) o F11
+    if (physicalKey == PhysicalKeyboardKey.mediaTrackNext ||
+        logicalKey == LogicalKeyboardKey.f11) {
       // Si hay callback registrado, usarlo
       if (_playNextCallback != null) {
         _playNextCallback!.call();
@@ -155,10 +164,12 @@ class GlobalKeyboardService {
 
   void _handlePreviousTrack() {
     if (_files == null || _files!.isEmpty) return;
-    
+
     print('[GlobalKeyboardService] Previous track pressed');
-    print('[GlobalKeyboardService] Current position: ${_musicPlayer.position.value.inSeconds}s');
-    
+    print(
+      '[GlobalKeyboardService] Current position: ${_musicPlayer.position.value.inSeconds}s',
+    );
+
     // Si la canción lleva más de 3 segundos, reiniciarla
     if (_musicPlayer.position.value.inSeconds >= 3) {
       final currentIndex = _musicPlayer.currentIndex.value ?? 0;
@@ -167,7 +178,9 @@ class GlobalKeyboardService {
     } else {
       // Si es menos de 3 segundos, ir a la canción anterior en el historial
       final previousTrack = _history.getPreviousTrack();
-      print('[GlobalKeyboardService] Position < 3s, trying history. Previous track: ${previousTrack?.path}');
+      print(
+        '[GlobalKeyboardService] Position < 3s, trying history. Previous track: ${previousTrack?.path}',
+      );
       if (previousTrack != null) {
         final index = _files!.indexWhere((f) => f.path == previousTrack.path);
         print('[GlobalKeyboardService] Found previous track at index: $index');
@@ -178,7 +191,9 @@ class GlobalKeyboardService {
         // Si no hay historial, ir a la anterior en la playlist
         final cur = _musicPlayer.currentIndex.value ?? 0;
         final nextIndex = max(0, cur - 1);
-        print('[GlobalKeyboardService] No history, going to previous in playlist: $nextIndex');
+        print(
+          '[GlobalKeyboardService] No history, going to previous in playlist: $nextIndex',
+        );
         playFileSkipHistory(nextIndex);
       }
     }
@@ -201,10 +216,12 @@ class GlobalKeyboardService {
 
   void _handleNextTrack() {
     if (_files == null || _files!.isEmpty) return;
-    
+
     print('[GlobalKeyboardService] Next track pressed');
-    print('[GlobalKeyboardService] Current index from global: ${_musicPlayer.currentIndex.value}');
-    
+    print(
+      '[GlobalKeyboardService] Current index from global: ${_musicPlayer.currentIndex.value}',
+    );
+
     int nextIndex;
     if (_musicPlayer.isShuffle.value) {
       nextIndex = Random().nextInt(_files!.length);
@@ -212,23 +229,24 @@ class GlobalKeyboardService {
     } else {
       // Usar el índice actual de forma segura
       int cur = _musicPlayer.currentIndex.value ?? -1;
-      
+
       // Si no hay índice establecido, empezar desde 0
       if (cur == -1) {
         cur = 0;
       }
-      
+
       // Avanzar al siguiente
       nextIndex = cur + 1;
-      
+
       // Si llegamos al final, quedarse en el último
       if (nextIndex >= _files!.length) {
         nextIndex = _files!.length - 1;
       }
-      
-      print('[GlobalKeyboardService] Normal mode - current: $cur, next index: $nextIndex');
+
+      print(
+        '[GlobalKeyboardService] Normal mode - current: $cur, next index: $nextIndex',
+      );
     }
     playFile(nextIndex);
   }
 }
-
