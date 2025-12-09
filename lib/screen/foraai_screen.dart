@@ -425,7 +425,7 @@ class _ForaaiScreenState extends State<ForaaiScreen> {
       final encodedPrompt = Uri.encodeComponent(prompt);
 
       // Construir URL: https://api.dorratz.com/ai/gpt?prompt=...
-      final url = '${ApiConfig.dorratzBaseUrl}?prompt=$encodedPrompt';
+      final url = '${ApiConfig.dorratzGptEndpoint}?prompt=$encodedPrompt';
 
       debugPrint('[Foraai] Call GPT OSS: $url');
 
