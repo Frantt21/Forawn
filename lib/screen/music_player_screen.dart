@@ -220,7 +220,7 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen> {
     }
   }
 
-  void _updateMetadataFromFile(int index) {
+  Future<void> _updateMetadataFromFile(int index) async {
     if (index < 0 || index >= _files.length) return;
     _playedIndices.add(
       index,
@@ -228,34 +228,87 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen> {
     final file = _files[index] as File;
 
     try {
-      final title = p.basename(file.path);
-      final artist = 'Unknown Artist';
+      // Valor por defecto
+      String title = p.basename(file.path);
+      String artist = 'Unknown Artist';
+      Uint8List? artwork;
+
+      // Intentar leer metadatos reales
+      try {
+        final metadata = readMetadata(file, getImage: true);
+        if (metadata.title?.isNotEmpty == true) {
+          title = metadata.title!;
+        }
+        if (metadata.artist?.isNotEmpty == true) {
+          artist = metadata.artist!;
+        }
+        if (metadata.pictures.isNotEmpty) {
+          artwork = metadata.pictures.first.bytes;
+        }
+      } catch (e) {
+        debugPrint('[MusicPlayer] Error reading metadata in background: $e');
+      }
 
       // Detener reproducción anterior
-      _musicPlayer.player.stop();
+      await _musicPlayer.player.stop();
 
       // Reproducir archivo
-      _musicPlayer.player.play(DeviceFileSource(file.path));
+      await _musicPlayer.player.play(DeviceFileSource(file.path));
 
-      // Pequeño delay antes de obtener duración
-      Future.delayed(const Duration(milliseconds: 100), () {
-        _musicPlayer.player.getDuration().then((dur) {
-          _musicPlayer.duration.value = dur ?? Duration.zero;
-        });
-      });
-
-      // Actualizar estado global
+      // Actualizar estado global INMEDIATAMENTE con metadatos
       _musicPlayer.currentTitle.value = title;
       _musicPlayer.currentArtist.value = artist;
+      _musicPlayer.currentArt.value = artwork; // Actualizar portada!
       _musicPlayer.currentIndex.value = index;
       _musicPlayer.currentFilePath.value = file.path;
       _musicPlayer.filesList.value = _files;
 
-      // Si estamos montados, también actualizar el estado local
+      // Agregar al historial también en background
+      MusicHistory().addToHistory(file);
+
+      // Pequeño delay antes de obtener duración y colores
+      Future.delayed(const Duration(milliseconds: 100), () async {
+        final dur = await _musicPlayer.player.getDuration();
+        _musicPlayer.duration.value = dur ?? Duration.zero;
+
+        // Procesar color si hay arte
+        if (artwork != null) {
+          // Intentar obtener color del caché primero
+          Color? dominantColor = AlbumColorCache().getColor(file.path);
+
+          // Si no está en caché y hay artwork, extraer el color
+          if (dominantColor == null) {
+            try {
+              final paletteGenerator = await PaletteGenerator.fromImageProvider(
+                MemoryImage(artwork),
+                size: const Size(50, 50),
+              );
+              dominantColor =
+                  paletteGenerator.dominantColor?.color ??
+                  paletteGenerator.vibrantColor?.color;
+
+              if (dominantColor != null) {
+                await AlbumColorCache().setColor(file.path, dominantColor);
+              }
+            } catch (e) {
+              debugPrint(
+                '[MusicPlayer] Error extracting color in background: $e',
+              );
+            }
+          }
+          // Aquí no actualizamos UI local de color porque asumimos background,
+          // pero el componente que escuche podría querer saber el color.
+          // Por ahora, el MiniPlayer no usa el color dominante global (¿o sí?),
+          // pero sí usa el artwork.
+        }
+      });
+
+      // Si por casualidad estamos montados (caso raro), actualizar local
       if (mounted) {
         setState(() {
           _currentTitle = title;
           _currentArtist = artist;
+          _currentArt = artwork;
           _currentIndex = index;
         });
       }
