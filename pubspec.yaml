@@ -50,6 +50,7 @@ dependencies:
   cupertino_icons: ^1.0.8
   audio_metadata_reader: ^1.4.2
   palette_generator: ^0.3.3+3
+  hotkey_manager: ^0.2.3
 
 dev_dependencies:
   flutter_test:

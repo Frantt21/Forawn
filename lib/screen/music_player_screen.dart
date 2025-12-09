@@ -43,7 +43,7 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen> {
   bool _isLoading = false;
   bool _showPlaylist = false;
   bool _toggleLocked = false;
-  bool _useBlurBackground = false; // Estado para fondo difuminado
+  bool _useBlurBackground = true; // Estado para fondo difuminado
 
   // Controlador de búsqueda
   final TextEditingController _searchController =

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:audioplayers/audioplayers.dart';
+import 'package:hotkey_manager/hotkey_manager.dart';
 import 'global_music_player.dart';
 import 'music_history.dart';
 import 'dart:io';
@@ -49,14 +50,85 @@ class GlobalKeyboardService {
     print('[GlobalKeyboardService] Callbacks unregistered');
   }
 
-  void initialize(FocusNode focusNode, List<File>? files) {
+  Future<void> initialize(FocusNode focusNode, List<File>? files) async {
     _focusNode = focusNode;
     _files = files;
+
+    // Inicializar Hotkey Manager
+    try {
+      await hotKeyManager.unregisterAll();
+    } catch (e) {
+      print('[GlobalKeyboardService] Error unregistering hotkeys: $e');
+    }
+
+    _registerHotKeys();
 
     // Hacer que el focus node siempre tenga focus
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _focusNode?.requestFocus();
     });
+  }
+
+  void _registerHotKeys() async {
+    try {
+      // Shift + F9 -> Previous
+      HotKey prevKey = HotKey(
+        key: PhysicalKeyboardKey.f9,
+        modifiers: [HotKeyModifier.shift],
+        scope: HotKeyScope.system,
+      );
+      await hotKeyManager.register(
+        prevKey,
+        keyDownHandler: (hotKey) {
+          print('[GlobalKeyboardService] Hotkey Shift+F9 pressed');
+          if (_playPreviousCallback != null) {
+            _playPreviousCallback!.call();
+          } else {
+            _handlePreviousTrack();
+          }
+        },
+      );
+
+      // Shift + F10 -> Play/Pause
+      HotKey toggleKey = HotKey(
+        key: PhysicalKeyboardKey.f10,
+        modifiers: [HotKeyModifier.shift],
+        scope: HotKeyScope.system,
+      );
+      await hotKeyManager.register(
+        toggleKey,
+        keyDownHandler: (hotKey) {
+          print('[GlobalKeyboardService] Hotkey Shift+F10 pressed');
+          if (_togglePlayPauseCallback != null) {
+            _togglePlayPauseCallback!.call();
+          } else {
+            _handlePlayPause();
+          }
+        },
+      );
+
+      // Shift + F11 -> Next
+      HotKey nextKey = HotKey(
+        key: PhysicalKeyboardKey.f11,
+        modifiers: [HotKeyModifier.shift],
+        scope: HotKeyScope.system,
+      );
+      await hotKeyManager.register(
+        nextKey,
+        keyDownHandler: (hotKey) {
+          print('[GlobalKeyboardService] Hotkey Shift+F11 pressed');
+          if (_playNextCallback != null) {
+            _playNextCallback!.call();
+          } else {
+            _handleNextTrack();
+          }
+        },
+      );
+
+      print('[GlobalKeyboardService] Global hotkeys registered');
+    } catch (e) {
+      print('[GlobalKeyboardService] Error registering hotkeys: $e');
+    }
   }
 
   /// Actualizar la lista de archivos disponibles

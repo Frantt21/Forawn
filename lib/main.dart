@@ -9,6 +9,7 @@ import 'package:forawn/screen/notes_screen.dart';
 import 'package:forawn/screen/qrcode_generator.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:window_manager/window_manager.dart';
+import 'package:hotkey_manager/hotkey_manager.dart';
 import 'screen/spotify_screen.dart';
 import 'screen/music_player_screen.dart';
 import 'settings.dart';
@@ -45,6 +46,13 @@ Future<void> main() async {
     sqfliteFfiInit();
     databaseFactory = databaseFactoryFfi;
   } catch (_) {}
+
+  // Inicializar hotkey_manager
+  try {
+    await hotKeyManager.unregisterAll();
+  } catch (e) {
+    debugPrint('[HotkeyManager] Error unregistering: $e');
+  }
 
   // Inicializar flutter_acrylic
   if (Platform.isWindows) {
@@ -247,8 +255,11 @@ class _ForawnAppRootState extends State<ForawnAppRoot> {
     _langCode = widget.initialLangCode;
     _langMap = widget.initialLangMap;
     _globalFocusNode = FocusNode();
+
+    // Inicializar servicio de teclado global
+    GlobalKeyboardService().initialize(_globalFocusNode, null);
   }
-  
+
   @override
   void dispose() {
     _globalFocusNode.dispose();
@@ -589,7 +600,9 @@ class _HomeScreenState extends State<HomeScreen> with WindowListener {
                             onPanStart: (_) => windowManager.startDragging(),
                             child: Container(
                               height: 42,
-                              padding: const EdgeInsets.symmetric(horizontal: 10),
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 10,
+                              ),
                               color: Colors.transparent,
                               child: Row(
                                 children: [
@@ -601,7 +614,8 @@ class _HomeScreenState extends State<HomeScreen> with WindowListener {
                                         fallback: 'Inicio',
                                       ),
                                       icon: const Icon(Icons.home, size: 20),
-                                      onPressed: () => _handleNavigation('home'),
+                                      onPressed: () =>
+                                          _handleNavigation('home'),
                                     ),
                                   const SizedBox(width: 8),
                                   // Screen title
@@ -619,7 +633,10 @@ class _HomeScreenState extends State<HomeScreen> with WindowListener {
                                         'folder_button',
                                         fallback: 'Folder',
                                       ),
-                                      icon: const Icon(Icons.folder_open, size: 20),
+                                      icon: const Icon(
+                                        Icons.folder_open,
+                                        size: 20,
+                                      ),
                                       onPressed: _onFolderAction,
                                     ),
                                   IconButton(
@@ -631,19 +648,22 @@ class _HomeScreenState extends State<HomeScreen> with WindowListener {
                                     onPressed: () async {
                                       backgroundOpacity.value = 0.0;
 
-                                      final selected = await Navigator.of(context)
-                                          .push<String?>(
+                                      final selected =
+                                          await Navigator.of(
+                                            context,
+                                          ).push<String?>(
                                             PageRouteBuilder(
                                               opaque: false,
                                               barrierColor: Colors.transparent,
-                                              transitionDuration: const Duration(
-                                                milliseconds: 400,
-                                              ),
+                                              transitionDuration:
+                                                  const Duration(
+                                                    milliseconds: 400,
+                                                  ),
                                               pageBuilder: (_, __, ___) =>
                                                   FadeTransitionScreen(
                                                     child: SettingsScreen(
-                                                      currentLang:
-                                                          widget.currentLangCode,
+                                                      currentLang: widget
+                                                          .currentLangCode,
                                                       getText: widget.getText,
                                                       onSelectLanguage:
                                                           (
