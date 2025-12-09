@@ -55,6 +55,7 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen> {
   Uint8List? _currentArt;
   Color? _dominantColor;
   int? _currentIndex;
+  final Set<int> _playedIndices = {}; // Rastreo para shuffle inteligente
 
   @override
   void initState() {
@@ -188,7 +189,7 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen> {
           _files.isNotEmpty) {
         int nextIdx;
         if (_musicPlayer.isShuffle.value) {
-          nextIdx = Random().nextInt(_files.length);
+          nextIdx = _getNextShuffleIndex();
         } else {
           nextIdx = (currentIndex ?? -1) + 1;
         }
@@ -206,7 +207,7 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen> {
           _files.isNotEmpty) {
         int nextIdx;
         if (_musicPlayer.isShuffle.value) {
-          nextIdx = Random().nextInt(_files.length);
+          nextIdx = _getNextShuffleIndex();
         } else {
           nextIdx = (currentIndex ?? -1) + 1;
         }
@@ -221,6 +222,9 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen> {
 
   void _updateMetadataFromFile(int index) {
     if (index < 0 || index >= _files.length) return;
+    _playedIndices.add(
+      index,
+    ); // Registrar en historial para shuffle inteligente
     final file = _files[index] as File;
 
     try {
@@ -348,6 +352,7 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen> {
         setState(() {
           _files = allFiles;
           _filteredFiles = allFiles; // Inicializar lista filtrada
+          _playedIndices.clear(); // Reiniciar historial de shuffle
           _isLoading = false;
         });
 
@@ -478,7 +483,10 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen> {
 
     try {
       if (mounted) {
-        setState(() => _currentIndex = index);
+        setState(() {
+          _currentIndex = index;
+          _playedIndices.add(index); // Marcar como reproducida
+        });
       }
 
       debugPrint('[MusicPlayer] Playing file: ${file.path}');
@@ -574,6 +582,41 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen> {
     }
   }
 
+  /// Obtener índice para shuffle inteligente
+  int _getNextShuffleIndex() {
+    if (_files.isEmpty) return 0;
+
+    // Si hemos reproducido casi todas, reiniciar ciclo (salvo la actual)
+    if (_playedIndices.length >= _files.length - 1) {
+      _playedIndices.clear();
+      if (_currentIndex != null) _playedIndices.add(_currentIndex!);
+    }
+
+    final currentIdx = _currentIndex ?? -1;
+    final candidates = <int>[];
+
+    for (int i = 0; i < _files.length; i++) {
+      // Excluir las ya reproducidas y la actual
+      if (!_playedIndices.contains(i) && i != currentIdx) {
+        candidates.add(i);
+      }
+    }
+
+    if (candidates.isEmpty) {
+      if (_files.length > 1) {
+        // Fallback: cualquiera menos la actual
+        int r;
+        do {
+          r = Random().nextInt(_files.length);
+        } while (r == currentIdx);
+        return r;
+      }
+      return 0;
+    }
+
+    return candidates[Random().nextInt(candidates.length)];
+  }
+
   /// Función unificada para siguiente
   /// Usada tanto por botones como por teclas globales
   void _playNext() {
@@ -581,7 +624,7 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen> {
 
     int nextIndex;
     if (_musicPlayer.isShuffle.value) {
-      nextIndex = Random().nextInt(_files.length);
+      nextIndex = _getNextShuffleIndex();
     } else {
       final cur = _currentIndex ?? -1;
       nextIndex = min(_files.length - 1, cur + 1);
