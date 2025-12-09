@@ -839,21 +839,23 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen> {
                 // Fondo difuminado (si está activado)
                 if (_useBlurBackground && _currentArt != null)
                   Positioned.fill(
-                    child: ImageFiltered(
-                      imageFilter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
-                      child: Container(
-                        decoration: BoxDecoration(
-                          image: DecorationImage(
-                            image: MemoryImage(_currentArt!),
-                            fit: BoxFit.cover,
-                          ),
-                        ),
+                    child: AnimatedSwitcher(
+                      duration: const Duration(milliseconds: 800),
+                      child: ImageFiltered(
+                        key: ValueKey(_currentTitle),
+                        imageFilter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
                         child: Container(
-                          color: _dominantColor != null
-                              ? _dominantColor!.withOpacity(0.3)
-                              : Colors.black.withOpacity(
-                                  0.5,
-                                ), // Capa oscura encima
+                          decoration: BoxDecoration(
+                            image: DecorationImage(
+                              image: MemoryImage(_currentArt!),
+                              fit: BoxFit.cover,
+                            ),
+                          ),
+                          child: Container(
+                            color: _dominantColor != null
+                                ? _dominantColor!.withOpacity(0.3)
+                                : Colors.black.withOpacity(0.5),
+                          ),
                         ),
                       ),
                     ),
@@ -878,49 +880,55 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen> {
                         flex: 5,
                         child: AspectRatio(
                           aspectRatio: 1,
-                          child: Container(
-                            constraints: const BoxConstraints(
-                              maxWidth: 400,
-                              maxHeight: 400,
-                            ),
-                            decoration: BoxDecoration(
-                              borderRadius: BorderRadius.circular(20),
-                              color: Colors.black26,
-                              boxShadow: _dominantColor != null
-                                  ? [
-                                      BoxShadow(
-                                        color: _dominantColor!.withOpacity(0.5),
-                                        blurRadius: 40,
-                                        spreadRadius: 5,
-                                        offset: const Offset(0, 10),
-                                      ),
-                                      BoxShadow(
-                                        color: Colors.black45,
-                                        blurRadius: 20,
-                                        offset: const Offset(0, 10),
-                                      ),
-                                    ]
-                                  : [
-                                      BoxShadow(
-                                        color: Colors.black45,
-                                        blurRadius: 20,
-                                        offset: const Offset(0, 10),
-                                      ),
-                                    ],
-                              image: _currentArt != null
-                                  ? DecorationImage(
-                                      image: MemoryImage(_currentArt!),
-                                      fit: BoxFit.cover,
+                          child: AnimatedSwitcher(
+                            duration: const Duration(milliseconds: 500),
+                            child: Container(
+                              key: ValueKey(_currentTitle),
+                              constraints: const BoxConstraints(
+                                maxWidth: 400,
+                                maxHeight: 400,
+                              ),
+                              decoration: BoxDecoration(
+                                borderRadius: BorderRadius.circular(20),
+                                color: Colors.black26,
+                                boxShadow: _dominantColor != null
+                                    ? [
+                                        BoxShadow(
+                                          color: _dominantColor!.withOpacity(
+                                            0.5,
+                                          ),
+                                          blurRadius: 40,
+                                          spreadRadius: 5,
+                                          offset: const Offset(0, 10),
+                                        ),
+                                        BoxShadow(
+                                          color: Colors.black45,
+                                          blurRadius: 20,
+                                          offset: const Offset(0, 10),
+                                        ),
+                                      ]
+                                    : [
+                                        BoxShadow(
+                                          color: Colors.black45,
+                                          blurRadius: 20,
+                                          offset: const Offset(0, 10),
+                                        ),
+                                      ],
+                                image: _currentArt != null
+                                    ? DecorationImage(
+                                        image: MemoryImage(_currentArt!),
+                                        fit: BoxFit.cover,
+                                      )
+                                    : null,
+                              ),
+                              child: _currentArt == null
+                                  ? const Icon(
+                                      Icons.music_note,
+                                      size: 120,
+                                      color: Colors.white12,
                                     )
                                   : null,
                             ),
-                            child: _currentArt == null
-                                ? const Icon(
-                                    Icons.music_note,
-                                    size: 120,
-                                    color: Colors.white12,
-                                  )
-                                : null,
                           ),
                         ),
                       ),
