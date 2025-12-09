@@ -11,6 +11,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../services/global_music_player.dart';
 import '../services/music_history.dart';
 import '../services/global_keyboard_service.dart';
+import 'package:audio_metadata_reader/audio_metadata_reader.dart';
+import 'package:palette_generator/palette_generator.dart';
 
 typedef TextGetter = String Function(String key, {String? fallback});
 
@@ -42,6 +44,7 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen> {
   String _currentTitle = '';
   String _currentArtist = '';
   Uint8List? _currentArt;
+  Color? _dominantColor;
   int? _currentIndex;
 
   @override
@@ -333,28 +336,82 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen> {
 
   Future<void> _loadMetadata(String filePath) async {
     try {
+      final file = File(filePath);
+      final metadata = readMetadata(file, getImage: true);
+
+      String title = p.basename(filePath);
+      String artist = widget.getText(
+        'unknown_artist',
+        fallback: 'Unknown Artist',
+      );
+      Uint8List? artwork;
+
+      if (metadata != null) {
+        if (metadata.title != null && metadata.title!.isNotEmpty) {
+          title = metadata.title!;
+        }
+        if (metadata.artist != null && metadata.artist!.isNotEmpty) {
+          artist = metadata.artist!;
+        }
+        if (metadata.pictures.isNotEmpty) {
+          artwork = metadata.pictures.first.bytes;
+        }
+      }
+
+      Color? dominantColor;
+      if (artwork != null) {
+        try {
+          final paletteGenerator = await PaletteGenerator.fromImageProvider(
+            MemoryImage(artwork),
+            size: const Size(100, 100),
+          );
+          dominantColor =
+              paletteGenerator.dominantColor?.color ??
+              paletteGenerator.vibrantColor?.color;
+        } catch (e) {
+          debugPrint('[MusicPlayer] Error extracting color: $e');
+        }
+      }
+
+      if (mounted) {
+        setState(() {
+          _currentTitle = title;
+          _currentArtist = artist;
+          _currentArt = artwork;
+          _dominantColor = dominantColor;
+        });
+      }
+
+      _musicPlayer.currentTitle.value = title;
+      _musicPlayer.currentArtist.value = artist;
+      if (artwork != null) {
+        _musicPlayer.currentArt.value = artwork;
+      }
+
+      debugPrint(
+        '[MusicPlayer] Loaded metadata: $title by $artist (color: ${dominantColor != null})',
+      );
+    } catch (e) {
+      debugPrint('[MusicPlayer] Error loading metadata: $e');
+
       final title = p.basename(filePath);
       final artist = widget.getText(
         'unknown_artist',
         fallback: 'Unknown Artist',
       );
 
-      // Actualizar estado local
       if (mounted) {
         setState(() {
           _currentTitle = title;
           _currentArtist = artist;
           _currentArt = null;
+          _dominantColor = null;
         });
       }
 
-      // Actualizar estado global
       _musicPlayer.currentTitle.value = title;
       _musicPlayer.currentArtist.value = artist;
-
-      debugPrint('[MusicPlayer] Updated metadata: $title by $artist');
-    } catch (e) {
-      debugPrint('[MusicPlayer] Error loading metadata: $e');
+      _musicPlayer.currentArt.value = null;
     }
   }
 
@@ -529,24 +586,59 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen> {
             flex: 3,
             child: Container(
               padding: const EdgeInsets.all(24),
+              decoration: _dominantColor != null
+                  ? BoxDecoration(
+                      gradient: RadialGradient(
+                        center: Alignment.center,
+                        radius: 1.5,
+                        colors: [
+                          _dominantColor!.withOpacity(0.3),
+                          _dominantColor!.withOpacity(0.15),
+                          Colors.transparent,
+                        ],
+                        stops: const [0.0, 0.5, 1.0],
+                      ),
+                    )
+                  : null,
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  // Album Art
-                  Expanded(
+                  const Spacer(flex: 1),
+
+                  // Album Art (más centrada)
+                  Flexible(
+                    flex: 5,
                     child: AspectRatio(
                       aspectRatio: 1,
                       child: Container(
+                        constraints: const BoxConstraints(
+                          maxWidth: 400,
+                          maxHeight: 400,
+                        ),
                         decoration: BoxDecoration(
                           borderRadius: BorderRadius.circular(20),
                           color: Colors.black26,
-                          boxShadow: [
-                            BoxShadow(
-                              color: Colors.black45,
-                              blurRadius: 20,
-                              offset: const Offset(0, 10),
-                            ),
-                          ],
+                          boxShadow: _dominantColor != null
+                              ? [
+                                  BoxShadow(
+                                    color: _dominantColor!.withOpacity(0.5),
+                                    blurRadius: 40,
+                                    spreadRadius: 5,
+                                    offset: const Offset(0, 10),
+                                  ),
+                                  BoxShadow(
+                                    color: Colors.black45,
+                                    blurRadius: 20,
+                                    offset: const Offset(0, 10),
+                                  ),
+                                ]
+                              : [
+                                  BoxShadow(
+                                    color: Colors.black45,
+                                    blurRadius: 20,
+                                    offset: const Offset(0, 10),
+                                  ),
+                                ],
                           image: _currentArt != null
                               ? DecorationImage(
                                   image: MemoryImage(_currentArt!),
@@ -564,7 +656,8 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen> {
                       ),
                     ),
                   ),
-                  const SizedBox(height: 32),
+
+                  const Spacer(flex: 1),
 
                   // Metadata
                   Text(
@@ -591,7 +684,7 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen> {
                     overflow: TextOverflow.ellipsis,
                   ),
 
-                  const SizedBox(height: 32),
+                  const SizedBox(height: 24),
 
                   // Progress
                   ValueListenableBuilder<Duration>(
@@ -660,9 +753,9 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen> {
                     },
                   ),
 
-                  const SizedBox(height: 24),
+                  const Spacer(flex: 1),
 
-                  // Controls
+                  // Controls con colores dinámicos
                   Row(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
@@ -670,7 +763,7 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen> {
                         icon: Icon(
                           Icons.shuffle,
                           color: _musicPlayer.isShuffle.value
-                              ? Colors.purpleAccent
+                              ? (_dominantColor ?? Colors.purpleAccent)
                               : Colors.white54,
                         ),
                         onPressed: () {
@@ -679,15 +772,19 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen> {
                           setState(() {});
                         },
                       ),
-                      const SizedBox(width: 16),
+                      const SizedBox(width: 8),
                       IconButton(
-                        icon: const Icon(Icons.skip_previous_rounded, size: 48),
+                        icon: Icon(
+                          Icons.skip_previous_rounded,
+                          size: 48,
+                          color: _dominantColor ?? Colors.white,
+                        ),
                         onPressed: _playPrevious,
                       ),
-                      const SizedBox(width: 16),
+                      const SizedBox(width: 8),
                       Container(
-                        decoration: const BoxDecoration(
-                          color: Colors.white,
+                        decoration: BoxDecoration(
+                          color: _dominantColor ?? Colors.white,
                           shape: BoxShape.circle,
                         ),
                         child: IconButton(
@@ -701,19 +798,23 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen> {
                           onPressed: _togglePlayPause,
                         ),
                       ),
-                      const SizedBox(width: 16),
+                      const SizedBox(width: 8),
                       IconButton(
-                        icon: const Icon(Icons.skip_next_rounded, size: 48),
+                        icon: Icon(
+                          Icons.skip_next_rounded,
+                          size: 48,
+                          color: _dominantColor ?? Colors.white,
+                        ),
                         onPressed: _playNext,
                       ),
-                      const SizedBox(width: 16),
+                      const SizedBox(width: 8),
                       IconButton(
                         icon: Icon(
                           _musicPlayer.loopMode.value == LoopMode.one
                               ? Icons.repeat_one_rounded
                               : Icons.repeat_rounded,
                           color: _musicPlayer.loopMode.value != LoopMode.off
-                              ? Colors.purpleAccent
+                              ? (_dominantColor ?? Colors.purpleAccent)
                               : Colors.white54,
                         ),
                         onPressed: () {
@@ -730,13 +831,50 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen> {
                           setState(() {});
                         },
                       ),
+                      const SizedBox(width: 16),
+
+                      // Volume inline
+                      Icon(
+                        _musicPlayer.isMuted.value
+                            ? Icons.volume_off
+                            : Icons.volume_up,
+                        color:
+                            _dominantColor?.withOpacity(0.7) ?? Colors.white54,
+                        size: 20,
+                      ),
+                      SizedBox(
+                        width: 120,
+                        child: SliderTheme(
+                          data: SliderTheme.of(context).copyWith(
+                            trackHeight: 2,
+                            thumbShape: const RoundSliderThumbShape(
+                              enabledThumbRadius: 5,
+                            ),
+                            activeTrackColor:
+                                _dominantColor?.withOpacity(0.7) ??
+                                Colors.white54,
+                            inactiveTrackColor: Colors.white10,
+                            thumbColor: _dominantColor ?? Colors.white,
+                          ),
+                          child: Slider(
+                            value: _musicPlayer.volume.value,
+                            onChanged: (value) async {
+                              _musicPlayer.volume.value = value;
+                              _musicPlayer.isMuted.value = value == 0;
+                              await _player.setVolume(value);
+                              setState(() {});
+                            },
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
 
                       // Show Mini Player Button
                       IconButton(
-                        icon: const Icon(
+                        icon: Icon(
                           Icons.picture_in_picture,
                           size: 24,
-                          color: Colors.purpleAccent,
+                          color: _dominantColor ?? Colors.purpleAccent,
                         ),
                         onPressed: () {
                           _musicPlayer.showMiniPlayer.value = true;
@@ -745,46 +883,7 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen> {
                       ),
                     ],
                   ),
-                  const SizedBox(height: 16),
-
-                  // Volume
-                  SizedBox(
-                    width: 200,
-                    child: Row(
-                      children: [
-                        Icon(
-                          _musicPlayer.isMuted.value
-                              ? Icons.volume_off
-                              : Icons.volume_up,
-                          color: Colors.white54,
-                          size: 20,
-                        ),
-                        Expanded(
-                          child: SliderTheme(
-                            data: SliderTheme.of(context).copyWith(
-                              trackHeight: 2,
-                              thumbShape: const RoundSliderThumbShape(
-                                enabledThumbRadius: 6,
-                              ),
-                              activeTrackColor: Colors.white54,
-                              inactiveTrackColor: Colors.white10,
-                              thumbColor: Colors.white,
-                            ),
-                            child: Slider(
-                              value: _musicPlayer.volume.value,
-                              onChanged: (value) async {
-                                _musicPlayer.volume.value = value;
-                                _musicPlayer.isMuted.value = value == 0;
-                                await _player.setVolume(value);
-                                setState(() {});
-                              },
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(height: 16),
+                  const SizedBox(height: 24),
                 ],
               ),
             ),
