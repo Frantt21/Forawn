@@ -33,8 +33,8 @@ class ImageMessage {
     this.isGenerating = false,
     this.error,
     DateTime? timestamp,
-  })  : id = id ?? const Uuid().v4(),
-        timestamp = timestamp ?? DateTime.now();
+  }) : id = id ?? const Uuid().v4(),
+       timestamp = timestamp ?? DateTime.now();
 
   ImageMessage copyWith({
     String? prompt,
@@ -75,7 +75,9 @@ class ImageMessage {
       prompt: json['prompt'] as String,
       ratio: json['ratio'] as String,
       imageUrl: json['imageUrl'] as String?,
-      imageBytes: json['imageBytes'] != null ? base64Decode(json['imageBytes'] as String) : null,
+      imageBytes: json['imageBytes'] != null
+          ? base64Decode(json['imageBytes'] as String)
+          : null,
       isGenerating: json['isGenerating'] as bool? ?? false,
       error: json['error'] as String?,
       timestamp: DateTime.parse(json['timestamp'] as String),
@@ -183,7 +185,9 @@ class _AiImageScreenState extends State<AiImageScreen> with WindowListener {
   Future<void> _saveMessages() async {
     try {
       _prefs ??= await SharedPreferences.getInstance();
-      final messagesJson = _messages.map((m) => jsonEncode(m.toJson())).toList();
+      final messagesJson = _messages
+          .map((m) => jsonEncode(m.toJson()))
+          .toList();
       await _prefs!.setStringList(_messagesPrefsKey, messagesJson);
     } catch (_) {}
   }
@@ -209,9 +213,11 @@ class _AiImageScreenState extends State<AiImageScreen> with WindowListener {
     final r = Uri.encodeComponent(ratio);
     return '${ApiConfig.dorratzBaseUrl}/v3/ai-image?prompt=$encoded&ratio=$r';
   }
+
   Future<void> _generateImage() async {
     final prompt = _promptController.text.trim();
     if (prompt.isEmpty) {
+      if (!mounted) return;
       showElegantNotification(
         context,
         widget.getText('enter_prompt', fallback: 'Enter a prompt'),
@@ -227,13 +233,16 @@ class _AiImageScreenState extends State<AiImageScreen> with WindowListener {
 
     // Add message to chat
     final messageId = const Uuid().v4();
+    if (!mounted) return;
     setState(() {
-      _messages.add(ImageMessage(
-        id: messageId,
-        prompt: prompt,
-        ratio: _ratio,
-        isGenerating: true,
-      ));
+      _messages.add(
+        ImageMessage(
+          id: messageId,
+          prompt: prompt,
+          ratio: _ratio,
+          isGenerating: true,
+        ),
+      );
       _loading = true;
       _promptController.clear();
     });
@@ -276,19 +285,56 @@ class _AiImageScreenState extends State<AiImageScreen> with WindowListener {
       });
       _scrollToBottom();
       _saveMessages();
-    } catch (e) {
+    } on SocketException catch (e) {
+      debugPrint('[AiImageScreen] SocketException: $e');
       if (!mounted) return;
-      
-      // Check if request was cancelled
-      final isCancelled = e is TimeoutException && 
-          e.message == 'Request was cancelled';
-      
       setState(() {
         final index = _messages.indexWhere((m) => m.id == messageId);
         if (index != -1) {
           _messages[index] = _messages[index].copyWith(
             isGenerating: false,
-            error: isCancelled 
+            error: widget.getText('network_error', fallback: 'Network error'),
+          );
+        }
+        _loading = false;
+      });
+      _saveMessages();
+    } on HttpException catch (e) {
+      debugPrint('[AiImageScreen] HttpException: $e');
+      if (!mounted) return;
+      setState(() {
+        final index = _messages.indexWhere((m) => m.id == messageId);
+        if (index != -1) {
+          _messages[index] = _messages[index].copyWith(
+            isGenerating: false,
+            error: widget.getText('network_error', fallback: 'Network error'),
+          );
+        }
+        _loading = false;
+      });
+      _saveMessages();
+    } catch (e) {
+      // Silently ignore connection closed errors during dispose
+      if (e.toString().contains('Connection closed') ||
+          e.toString().contains('Socket is closed')) {
+        debugPrint(
+          '[AiImageScreen] Connection closed (widget likely disposed)',
+        );
+        return;
+      }
+
+      if (!mounted) return;
+
+      // Check if request was cancelled
+      final isCancelled =
+          e is TimeoutException && e.message == 'Request was cancelled';
+
+      setState(() {
+        final index = _messages.indexWhere((m) => m.id == messageId);
+        if (index != -1) {
+          _messages[index] = _messages[index].copyWith(
+            isGenerating: false,
+            error: isCancelled
                 ? '⏸ ${widget.getText('cancelled', fallback: 'Cancelado')}'
                 : e.toString(),
           );
@@ -469,9 +515,7 @@ class _AiImageScreenState extends State<AiImageScreen> with WindowListener {
               decoration: BoxDecoration(
                 color: Colors.purpleAccent.withOpacity(0.2),
                 borderRadius: BorderRadius.circular(12),
-                border: Border.all(
-                  color: Colors.purpleAccent.withOpacity(0.3),
-                ),
+                border: Border.all(color: Colors.purpleAccent.withOpacity(0.3)),
               ),
               constraints: BoxConstraints(
                 maxWidth: MediaQuery.of(context).size.width * 0.7,
@@ -493,9 +537,7 @@ class _AiImageScreenState extends State<AiImageScreen> with WindowListener {
                     decoration: BoxDecoration(
                       color: Colors.white.withOpacity(0.1),
                       borderRadius: BorderRadius.circular(6),
-                      border: Border.all(
-                        color: Colors.white.withOpacity(0.2),
-                      ),
+                      border: Border.all(color: Colors.white.withOpacity(0.2)),
                     ),
                     child: Row(
                       mainAxisSize: MainAxisSize.min,
@@ -546,7 +588,10 @@ class _AiImageScreenState extends State<AiImageScreen> with WindowListener {
                       Expanded(
                         child: Text(
                           message.error!,
-                          style: const TextStyle(color: Colors.red, fontSize: 12),
+                          style: const TextStyle(
+                            color: Colors.red,
+                            fontSize: 12,
+                          ),
                         ),
                       ),
                     ],
@@ -571,9 +616,7 @@ class _AiImageScreenState extends State<AiImageScreen> with WindowListener {
                     child: CircularProgressIndicator(strokeWidth: 2),
                   ),
                   const SizedBox(width: 8),
-                  Text(
-                    widget.getText('generating', fallback: 'Generating...'),
-                  ),
+                  Text(widget.getText('generating', fallback: 'Generating...')),
                 ],
               ),
             )
@@ -582,9 +625,7 @@ class _AiImageScreenState extends State<AiImageScreen> with WindowListener {
               margin: const EdgeInsets.symmetric(vertical: 8),
               decoration: BoxDecoration(
                 borderRadius: BorderRadius.circular(12),
-                border: Border.all(
-                  color: Colors.white.withOpacity(0.1),
-                ),
+                border: Border.all(color: Colors.white.withOpacity(0.1)),
               ),
               constraints: BoxConstraints(
                 maxWidth: MediaQuery.of(context).size.width * 0.65,
@@ -592,10 +633,7 @@ class _AiImageScreenState extends State<AiImageScreen> with WindowListener {
               ),
               child: ClipRRect(
                 borderRadius: BorderRadius.circular(12),
-                child: Image.memory(
-                  message.imageBytes!,
-                  fit: BoxFit.contain,
-                ),
+                child: Image.memory(message.imageBytes!, fit: BoxFit.contain),
               ),
             ),
         ],
@@ -627,14 +665,19 @@ class _AiImageScreenState extends State<AiImageScreen> with WindowListener {
                           const SizedBox(height: 16),
                           Text(
                             get('no_image_ui', fallback: 'No images yet'),
-                            style: TextStyle(color: Colors.white.withOpacity(0.5)),
+                            style: TextStyle(
+                              color: Colors.white.withOpacity(0.5),
+                            ),
                           ),
                         ],
                       ),
                     )
                   : ListView.builder(
                       controller: _scrollController,
-                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 16,
+                        vertical: 16,
+                      ),
                       itemCount: _messages.length,
                       itemBuilder: (context, index) {
                         return _buildMessageBubble(_messages[index]);
@@ -644,63 +687,10 @@ class _AiImageScreenState extends State<AiImageScreen> with WindowListener {
 
             // Input area
             Container(
-              padding: const EdgeInsets.all(16),
+              padding: const EdgeInsets.all(20),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // Ratio selector
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 8,
-                      vertical: 6,
-                    ),
-                    decoration: BoxDecoration(
-                      color: Colors.white.withOpacity(0.05),
-                      borderRadius: BorderRadius.circular(8),
-                      border: Border.all(color: Colors.white.withOpacity(0.1)),
-                    ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Text(
-                          get('ratio_label', fallback: 'Ratio'),
-                          style: const TextStyle(fontSize: 12),
-                        ),
-                        const SizedBox(width: 8),
-                        ClipRRect(
-                          borderRadius: BorderRadius.circular(6),
-                          child: DropdownButton<String>(
-                            borderRadius: BorderRadius.circular(8),
-                            value: _ratio,
-                            underline: const SizedBox.shrink(),
-                            dropdownColor: Colors.grey[900],
-                            items: <String>[
-                              '16:9',
-                              '9:16',
-                              '1:1',
-                              '4:3',
-                              '3:4',
-                              '9:19',
-                            ]
-                                .map(
-                                  (r) => DropdownMenuItem(
-                                    value: r,
-                                    child: Text(r),
-                                  ),
-                                )
-                                .toList(),
-                            onChanged: (v) {
-                              if (v == null) return;
-                              setState(() => _ratio = v);
-                            },
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-
-                  const SizedBox(height: 12),
-
                   // Input container with styled input
                   Container(
                     decoration: BoxDecoration(
@@ -709,60 +699,132 @@ class _AiImageScreenState extends State<AiImageScreen> with WindowListener {
                       border: Border.all(color: Colors.white.withOpacity(0.1)),
                     ),
                     padding: const EdgeInsets.all(8),
-                    child: Row(
-                      crossAxisAlignment: CrossAxisAlignment.end,
+                    child: Column(
                       children: [
-                      // Input de texto
-                      Expanded(
-                        child: TextField(
-                        controller: _promptController,
-                        style: const TextStyle(fontSize: 14),
-                        decoration: InputDecoration(
-                          hintText: get(
-                          'prompt_hint',
-                          fallback: 'Describe the image you want...',
-                          ),
-                          hintStyle: TextStyle(
-                          color: Colors.white.withOpacity(0.3),
-                          ),
-                          border: InputBorder.none,
-                          contentPadding: const EdgeInsets.symmetric(
-                          horizontal: 16,
-                          vertical: 12,
-                          ),
-                          isDense: true,
-                        ),
-                        minLines: 1,
-                        maxLines: 6,
-                        onSubmitted: (_) {
-                          if (!_loading) _generateImage();
-                        },
-                        ),
-                      ),
-
-                      // Botón enviar
-                      IconButton(
-                        onPressed: _loading ? null : () => _generateImage(),
-                        icon: _loading
-                          ? const SizedBox(
-                            width: 20,
-                            height: 20,
-                            child: CircularProgressIndicator(
-                            strokeWidth: 2,
-                            color: Colors.white,
+                        Row(
+                          crossAxisAlignment: CrossAxisAlignment.end,
+                          children: [
+                            // Input de texto
+                            Expanded(
+                              child: TextField(
+                                controller: _promptController,
+                                style: const TextStyle(fontSize: 15),
+                                decoration: InputDecoration(
+                                  hintText: get(
+                                    'prompt_hint',
+                                    fallback: 'Describe the image you want...',
+                                  ),
+                                  hintStyle: TextStyle(
+                                    color: Colors.white.withOpacity(0.3),
+                                  ),
+                                  border: InputBorder.none,
+                                  contentPadding: const EdgeInsets.symmetric(
+                                    horizontal: 16,
+                                    vertical: 12,
+                                  ),
+                                  isDense: true,
+                                ),
+                                minLines: 1,
+                                maxLines: 6,
+                                onSubmitted: (_) {
+                                  if (!_loading) _generateImage();
+                                },
+                              ),
                             ),
-                          )
-                          : const Icon(Icons.arrow_upward, size: 20),
-                        style: IconButton.styleFrom(
-                        backgroundColor: _loading
-                          ? Colors.grey
-                          : const Color.fromARGB(255, 255, 251, 18),
-                        foregroundColor: Colors.black87,
-                        padding: const EdgeInsets.all(8),
-                        minimumSize: const Size(36, 36),
-                        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+
+                            // Botón enviar
+                            IconButton(
+                              onPressed: _loading
+                                  ? null
+                                  : () => _generateImage(),
+                              icon: _loading
+                                  ? const SizedBox(
+                                      width: 20,
+                                      height: 20,
+                                      child: CircularProgressIndicator(
+                                        strokeWidth: 2,
+                                        color: Colors.white,
+                                      ),
+                                    )
+                                  : const Icon(Icons.arrow_upward, size: 20),
+                              style: IconButton.styleFrom(
+                                backgroundColor: _loading
+                                    ? Colors.grey
+                                    : const Color.fromARGB(255, 255, 251, 18),
+                                foregroundColor: Colors.black87,
+                                padding: const EdgeInsets.all(8),
+                                minimumSize: const Size(36, 36),
+                                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                              ),
+                            ),
+                          ],
                         ),
-                      ),
+
+                        // Barra inferior con selector de ratio
+                        Padding(
+                          padding: const EdgeInsets.only(
+                            top: 8,
+                            left: 8,
+                            right: 8,
+                          ),
+                          child: Row(
+                            children: [
+                              Container(
+                                height: 24,
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 8,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: Colors.white.withOpacity(0.08),
+                                  borderRadius: BorderRadius.circular(10),
+                                ),
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    DropdownButton<String>(
+                                      value: _ratio,
+                                      underline: const SizedBox.shrink(),
+                                      dropdownColor: const Color(0xFF2C2C2C),
+                                      borderRadius: BorderRadius.circular(10),
+                                      focusColor: Colors
+                                          .transparent, // Evita el resaltado persistente
+                                      icon: const Icon(
+                                        Icons.keyboard_arrow_down,
+                                        size: 14,
+                                        color: Colors.white54,
+                                      ),
+                                      isDense: true,
+                                      style: const TextStyle(
+                                        color: Colors.white,
+                                        fontSize: 11,
+                                      ),
+                                      items:
+                                          <String>[
+                                                '16:9',
+                                                '9:16',
+                                                '1:1',
+                                                '4:3',
+                                                '3:4',
+                                                '9:19',
+                                              ]
+                                              .map(
+                                                (r) => DropdownMenuItem(
+                                                  value: r,
+                                                  child: Text(r),
+                                                ),
+                                              )
+                                              .toList(),
+                                      onChanged: (v) {
+                                        if (v == null) return;
+                                        setState(() => _ratio = v);
+                                      },
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
                       ],
                     ),
                   ),

@@ -17,10 +17,15 @@ typedef TextGetter = String Function(String key, {String? fallback});
 class R34Screen extends StatefulWidget {
   final TextGetter getText;
   final String currentLang;
+  final Function(VoidCallback)? onRegisterFolderAction;
+  final Function(String)? onNavigate;
+
   const R34Screen({
     super.key,
     required this.getText,
     required this.currentLang,
+    this.onRegisterFolderAction,
+    this.onNavigate,
   });
 
   @override
@@ -47,6 +52,9 @@ class _R34ScreenState extends State<R34Screen> with WindowListener {
     windowManager.addListener(this);
     _loadFolderPref();
     WidgetsBinding.instance.addPostFrameCallback((_) => _maybeShowWarning());
+    if (widget.onRegisterFolderAction != null) {
+      widget.onRegisterFolderAction!(_selectFolder);
+    }
   }
 
   @override
@@ -88,8 +96,17 @@ class _R34ScreenState extends State<R34Screen> with WindowListener {
       context: context,
       barrierDismissible: false,
       builder: (_) => AlertDialog(
-        title: Text(
-          widget.getText('adult_warning_title', fallback: 'Adult content'),
+        backgroundColor: const Color(0xFF1E1E1E),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+        title: Row(
+          children: [
+            const Icon(Icons.warning, color: Colors.purpleAccent),
+            const SizedBox(width: 8),
+            Text(
+              widget.getText('adult_warning_title', fallback: 'Adult content'),
+              style: const TextStyle(color: Colors.white),
+            ),
+          ],
         ),
         content: Text(
           widget.getText(
@@ -97,14 +114,22 @@ class _R34ScreenState extends State<R34Screen> with WindowListener {
             fallback:
                 'This section may display explicit adult images. You must be of legal age in your jurisdiction to proceed.',
           ),
+          style: const TextStyle(color: Colors.white70),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(context).pop(false),
-            child: Text(widget.getText('cancel', fallback: 'Cancel')),
+            child: Text(
+              widget.getText('cancel', fallback: 'Cancel'),
+              style: const TextStyle(color: Colors.white54),
+            ),
           ),
           ElevatedButton(
             onPressed: () => Navigator.of(context).pop(true),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.purpleAccent,
+              foregroundColor: Colors.white,
+            ),
             child: Text(widget.getText('accept', fallback: 'I am 18+')),
           ),
         ],
@@ -113,7 +138,7 @@ class _R34ScreenState extends State<R34Screen> with WindowListener {
     if (accept == true) {
       _acceptedAdultWarning = true;
     } else {
-      if (mounted) Navigator.of(context).pop();
+      if (mounted) widget.onNavigate?.call('home');
     }
   }
 
@@ -138,8 +163,22 @@ class _R34ScreenState extends State<R34Screen> with WindowListener {
       final accepted = await showDialog<bool>(
         context: context,
         builder: (_) => AlertDialog(
-          title: Text(
-            widget.getText('adult_warning_title', fallback: 'Adult content'),
+          backgroundColor: const Color(0xFF1E1E1E),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(10),
+          ),
+          title: Row(
+            children: [
+              const Icon(Icons.warning, color: Colors.purpleAccent),
+              const SizedBox(width: 8),
+              Text(
+                widget.getText(
+                  'adult_warning_title',
+                  fallback: 'Adult content',
+                ),
+                style: const TextStyle(color: Colors.white),
+              ),
+            ],
           ),
           content: Text(
             widget.getText(
@@ -147,14 +186,22 @@ class _R34ScreenState extends State<R34Screen> with WindowListener {
               fallback:
                   'Search results may include explicit images. Do you wish to continue?',
             ),
+            style: const TextStyle(color: Colors.white70),
           ),
           actions: [
             TextButton(
               onPressed: () => Navigator.of(context).pop(false),
-              child: Text(widget.getText('cancel', fallback: 'Cancel')),
+              child: Text(
+                widget.getText('cancel', fallback: 'Cancel'),
+                style: const TextStyle(color: Colors.white54),
+              ),
             ),
             ElevatedButton(
               onPressed: () => Navigator.of(context).pop(true),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.purpleAccent,
+                foregroundColor: Colors.white,
+              ),
               child: Text(widget.getText('continue', fallback: 'Continue')),
             ),
           ],
@@ -166,7 +213,7 @@ class _R34ScreenState extends State<R34Screen> with WindowListener {
 
     setState(() {
       _loading = true;
-      _status = widget.getText('searching', fallback: 'Searching...');
+      _status = '';
       _results = [];
     });
 
@@ -205,7 +252,14 @@ class _R34ScreenState extends State<R34Screen> with WindowListener {
         }
       }
 
-      if (extracted.isEmpty) throw Exception('No results');
+      if (extracted.isEmpty) {
+        if (!mounted) return;
+        setState(() {
+          _results = [];
+          _status = widget.getText('no_results', fallback: 'No results');
+        });
+        return;
+      }
 
       final rnd = Random();
       final chosen = <_R34Item>[];
@@ -238,22 +292,42 @@ class _R34ScreenState extends State<R34Screen> with WindowListener {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (_) => AlertDialog(
-        title: Text(
-          widget.getText('download_confirm_title', fallback: 'Download image'),
+        backgroundColor: const Color(0xFF1E1E1E),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+        title: Row(
+          children: [
+            const Icon(Icons.download, color: Colors.purpleAccent),
+            const SizedBox(width: 8),
+            Text(
+              widget.getText(
+                'download_confirm_title',
+                fallback: 'Download image',
+              ),
+              style: const TextStyle(color: Colors.white),
+            ),
+          ],
         ),
         content: Text(
           widget.getText(
             'download_confirm_message',
             fallback: 'This image may be explicit. Do you want to download it?',
           ),
+          style: const TextStyle(color: Colors.white70),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(context).pop(false),
-            child: Text(widget.getText('cancel', fallback: 'Cancel')),
+            child: Text(
+              widget.getText('cancel', fallback: 'Cancel'),
+              style: const TextStyle(color: Colors.white54),
+            ),
           ),
           ElevatedButton(
             onPressed: () => Navigator.of(context).pop(true),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.purpleAccent,
+              foregroundColor: Colors.white,
+            ),
             child: Text(widget.getText('download', fallback: 'Download')),
           ),
         ],
@@ -341,145 +415,132 @@ class _R34ScreenState extends State<R34Screen> with WindowListener {
           Expanded(
             child: SafeArea(
               child: Padding(
-                padding: const EdgeInsets.all(16),
+                padding: const EdgeInsets.all(20),
                 child: Column(
                   children: [
                     Container(
                       width: double.infinity,
                       decoration: BoxDecoration(
-                        color: Colors.black12,
-                        borderRadius: BorderRadius.circular(12),
+                        color: Colors.white.withOpacity(0.05),
+                        borderRadius: BorderRadius.circular(16),
                         border: Border.all(
-                          color: Colors.white.withOpacity(0.04),
+                          color: Colors.white.withOpacity(0.1),
                         ),
                       ),
-                      child: Column(
+                      child: Stack(
                         children: [
-                          SizedBox(
-                            height: _inputHeight,
-                            child: Padding(
-                              padding: const EdgeInsets.all(8.0),
-                              child: TextField(
-                                controller: _queryController,
-                                expands: true,
-                                maxLines: null,
-                                minLines: null,
-                                textAlignVertical: TextAlignVertical.top,
-                                textInputAction: TextInputAction.search,
-                                decoration: InputDecoration(
-                                  border: InputBorder.none,
-                                  hintText: get(
-                                    'query_hint',
-                                    fallback: 'e.g. Bulma',
+                          Column(
+                            children: [
+                              SizedBox(
+                                height: _inputHeight,
+                                child: Padding(
+                                  padding: const EdgeInsets.fromLTRB(
+                                    12,
+                                    12,
+                                    12,
+                                    40,
+                                  ),
+                                  child: TextField(
+                                    controller: _queryController,
+                                    expands: true,
+                                    maxLines: null,
+                                    minLines: null,
+                                    textAlignVertical: TextAlignVertical.top,
+                                    textInputAction: TextInputAction.search,
+                                    decoration: InputDecoration(
+                                      border: InputBorder.none,
+                                      hintText: get(
+                                        'query_hint',
+                                        fallback: 'e.g. Bulma',
+                                      ),
+                                      hintStyle: TextStyle(
+                                        color: Colors.white.withOpacity(0.3),
+                                      ),
+                                      contentPadding: EdgeInsets.zero,
+                                      isDense: true,
+                                    ),
+                                    style: const TextStyle(fontSize: 15),
+                                    onSubmitted: (_) => _search(),
                                   ),
                                 ),
-                                style: const TextStyle(fontSize: 14),
-                                onSubmitted: (_) => _search(),
+                              ),
+                            ],
+                          ),
+
+                          // Drag Handle (Center Bottom)
+                          Positioned(
+                            bottom: 0,
+                            left: 0,
+                            right: 0,
+                            child: GestureDetector(
+                              behavior: HitTestBehavior.translucent,
+                              onVerticalDragStart: (_) =>
+                                  setState(() => _isDraggingHandle = true),
+                              onVerticalDragUpdate: (details) {
+                                setState(() {
+                                  _inputHeight =
+                                      (_inputHeight + details.delta.dy).clamp(
+                                        60.0,
+                                        300.0,
+                                      );
+                                });
+                              },
+                              onVerticalDragEnd: (_) =>
+                                  setState(() => _isDraggingHandle = false),
+                              child: Container(
+                                height: 24,
+                                alignment: Alignment.center,
+                                child: Container(
+                                  width: 40,
+                                  height: 4,
+                                  decoration: BoxDecoration(
+                                    color: _isDraggingHandle
+                                        ? Colors.white.withOpacity(0.5)
+                                        : Colors.white.withOpacity(0.2),
+                                    borderRadius: BorderRadius.circular(2),
+                                  ),
+                                ),
                               ),
                             ),
                           ),
-                          GestureDetector(
-                            behavior: HitTestBehavior.translucent,
-                            onVerticalDragStart: (_) =>
-                                setState(() => _isDraggingHandle = true),
-                            onVerticalDragUpdate: (details) {
-                              setState(() {
-                                _inputHeight = (_inputHeight + details.delta.dy)
-                                    .clamp(48.0, 220.0);
-                              });
-                            },
-                            onVerticalDragEnd: (_) =>
-                                setState(() => _isDraggingHandle = false),
-                            child: Container(
-                              height: 10,
-                              alignment: Alignment.center,
-                              child: Container(
-                                width: 48,
-                                height: 4,
-                                decoration: BoxDecoration(
-                                  color: _isDraggingHandle
-                                      ? Colors.deepPurpleAccent
-                                      : Colors.white24,
-                                  borderRadius: BorderRadius.circular(4),
-                                ),
+
+                          // Search Button (Right Bottom)
+                          Positioned(
+                            bottom: 8,
+                            right: 8,
+                            child: IconButton(
+                              onPressed: _loading ? null : _search,
+                              icon: _loading
+                                  ? const SizedBox(
+                                      width: 20,
+                                      height: 20,
+                                      child: CircularProgressIndicator(
+                                        strokeWidth: 2,
+                                        color: Colors.white,
+                                      ),
+                                    )
+                                  : const Icon(
+                                      Icons.search,
+                                      color: Colors.white,
+                                    ),
+                              style: IconButton.styleFrom(
+                                backgroundColor: const Color.fromARGB(
+                                  255,
+                                  239,
+                                  147,
+                                  255,
+                                ).withOpacity(0.2),
+                                hoverColor: const Color.fromARGB(
+                                  255,
+                                  239,
+                                  147,
+                                  255,
+                                ).withOpacity(0.4),
                               ),
                             ),
                           ),
                         ],
                       ),
-                    ),
-
-                    const SizedBox(height: 12),
-
-                    Row(
-                      children: [
-                        ElevatedButton.icon(
-                          icon: _loading
-                              ? const SizedBox(
-                                  width: 16,
-                                  height: 16,
-                                  child: CircularProgressIndicator(
-                                    strokeWidth: 2,
-                                  ),
-                                )
-                              : const Icon(Icons.search),
-                          label: Text(get('search_button', fallback: 'Search')),
-                          onPressed: _loading ? null : _search,
-                          style: ElevatedButton.styleFrom(
-                            shape: const RoundedRectangleBorder(
-                              borderRadius: BorderRadius.all(
-                                Radius.circular(10),
-                              ),
-                            ),
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 12,
-                              vertical: 12,
-                            ),
-                            backgroundColor: const Color.fromARGB(
-                              255,
-                              239,
-                              147,
-                              255,
-                            ),
-                            foregroundColor: Colors.black87,
-                          ),
-                        ),
-
-                        const SizedBox(width: 12),
-
-                        ElevatedButton.icon(
-                          icon: const Icon(Icons.folder_open),
-                          label: Text(get('folder_button', fallback: 'Folder')),
-                          onPressed: _selectFolder,
-                          style: ElevatedButton.styleFrom(
-                            shape: const RoundedRectangleBorder(
-                              borderRadius: BorderRadius.all(
-                                Radius.circular(10),
-                              ),
-                            ),
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 12,
-                              vertical: 12,
-                            ),
-                            backgroundColor: Colors.grey[200],
-                            foregroundColor: Colors.black87,
-                          ),
-                        ),
-
-                        const SizedBox(width: 12),
-
-                        Expanded(
-                          child: Text(
-                            _saveFolder ??
-                                get(
-                                  'no_folder_selected',
-                                  fallback: 'No folder selected',
-                                ),
-                            overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(fontSize: 12),
-                          ),
-                        ),
-                      ],
                     ),
 
                     const SizedBox(height: 12),
@@ -496,26 +557,50 @@ class _R34ScreenState extends State<R34Screen> with WindowListener {
                     const SizedBox(height: 12),
 
                     Expanded(
-                      child: _results.isEmpty
-                          ? Center(
+                      child: LayoutBuilder(
+                        builder: (context, constraints) {
+                          if (_loading) {
+                            return const Center(
+                              child: CircularProgressIndicator(
+                                strokeWidth: 3,
+                                color: Colors.purpleAccent,
+                              ),
+                            );
+                          }
+
+                          if (_results.isEmpty) {
+                            // Si no hay resultados y no se está cargando
+                            // Podríamos mostrar un mensaje inicial si query está vacío,
+                            // pero por ahora mantendremos "No results" consistente con el resto.
+                            return Center(
                               child: Text(
                                 get('no_results', fallback: 'No results'),
+                                style: TextStyle(
+                                  color: Colors.white.withOpacity(0.5),
+                                ),
                               ),
-                            )
-                          : GridView.builder(
-                              gridDelegate:
-                                  const SliverGridDelegateWithFixedCrossAxisCount(
-                                    crossAxisCount: 3,
-                                    crossAxisSpacing: 12,
-                                    mainAxisSpacing: 12,
-                                    childAspectRatio: 0.75,
-                                  ),
-                              itemCount: _results.length,
-                              itemBuilder: (context, index) {
-                                final item = _results[index];
-                                return _resultCard(item);
-                              },
-                            ),
+                            );
+                          }
+
+                          final crossAxisCount = constraints.maxWidth > 1200
+                              ? 5
+                              : 3;
+                          return GridView.builder(
+                            gridDelegate:
+                                SliverGridDelegateWithFixedCrossAxisCount(
+                                  crossAxisCount: crossAxisCount,
+                                  crossAxisSpacing: 12,
+                                  mainAxisSpacing: 12,
+                                  childAspectRatio: 0.75,
+                                ),
+                            itemCount: _results.length,
+                            itemBuilder: (context, index) {
+                              final item = _results[index];
+                              return _resultCard(item);
+                            },
+                          );
+                        },
+                      ),
                     ),
                   ],
                 ),

@@ -1528,7 +1528,7 @@ class _ForaaiScreenState extends State<ForaaiScreen> {
       padding: const EdgeInsets.symmetric(horizontal: 8),
       decoration: BoxDecoration(
         color: Colors.white.withOpacity(0.08),
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(10),
       ),
       child: ClipRRect(
         borderRadius: BorderRadius.circular(10),
@@ -1536,6 +1536,8 @@ class _ForaaiScreenState extends State<ForaaiScreen> {
           child: DropdownButton<AIProvider>(
             value: _selectedProvider,
             dropdownColor: const Color(0xFF2d2d2d),
+            borderRadius: BorderRadius.circular(10),
+            focusColor: Colors.transparent, // Evita el resaltado persistente
             icon: const Icon(
               Icons.keyboard_arrow_down,
               size: 14,

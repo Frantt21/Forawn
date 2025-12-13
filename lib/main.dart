@@ -178,27 +178,25 @@ Future<void> checkForUpdate(
       showDialog(
         context: context,
         builder: (_) => AlertDialog(
+          backgroundColor: const Color(0xFF1E1E1E),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(10),
+          ),
           title: Text(
             getText('update_title', fallback: 'Nueva versión disponible'),
+            style: const TextStyle(color: Colors.white),
           ),
           content: Text(
-            '${getText('update_current', fallback: 'Versión actual')}: $currentVersion\\n${getText('update_latest', fallback: 'Última versión')}: $latestTag',
+            '${getText('update_current', fallback: 'Versión actual')}: $currentVersion\n${getText('update_latest', fallback: 'Última versión')}: $latestTag',
+            style: const TextStyle(color: Colors.white70),
           ),
           actions: [
             TextButton(
               onPressed: () => Navigator.of(context).pop(),
-              style: ElevatedButton.styleFrom(
-                shape: const RoundedRectangleBorder(
-                  borderRadius: BorderRadius.all(Radius.circular(10)),
-                ),
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 12,
-                  vertical: 12,
-                ),
-                backgroundColor: const Color.fromARGB(255, 255, 24, 24),
-                foregroundColor: Colors.black87,
+              child: Text(
+                getText('close_button', fallback: 'Cerrar'),
+                style: const TextStyle(color: Colors.white54),
               ),
-              child: Text(getText('close_button', fallback: 'Cerrar')),
             ),
             ElevatedButton.icon(
               icon: const Icon(Icons.download),
@@ -211,15 +209,11 @@ Future<void> checkForUpdate(
                 );
               },
               style: ElevatedButton.styleFrom(
-                shape: const RoundedRectangleBorder(
-                  borderRadius: BorderRadius.all(Radius.circular(10)),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(10),
                 ),
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 12,
-                  vertical: 12,
-                ),
-                backgroundColor: const Color.fromARGB(255, 24, 255, 24),
-                foregroundColor: Colors.black87,
+                backgroundColor: Colors.purpleAccent,
+                foregroundColor: Colors.white,
               ),
             ),
           ],
@@ -248,6 +242,7 @@ class _ForawnAppRootState extends State<ForawnAppRoot> {
   late String _langCode;
   late Map<String, String> _langMap;
   late FocusNode _globalFocusNode;
+  bool _isDarkBackground = true; // Track if background is dark or light
 
   @override
   void initState() {
@@ -256,8 +251,26 @@ class _ForawnAppRootState extends State<ForawnAppRoot> {
     _langMap = widget.initialLangMap;
     _globalFocusNode = FocusNode();
 
+    // Load background brightness preference
+    _loadBackgroundBrightness();
+
     // Inicializar servicio de teclado global
     GlobalKeyboardService().initialize(_globalFocusNode, null);
+  }
+
+  Future<void> _loadBackgroundBrightness() async {
+    final prefs = await SharedPreferences.getInstance();
+    final isDark = prefs.getBool(_prefDarkKey) ?? true;
+    if (mounted) {
+      setState(() {
+        _isDarkBackground = isDark;
+      });
+    }
+  }
+
+  // Call this when returning from settings to refresh theme
+  Future<void> _refreshBackgroundBrightness() async {
+    await _loadBackgroundBrightness();
   }
 
   @override
@@ -296,19 +309,39 @@ class _ForawnAppRootState extends State<ForawnAppRoot> {
         borderRadius: BorderRadius.circular(0),
         child: MaterialApp(
           title: 'Forawn',
-          theme: ThemeData.dark(useMaterial3: true).copyWith(
-            appBarTheme: const AppBarTheme(
-              backgroundColor: Colors.transparent,
-              elevation: 0,
-              surfaceTintColor: Colors.transparent,
-              scrolledUnderElevation: 0,
-            ),
-          ),
+          theme: _isDarkBackground
+              ? ThemeData.dark(useMaterial3: true).copyWith(
+                  appBarTheme: const AppBarTheme(
+                    backgroundColor: Colors.transparent,
+                    elevation: 0,
+                    surfaceTintColor: Colors.transparent,
+                    scrolledUnderElevation: 0,
+                  ),
+                  textTheme: ThemeData.dark().textTheme.apply(
+                    bodyColor: Colors.white,
+                    displayColor: Colors.white,
+                  ),
+                  iconTheme: const IconThemeData(color: Colors.white),
+                )
+              : ThemeData.light(useMaterial3: true).copyWith(
+                  appBarTheme: const AppBarTheme(
+                    backgroundColor: Colors.transparent,
+                    elevation: 0,
+                    surfaceTintColor: Colors.transparent,
+                    scrolledUnderElevation: 0,
+                  ),
+                  textTheme: ThemeData.light().textTheme.apply(
+                    bodyColor: Colors.black87,
+                    displayColor: Colors.black87,
+                  ),
+                  iconTheme: const IconThemeData(color: Colors.black87),
+                ),
           debugShowCheckedModeBanner: false,
           home: HomeScreen(
             getText: t,
             onRequestLanguageChange: _changeLanguage,
             currentLangCode: _langCode,
+            isDarkBackground: _isDarkBackground,
           ),
         ),
       ),
@@ -320,12 +353,14 @@ class HomeScreen extends StatefulWidget {
   final Future<void> Function(String) onRequestLanguageChange;
   final String currentLangCode;
   final String Function(String key, {String? fallback}) getText;
+  final bool isDarkBackground;
 
   const HomeScreen({
     super.key,
     required this.getText,
     required this.onRequestLanguageChange,
     required this.currentLangCode,
+    required this.isDarkBackground,
   });
 
   @override
@@ -419,6 +454,14 @@ class _HomeScreenState extends State<HomeScreen> with WindowListener {
       await prefs.setString(_prefEffectKey, effect.name);
       await prefs.setInt(_prefColorKey, color.value);
       await prefs.setBool(_prefDarkKey, dark);
+
+      // Refresh theme in parent widget
+      if (mounted &&
+          context.findAncestorStateOfType<_ForawnAppRootState>() != null) {
+        context
+            .findAncestorStateOfType<_ForawnAppRootState>()!
+            ._refreshBackgroundBrightness();
+      }
     } catch (e) {
       debugPrint('[WindowEffect] error: $e');
     }
@@ -492,6 +535,8 @@ class _HomeScreenState extends State<HomeScreen> with WindowListener {
           return R34Screen(
             getText: widget.getText,
             currentLang: widget.currentLangCode,
+            onRegisterFolderAction: _registerFolderAction,
+            onNavigate: _handleNavigation,
           );
         }
         return HomeContent(

@@ -275,14 +275,17 @@ class _QrGeneratorScreenState extends State<QrGeneratorScreen> {
           Expanded(
             child: SafeArea(
               child: Padding(
-                padding: const EdgeInsets.all(18),
+                padding: const EdgeInsets.all(20),
                 child: Column(
                   children: [
                     // Input area con handle de redimensionado
                     Container(
                       decoration: BoxDecoration(
-                        color: Colors.black12,
-                        borderRadius: BorderRadius.circular(12),
+                        color: Colors.white.withOpacity(0.05),
+                        borderRadius: BorderRadius.circular(16),
+                        border: Border.all(
+                          color: Colors.white.withOpacity(0.1),
+                        ),
                       ),
                       padding: const EdgeInsets.all(8),
                       child: Row(
@@ -295,10 +298,18 @@ class _QrGeneratorScreenState extends State<QrGeneratorScreen> {
                                   'qr_label_url',
                                   fallback: 'URL a codificar',
                                 ),
+                                hintStyle: TextStyle(
+                                  color: Colors.white.withOpacity(0.3),
+                                ),
                                 border: InputBorder.none,
                                 errorText: _errorText,
+                                contentPadding: const EdgeInsets.symmetric(
+                                  horizontal: 16,
+                                  vertical: 12,
+                                ),
+                                isDense: true,
                               ),
-                              style: const TextStyle(fontSize: 14),
+                              style: const TextStyle(fontSize: 15),
                               keyboardType: TextInputType.url,
                               onChanged: (_) {
                                 if (_errorText != null) {

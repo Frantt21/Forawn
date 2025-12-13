@@ -70,7 +70,9 @@ class _VideoDownloaderScreenState extends State<VideoDownloaderScreen>
       try {
         widget.onRegisterFolderAction!(_selectDownloadFolder);
       } catch (e) {
-        debugPrint('[VideoDownloaderScreen] Error registering folder action: $e');
+        debugPrint(
+          '[VideoDownloaderScreen] Error registering folder action: $e',
+        );
       }
     }
   }
@@ -652,33 +654,41 @@ class _VideoDownloaderScreenState extends State<VideoDownloaderScreen>
     if (!mounted) return;
     try {
       if (mounted && context.mounted) {
-        Navigator.of(context).push(
-          MaterialPageRoute(
-            builder: (_) => DownloadsScreen(
-              getText: widget.getText,
-              currentLang: widget.currentLang,
-            ),
-          ),
-        ).catchError((e, st) {
-          debugPrint('[VideoDownloaderScreen] Navigation error: $e\n$st');
-          if (mounted) {
-            showElegantNotification(
-              context,
-              widget.getText('error_opening_downloads', fallback: 'No se pudo abrir Descargas'),
-              backgroundColor: const Color(0xFFE53935),
-              textColor: Colors.white,
-              icon: Icons.error_outline,
-              iconColor: Colors.white,
-            );
-          }
-        });
+        Navigator.of(context)
+            .push(
+              MaterialPageRoute(
+                builder: (_) => DownloadsScreen(
+                  getText: widget.getText,
+                  currentLang: widget.currentLang,
+                ),
+              ),
+            )
+            .catchError((e, st) {
+              debugPrint('[VideoDownloaderScreen] Navigation error: $e\n$st');
+              if (mounted) {
+                showElegantNotification(
+                  context,
+                  widget.getText(
+                    'error_opening_downloads',
+                    fallback: 'No se pudo abrir Descargas',
+                  ),
+                  backgroundColor: const Color(0xFFE53935),
+                  textColor: Colors.white,
+                  icon: Icons.error_outline,
+                  iconColor: Colors.white,
+                );
+              }
+            });
       }
     } catch (e, st) {
       debugPrint('[VideoDownloaderScreen] openDownloads error: $e\n$st');
       if (mounted) {
         showElegantNotification(
           context,
-          widget.getText('error_opening_downloads', fallback: 'No se pudo abrir Descargas'),
+          widget.getText(
+            'error_opening_downloads',
+            fallback: 'No se pudo abrir Descargas',
+          ),
           backgroundColor: const Color(0xFFE53935),
           textColor: Colors.white,
           icon: Icons.error_outline,
@@ -696,15 +706,16 @@ class _VideoDownloaderScreenState extends State<VideoDownloaderScreen>
       backgroundColor: Colors.transparent,
       body: SafeArea(
         child: Padding(
-          padding: const EdgeInsets.all(16),
+          padding: const EdgeInsets.all(20),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               // URL input + inspect button
               Container(
                 decoration: BoxDecoration(
-                  color: Colors.black12,
-                  borderRadius: BorderRadius.circular(12),
+                  color: Colors.white.withOpacity(0.05),
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(color: Colors.white.withOpacity(0.1)),
                 ),
                 padding: const EdgeInsets.all(8),
                 child: Row(
@@ -717,37 +728,36 @@ class _VideoDownloaderScreenState extends State<VideoDownloaderScreen>
                             'video_url_label',
                             fallback: 'YouTube URL',
                           ),
+                          hintStyle: TextStyle(
+                            color: Colors.white.withOpacity(0.3),
+                          ),
                           border: InputBorder.none,
+                          contentPadding: const EdgeInsets.symmetric(
+                            horizontal: 16,
+                            vertical: 12,
+                          ),
+                          isDense: true,
                         ),
+                        style: const TextStyle(fontSize: 15),
                         onSubmitted: (_) => _onInspectUrl(),
                       ),
                     ),
                     const SizedBox(width: 8),
-                    ElevatedButton.icon(
+                    IconButton(
                       icon: _loadingMeta
                           ? const SizedBox(
-                              width: 16,
-                              height: 16,
-                              child: CircularProgressIndicator(strokeWidth: 2),
+                              width: 24,
+                              height: 24,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                color: Colors.white,
+                              ),
                             )
-                          : const Icon(Icons.search),
-                      label: Text(get('inspect_button', fallback: 'Inspect')),
+                          : const Icon(Icons.search, color: Colors.white),
                       onPressed: _loadingMeta ? null : _onInspectUrl,
-                      style: ElevatedButton.styleFrom(
-                        shape: const RoundedRectangleBorder(
-                          borderRadius: BorderRadius.all(Radius.circular(10)),
-                        ),
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 12,
-                          vertical: 12,
-                        ),
-                        backgroundColor: const Color.fromARGB(
-                          255,
-                          255,
-                          255,
-                          255,
-                        ),
-                        foregroundColor: Colors.black87,
+                      style: IconButton.styleFrom(
+                        backgroundColor: Colors.white.withOpacity(0.2),
+                        padding: const EdgeInsets.all(8),
                       ),
                     ),
                   ],

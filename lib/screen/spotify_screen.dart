@@ -34,7 +34,8 @@ class SpotifyScreen extends StatefulWidget {
   State<SpotifyScreen> createState() => _SpotifyScreenState();
 }
 
-class _SpotifyScreenState extends State<SpotifyScreen> with WindowListener, WidgetsBindingObserver {
+class _SpotifyScreenState extends State<SpotifyScreen>
+    with WindowListener, WidgetsBindingObserver {
   List<Map<String, dynamic>> _canciones = [];
   final TextEditingController _controller = TextEditingController();
   final DownloadManager _dm = DownloadManager();
@@ -128,11 +129,14 @@ class _SpotifyScreenState extends State<SpotifyScreen> with WindowListener, Widg
     } catch (e) {
       debugPrint('[SpotifyScreen] Error disposing controller: $e');
     }
-    try {
-      _http.close();
-    } catch (e) {
-      debugPrint('[SpotifyScreen] Error closing http: $e');
-    }
+    // Don't close HTTP client - let pending requests complete naturally
+    // Closing it forcefully causes "Connection closed" errors in debug mode
+    // The client will be garbage collected when no longer referenced
+    // try {
+    //   _http.close();
+    // } catch (e) {
+    //   debugPrint('[SpotifyScreen] Error closing http: $e');
+    // }
     super.dispose();
   }
 
@@ -160,7 +164,10 @@ class _SpotifyScreenState extends State<SpotifyScreen> with WindowListener, Widg
   // -------------------------
   // Helper: GET seguro
   // -------------------------
-  Future<http.Response?> _safeGet(Uri uri, {Duration timeout = const Duration(seconds: 10)}) async {
+  Future<http.Response?> _safeGet(
+    Uri uri, {
+    Duration timeout = const Duration(seconds: 10),
+  }) async {
     try {
       final res = await _http.get(uri).timeout(timeout);
       return res;
@@ -171,24 +178,38 @@ class _SpotifyScreenState extends State<SpotifyScreen> with WindowListener, Widg
       debugPrint('[SpotifyScreen] SocketException GET $uri: $e\n$st');
       return null;
     } on HttpException catch (e, st) {
+      // This catches "Connection closed before full header was received"
       debugPrint('[SpotifyScreen] HttpException GET $uri: $e\n$st');
       return null;
     } catch (e, st) {
+      // Catch any other errors including connection closed during dispose
+      if (e.toString().contains('Connection closed') ||
+          e.toString().contains('Socket is closed')) {
+        debugPrint(
+          '[SpotifyScreen] Connection closed (widget likely disposed): $uri',
+        );
+        return null;
+      }
       debugPrint('[SpotifyScreen] Unknown error GET $uri: $e\n$st');
       return null;
     }
   }
 
   Future<String?> buscarImagenPinterest(String nombre, String artista) async {
-    final key = '${nombre.toLowerCase().trim()}|${artista.toLowerCase().trim()}';
+    final key =
+        '${nombre.toLowerCase().trim()}|${artista.toLowerCase().trim()}';
     if (_imageCache.containsKey(key)) return _imageCache[key];
     try {
       final query = 'portada $nombre $artista';
-      final url = Uri.parse('${ApiConfig.dorratzBaseUrl}/v2/pinterest?q=${Uri.encodeComponent(query)}');
+      final url = Uri.parse(
+        '${ApiConfig.dorratzBaseUrl}/v2/pinterest?q=${Uri.encodeComponent(query)}',
+      );
       final res = await _safeGet(url, timeout: const Duration(seconds: 8));
       if (res == null) return null;
       if (res.statusCode != 200) {
-        debugPrint('[SpotifyScreen] buscarImagenPinterest non-200: ${res.statusCode}');
+        debugPrint(
+          '[SpotifyScreen] buscarImagenPinterest non-200: ${res.statusCode}',
+        );
         return null;
       }
       final parsed = jsonDecode(res.body);
@@ -196,10 +217,16 @@ class _SpotifyScreenState extends State<SpotifyScreen> with WindowListener, Widg
       if (parsed is List && parsed.isNotEmpty) {
         final first = parsed.first;
         if (first is Map<String, dynamic>) {
-          img = first['image_large_url'] ?? first['image_small_url'] ?? first['image_medium_url'];
+          img =
+              first['image_large_url'] ??
+              first['image_small_url'] ??
+              first['image_medium_url'];
         }
       } else if (parsed is Map<String, dynamic>) {
-        img = parsed['image_large_url'] ?? parsed['image_small_url'] ?? parsed['image_medium_url'];
+        img =
+            parsed['image_large_url'] ??
+            parsed['image_small_url'] ??
+            parsed['image_medium_url'];
       }
       if (img != null && img.isNotEmpty) {
         _imageCache[key] = img;
@@ -247,15 +274,21 @@ class _SpotifyScreenState extends State<SpotifyScreen> with WindowListener, Widg
     setState(() => _loadingRecommendations = true);
 
     try {
-      final uri = Uri.parse('${ApiConfig.dorratzBaseUrl}/spotifysearch?query=${Uri.encodeComponent(query)}');
+      final uri = Uri.parse(
+        '${ApiConfig.dorratzBaseUrl}/spotifysearch?query=${Uri.encodeComponent(query)}',
+      );
       final res = await _safeGet(uri, timeout: const Duration(seconds: 10));
       if (res == null) {
-        debugPrint('[SpotifyScreen] recommendation fetch returned null for $query');
+        debugPrint(
+          '[SpotifyScreen] recommendation fetch returned null for $query',
+        );
         if (mounted) setState(() => _loadingRecommendations = false);
         return;
       }
       if (res.statusCode != 200) {
-        debugPrint('[SpotifyScreen] recommendation fetch non-200 ${res.statusCode}');
+        debugPrint(
+          '[SpotifyScreen] recommendation fetch non-200 ${res.statusCode}',
+        );
         if (mounted) setState(() => _loadingRecommendations = false);
         return;
       }
@@ -273,6 +306,7 @@ class _SpotifyScreenState extends State<SpotifyScreen> with WindowListener, Widg
           }
           return 0;
         }
+
         final popA = getPop(a['popularity']);
         final popB = getPop(b['popularity']);
         return popB.compareTo(popA);
@@ -282,7 +316,8 @@ class _SpotifyScreenState extends State<SpotifyScreen> with WindowListener, Widg
       final mapped = List<Map<String, dynamic>>.from(limited);
 
       for (var m in mapped) {
-        if ((m['url'] == null || (m['url'] is String && (m['url'] as String).isEmpty))) {
+        if ((m['url'] == null ||
+            (m['url'] is String && (m['url'] as String).isEmpty))) {
           if (m.containsKey('uri')) {
             m['url'] = m['uri'];
           } else if (m.containsKey('link')) {
@@ -316,7 +351,9 @@ class _SpotifyScreenState extends State<SpotifyScreen> with WindowListener, Widg
         decoded.forEach((k, v) {
           if (v is String && v.isNotEmpty) _imageCache[k] = v;
         });
-        debugPrint('[SpotifyScreen] image cache loaded ${_imageCache.length} entries');
+        debugPrint(
+          '[SpotifyScreen] image cache loaded ${_imageCache.length} entries',
+        );
       }
     } catch (e) {
       debugPrint('[SpotifyScreen] loadImageCache error: $e');
@@ -337,15 +374,21 @@ class _SpotifyScreenState extends State<SpotifyScreen> with WindowListener, Widg
     _uiLog('Buscar: $query');
 
     try {
-      final uri = Uri.parse('${ApiConfig.dorratzBaseUrl}/spotifysearch?query=${Uri.encodeComponent(query)}');
+      final uri = Uri.parse(
+        '${ApiConfig.dorratzBaseUrl}/spotifysearch?query=${Uri.encodeComponent(query)}',
+      );
       final res = await _safeGet(uri, timeout: const Duration(seconds: 10));
       if (res == null) {
-        debugPrint('[SpotifyScreen] buscarCanciones: request failed for $query');
+        debugPrint(
+          '[SpotifyScreen] buscarCanciones: request failed for $query',
+        );
         if (mounted) setState(() => _searching = false);
         return;
       }
       if (res.statusCode != 200) {
-        debugPrint('[SpotifyScreen] buscarCanciones: non-200 ${res.statusCode}');
+        debugPrint(
+          '[SpotifyScreen] buscarCanciones: non-200 ${res.statusCode}',
+        );
         if (mounted) setState(() => _searching = false);
         return;
       }
@@ -353,7 +396,9 @@ class _SpotifyScreenState extends State<SpotifyScreen> with WindowListener, Widg
       final data = jsonDecode(res.body) as Map<String, dynamic>;
       final cancionesRaw = data['data'] as List<dynamic>? ?? [];
       final canciones = cancionesRaw.whereType<Map<String, dynamic>>().toList();
-      debugPrint('[SpotifyScreen] spotifysearch returned ${canciones.length} items');
+      debugPrint(
+        '[SpotifyScreen] spotifysearch returned ${canciones.length} items',
+      );
 
       final mapped = List<Map<String, dynamic>>.from(canciones);
 
@@ -366,6 +411,7 @@ class _SpotifyScreenState extends State<SpotifyScreen> with WindowListener, Widg
           }
           return 0;
         }
+
         final popA = getPop(a['popularity']);
         final popB = getPop(b['popularity']);
         return popB.compareTo(popA);
@@ -376,7 +422,9 @@ class _SpotifyScreenState extends State<SpotifyScreen> with WindowListener, Widg
         final artist = top['artist'];
         if (artist != null && artist is String && artist.isNotEmpty) {
           await _prefs!.setString('last_search_query', artist);
-          debugPrint('[SpotifyScreen] Updated recommendation seed to artist: $artist');
+          debugPrint(
+            '[SpotifyScreen] Updated recommendation seed to artist: $artist',
+          );
         } else {
           await _prefs!.setString('last_search_query', query);
         }
@@ -385,7 +433,8 @@ class _SpotifyScreenState extends State<SpotifyScreen> with WindowListener, Widg
       }
 
       for (var m in mapped) {
-        if ((m['url'] == null || (m['url'] is String && (m['url'] as String).isEmpty))) {
+        if ((m['url'] == null ||
+            (m['url'] is String && (m['url'] as String).isEmpty))) {
           if (m.containsKey('uri')) {
             m['url'] = m['uri'];
             debugPrint('[SpotifyScreen] normalized uri -> url for item');
@@ -407,12 +456,17 @@ class _SpotifyScreenState extends State<SpotifyScreen> with WindowListener, Widg
         if (mounted) setState(() {});
       });
 
-      final missingUrlCount = _canciones.where((c) => c['url'] == null || (c['url'] as String).isEmpty).length;
+      final missingUrlCount = _canciones
+          .where((c) => c['url'] == null || (c['url'] as String).isEmpty)
+          .length;
       _uiLog('Resultados: ${_canciones.length}, sin url: $missingUrlCount');
       if (missingUrlCount > 0) {
         showElegantNotification(
           context,
-          widget.getText('warning_missing_url', fallback: 'Algunas canciones no tienen URL'),
+          widget.getText(
+            'warning_missing_url',
+            fallback: 'Algunas canciones no tienen URL',
+          ),
           backgroundColor: const Color(0xFFFFA500),
           textColor: Colors.white,
           icon: Icons.warning_amber,
@@ -436,7 +490,10 @@ class _SpotifyScreenState extends State<SpotifyScreen> with WindowListener, Widg
     }
   }
 
-  Future<void> _assignImagesChunked(List<Map<String, dynamic>> mapped, {int chunkSize = 4}) async {
+  Future<void> _assignImagesChunked(
+    List<Map<String, dynamic>> mapped, {
+    int chunkSize = 4,
+  }) async {
     for (int i = 0; i < mapped.length; i += chunkSize) {
       if (!mounted) return;
       final end = (i + chunkSize).clamp(0, mapped.length);
@@ -453,13 +510,19 @@ class _SpotifyScreenState extends State<SpotifyScreen> with WindowListener, Widg
             String nombre = title;
             if (title.contains(' - ')) {
               final partes = title.split(' - ').map((s) => s.trim()).toList();
-              artista = partes.isNotEmpty ? partes[0] : widget.getText('artist_label', fallback: 'Artist');
-              nombre = partes.length > 1 ? partes[1] : (partes.isNotEmpty ? partes[0] : title);
+              artista = partes.isNotEmpty
+                  ? partes[0]
+                  : widget.getText('artist_label', fallback: 'Artist');
+              nombre = partes.length > 1
+                  ? partes[1]
+                  : (partes.isNotEmpty ? partes[0] : title);
             }
             final img = await buscarImagenPinterest(nombre, artista);
             c['image'] = img ?? '';
           } catch (e, st) {
-            debugPrint('[SpotifyScreen] _assignImagesChunked image fetch error: $e\n$st');
+            debugPrint(
+              '[SpotifyScreen] _assignImagesChunked image fetch error: $e\n$st',
+            );
             c['image'] = '';
           }
         }());
@@ -484,7 +547,10 @@ class _SpotifyScreenState extends State<SpotifyScreen> with WindowListener, Widg
     if (mounted) setState(() {});
     showElegantNotification(
       context,
-      widget.getText('download_folder_set', fallback: 'Carpeta de descargas establecida'),
+      widget.getText(
+        'download_folder_set',
+        fallback: 'Carpeta de descargas establecida',
+      ),
       backgroundColor: const Color(0xFF2C2C2C),
       textColor: Colors.white,
       icon: Icons.folder_open,
@@ -515,10 +581,15 @@ class _SpotifyScreenState extends State<SpotifyScreen> with WindowListener, Widg
       }
       downloadFolder = p.normalize(carpeta);
       await prefs.setString('download_folder', downloadFolder);
-      debugPrint('[SpotifyScreen] user selected download folder: $downloadFolder');
+      debugPrint(
+        '[SpotifyScreen] user selected download folder: $downloadFolder',
+      );
       showElegantNotification(
         context,
-        widget.getText('download_folder_set', fallback: 'Carpeta de descargas establecida'),
+        widget.getText(
+          'download_folder_set',
+          fallback: 'Carpeta de descargas establecida',
+        ),
         backgroundColor: const Color(0xFF2C2C2C),
         textColor: Colors.white,
         icon: Icons.folder_open,
@@ -537,7 +608,10 @@ class _SpotifyScreenState extends State<SpotifyScreen> with WindowListener, Widg
       debugPrint('[SpotifyScreen] download folder writable test failed: $e');
       showElegantNotification(
         context,
-        widget.getText('download_folder_invalid', fallback: 'Carpeta inválida o sin permisos'),
+        widget.getText(
+          'download_folder_invalid',
+          fallback: 'Carpeta inválida o sin permisos',
+        ),
         backgroundColor: const Color(0xFFE53935),
         textColor: Colors.white,
         icon: Icons.error_outline,
@@ -547,7 +621,10 @@ class _SpotifyScreenState extends State<SpotifyScreen> with WindowListener, Widg
     }
 
     final title = (c['title'] ?? 'Unknown').toString();
-    String artista = widget.getText('unknown_artist', fallback: 'Unknown artist');
+    String artista = widget.getText(
+      'unknown_artist',
+      fallback: 'Unknown artist',
+    );
     if (title.contains(' - ')) {
       final partes = title.split(' - ');
       artista = partes.isNotEmpty ? partes[0] : artista;
@@ -557,9 +634,17 @@ class _SpotifyScreenState extends State<SpotifyScreen> with WindowListener, Widg
     final url = c['url']?.toString() ?? nombre;
     final id = DateTime.now().millisecondsSinceEpoch.toString();
 
-    final task = DownloadTask(id: id, title: nombre, artist: artista, image: imageUrl, sourceUrl: url);
+    final task = DownloadTask(
+      id: id,
+      title: nombre,
+      artist: artista,
+      image: imageUrl,
+      sourceUrl: url,
+    );
 
-    debugPrint('[SpotifyScreen] enqueuing task ${task.id} title="${task.title}" url="${task.sourceUrl}" image="${task.image}"');
+    debugPrint(
+      '[SpotifyScreen] enqueuing task ${task.id} title="${task.title}" url="${task.sourceUrl}" image="${task.image}"',
+    );
     _uiLog('Encolada: ${task.title}');
     DownloadManager().addTask(task);
     showElegantNotification(
@@ -577,33 +662,41 @@ class _SpotifyScreenState extends State<SpotifyScreen> with WindowListener, Widg
     try {
       // Verificar que el contexto es válido
       if (mounted && context.mounted) {
-        Navigator.of(context).push(
-          MaterialPageRoute(
-            builder: (_) => DownloadsScreen(
-              getText: widget.getText,
-              currentLang: widget.currentLang,
-            ),
-          ),
-        ).catchError((e, st) {
-          debugPrint('[SpotifyScreen] Navigation error: $e\n$st');
-          if (mounted) {
-            showElegantNotification(
-              context,
-              widget.getText('error_opening_downloads', fallback: 'No se pudo abrir Descargas'),
-              backgroundColor: const Color(0xFFE53935),
-              textColor: Colors.white,
-              icon: Icons.error_outline,
-              iconColor: Colors.white,
-            );
-          }
-        });
+        Navigator.of(context)
+            .push(
+              MaterialPageRoute(
+                builder: (_) => DownloadsScreen(
+                  getText: widget.getText,
+                  currentLang: widget.currentLang,
+                ),
+              ),
+            )
+            .catchError((e, st) {
+              debugPrint('[SpotifyScreen] Navigation error: $e\n$st');
+              if (mounted) {
+                showElegantNotification(
+                  context,
+                  widget.getText(
+                    'error_opening_downloads',
+                    fallback: 'No se pudo abrir Descargas',
+                  ),
+                  backgroundColor: const Color(0xFFE53935),
+                  textColor: Colors.white,
+                  icon: Icons.error_outline,
+                  iconColor: Colors.white,
+                );
+              }
+            });
       }
     } catch (e, st) {
       debugPrint('[SpotifyScreen] openDownloads error: $e\n$st');
       if (mounted) {
         showElegantNotification(
           context,
-          widget.getText('error_opening_downloads', fallback: 'No se pudo abrir Descargas'),
+          widget.getText(
+            'error_opening_downloads',
+            fallback: 'No se pudo abrir Descargas',
+          ),
           backgroundColor: const Color(0xFFE53935),
           textColor: Colors.white,
           icon: Icons.error_outline,
@@ -635,12 +728,18 @@ class _SpotifyScreenState extends State<SpotifyScreen> with WindowListener, Widg
           Expanded(
             child: SafeArea(
               child: Padding(
-                padding: const EdgeInsets.all(16),
+                padding: const EdgeInsets.all(20),
                 child: Column(
                   children: [
                     // Search bar
                     Container(
-                      decoration: BoxDecoration(color: Colors.black12, borderRadius: BorderRadius.circular(12)),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withOpacity(0.05),
+                        borderRadius: BorderRadius.circular(16),
+                        border: Border.all(
+                          color: Colors.white.withOpacity(0.1),
+                        ),
+                      ),
                       padding: const EdgeInsets.all(8),
                       child: Row(
                         children: [
@@ -648,24 +747,38 @@ class _SpotifyScreenState extends State<SpotifyScreen> with WindowListener, Widg
                             child: TextField(
                               controller: _controller,
                               decoration: InputDecoration(
-                                hintText: get('song_or_artist_label', fallback: 'Nombre de la canción o del artista'),
+                                hintText: get(
+                                  'song_or_artist_label',
+                                  fallback:
+                                      'Nombre de la canción o del artista',
+                                ),
+                                hintStyle: TextStyle(
+                                  color: Colors.white.withOpacity(0.3),
+                                ),
                                 border: InputBorder.none,
+                                contentPadding: const EdgeInsets.symmetric(
+                                  horizontal: 16,
+                                  vertical: 12,
+                                ),
+                                isDense: true,
                               ),
-                              style: const TextStyle(fontSize: 14),
+                              style: const TextStyle(fontSize: 15),
                               textInputAction: TextInputAction.search,
                               onSubmitted: (_) => _buscarCanciones(),
                             ),
                           ),
                           const SizedBox(width: 8),
-                          ElevatedButton.icon(
-                            icon: const Icon(Icons.search),
-                            label: Text(get('search_button', fallback: 'Search')),
+                          IconButton(
+                            icon: const Icon(Icons.search, color: Colors.white),
                             onPressed: _buscarCanciones,
-                            style: ElevatedButton.styleFrom(
-                              shape: const RoundedRectangleBorder(borderRadius: BorderRadius.all(Radius.circular(10))),
-                              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
-                              backgroundColor: const Color.fromARGB(255, 224, 64, 251),
-                              foregroundColor: Colors.black87,
+                            style: IconButton.styleFrom(
+                              backgroundColor: const Color.fromARGB(
+                                255,
+                                224,
+                                64,
+                                251,
+                              ).withOpacity(0.3),
+                              padding: const EdgeInsets.all(8),
                             ),
                           ),
                         ],
@@ -682,7 +795,10 @@ class _SpotifyScreenState extends State<SpotifyScreen> with WindowListener, Widg
                             children: const [
                               CircularProgressIndicator(),
                               SizedBox(height: 12),
-                              Text('Buscando canciones...', style: TextStyle(fontSize: 14)),
+                              Text(
+                                'Buscando canciones...',
+                                style: TextStyle(fontSize: 14),
+                              ),
                             ],
                           ),
                         ),
@@ -695,14 +811,24 @@ class _SpotifyScreenState extends State<SpotifyScreen> with WindowListener, Widg
                             children: [
                               const CircularProgressIndicator(),
                               const SizedBox(height: 8),
-                              Text(get('loading_recommendations', fallback: 'Cargando recomendaciones...')),
+                              Text(
+                                get(
+                                  'loading_recommendations',
+                                  fallback: 'Cargando recomendaciones...',
+                                ),
+                              ),
                             ],
                           ),
                         ),
                       )
                     else if (listToShow.isEmpty)
                       Expanded(
-                        child: Center(child: Text(get('no_songs_ui', fallback: 'No hay canciones'), style: const TextStyle(fontSize: 16))),
+                        child: Center(
+                          child: Text(
+                            get('no_songs_ui', fallback: 'No hay canciones'),
+                            style: const TextStyle(fontSize: 16),
+                          ),
+                        ),
                       )
                     else ...[
                       if (displayingRecommendations && _lastSearchQuery != null)
@@ -711,8 +837,13 @@ class _SpotifyScreenState extends State<SpotifyScreen> with WindowListener, Widg
                           child: Row(
                             children: [
                               const SizedBox(width: 8),
-                              Text('${get('recommendations_for', fallback: 'Recomendaciones basadas en')}: $_lastSearchQuery',
-                                  style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
+                              Text(
+                                '${get('recommendations_for', fallback: 'Recomendaciones basadas en')}: $_lastSearchQuery',
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 15,
+                                ),
+                              ),
                             ],
                           ),
                         ),
@@ -724,11 +855,18 @@ class _SpotifyScreenState extends State<SpotifyScreen> with WindowListener, Widg
                         child: ListView.builder(
                           itemCount: listToShow.length,
                           itemBuilder: (context, index) {
-                            if (index >= listToShow.length) return const SizedBox.shrink();
+                            if (index >= listToShow.length)
+                              return const SizedBox.shrink();
                             final c = listToShow[index];
-                            final title = (c['title'] ?? get('untitled', fallback: 'Sin título')).toString();
+                            final title =
+                                (c['title'] ??
+                                        get('untitled', fallback: 'Sin título'))
+                                    .toString();
                             final imageUrl = (c['image'] ?? '').toString();
-                            String artista = get('unknown_artist', fallback: 'Artista desconocido');
+                            String artista = get(
+                              'unknown_artist',
+                              fallback: 'Artista desconocido',
+                            );
                             if (title.contains(' - ')) {
                               final partes = title.split(' - ');
                               artista = partes.isNotEmpty ? partes[0] : artista;
@@ -744,85 +882,186 @@ class _SpotifyScreenState extends State<SpotifyScreen> with WindowListener, Widg
                               switch (task.status) {
                                 case DownloadStatus.queued:
                                   return Container(
-                                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                                    decoration: BoxDecoration(color: Colors.grey[700], borderRadius: BorderRadius.circular(12)),
-                                    child: Text(widget.getText('queued', fallback: 'Queued'), style: const TextStyle(fontSize: 12)),
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 8,
+                                      vertical: 4,
+                                    ),
+                                    decoration: BoxDecoration(
+                                      color: Colors.grey[700],
+                                      borderRadius: BorderRadius.circular(12),
+                                    ),
+                                    child: Text(
+                                      widget.getText(
+                                        'queued',
+                                        fallback: 'Queued',
+                                      ),
+                                      style: const TextStyle(fontSize: 12),
+                                    ),
                                   );
                                 case DownloadStatus.running:
                                   return Container(
-                                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                                    decoration: BoxDecoration(color: Colors.blue[700], borderRadius: BorderRadius.circular(12)),
-                                    child: Text('${(task.progress * 100).toStringAsFixed(1)}%', style: const TextStyle(fontSize: 12)),
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 8,
+                                      vertical: 4,
+                                    ),
+                                    decoration: BoxDecoration(
+                                      color: Colors.blue[700],
+                                      borderRadius: BorderRadius.circular(12),
+                                    ),
+                                    child: Text(
+                                      '${(task.progress * 100).toStringAsFixed(1)}%',
+                                      style: const TextStyle(fontSize: 12),
+                                    ),
                                   );
                                 case DownloadStatus.completed:
                                   return Container(
-                                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                                    decoration: BoxDecoration(color: Colors.green[700], borderRadius: BorderRadius.circular(12)),
-                                    child: Text(widget.getText('completed_label', fallback: 'Completed'), style: const TextStyle(fontSize: 12)),
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 8,
+                                      vertical: 4,
+                                    ),
+                                    decoration: BoxDecoration(
+                                      color: Colors.green[700],
+                                      borderRadius: BorderRadius.circular(12),
+                                    ),
+                                    child: Text(
+                                      widget.getText(
+                                        'completed_label',
+                                        fallback: 'Completed',
+                                      ),
+                                      style: const TextStyle(fontSize: 12),
+                                    ),
                                   );
                                 case DownloadStatus.failed:
                                   return Container(
-                                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                                    decoration: BoxDecoration(color: Colors.red[700], borderRadius: BorderRadius.circular(12)),
-                                    child: Text(widget.getText('failed_label', fallback: 'Failed'), style: const TextStyle(fontSize: 12)),
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 8,
+                                      vertical: 4,
+                                    ),
+                                    decoration: BoxDecoration(
+                                      color: Colors.red[700],
+                                      borderRadius: BorderRadius.circular(12),
+                                    ),
+                                    child: Text(
+                                      widget.getText(
+                                        'failed_label',
+                                        fallback: 'Failed',
+                                      ),
+                                      style: const TextStyle(fontSize: 12),
+                                    ),
                                   );
                                 case DownloadStatus.cancelled:
                                   return Container(
-                                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                                    decoration: BoxDecoration(color: Colors.grey[800], borderRadius: BorderRadius.circular(12)),
-                                    child: Text(widget.getText('cancelled_label', fallback: 'Cancelled'), style: const TextStyle(fontSize: 12)),
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 8,
+                                      vertical: 4,
+                                    ),
+                                    decoration: BoxDecoration(
+                                      color: Colors.grey[800],
+                                      borderRadius: BorderRadius.circular(12),
+                                    ),
+                                    child: Text(
+                                      widget.getText(
+                                        'cancelled_label',
+                                        fallback: 'Cancelled',
+                                      ),
+                                      style: const TextStyle(fontSize: 12),
+                                    ),
                                   );
                               }
                             }
 
-                            return LayoutBuilder(builder: (context, constraints) {
-                              // Si el ancho disponible es demasiado pequeño, evita construir el ListTile
-                              if (constraints.maxWidth < 80) {
-                                return const SizedBox(height: 56);
-                              }
+                            return LayoutBuilder(
+                              builder: (context, constraints) {
+                                // Si el ancho disponible es demasiado pequeño, evita construir el ListTile
+                                if (constraints.maxWidth < 80) {
+                                  return const SizedBox(height: 56);
+                                }
 
-                              return ListTile(
-                                contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                                minLeadingWidth: 56,
-                                leading: SizedBox(
-                                  width: 48,
-                                  height: 48,
-                                  child: imageUrl.isNotEmpty
-                                      ? ClipRRect(
-                                          borderRadius: BorderRadius.circular(6),
-                                          child: Image.network(
-                                            imageUrl,
-                                            width: 48,
-                                            height: 48,
-                                            fit: BoxFit.cover,
-                                            errorBuilder: (_, __, ___) => const Icon(Icons.music_note, color: Colors.white54),
-                                            loadingBuilder: (ctx, child, progress) {
-                                              if (progress == null) return child;
-                                              return const SizedBox(width: 48, height: 48, child: Center(child: CircularProgressIndicator(strokeWidth: 2)));
-                                            },
+                                return ListTile(
+                                  contentPadding: const EdgeInsets.symmetric(
+                                    horizontal: 12,
+                                    vertical: 8,
+                                  ),
+                                  minLeadingWidth: 56,
+                                  leading: SizedBox(
+                                    width: 48,
+                                    height: 48,
+                                    child: imageUrl.isNotEmpty
+                                        ? ClipRRect(
+                                            borderRadius: BorderRadius.circular(
+                                              6,
+                                            ),
+                                            child: Image.network(
+                                              imageUrl,
+                                              width: 48,
+                                              height: 48,
+                                              fit: BoxFit.cover,
+                                              errorBuilder: (_, __, ___) =>
+                                                  const Icon(
+                                                    Icons.music_note,
+                                                    color: Colors.white54,
+                                                  ),
+                                              loadingBuilder:
+                                                  (ctx, child, progress) {
+                                                    if (progress == null)
+                                                      return child;
+                                                    return const SizedBox(
+                                                      width: 48,
+                                                      height: 48,
+                                                      child: Center(
+                                                        child:
+                                                            CircularProgressIndicator(
+                                                              strokeWidth: 2,
+                                                            ),
+                                                      ),
+                                                    );
+                                                  },
+                                            ),
+                                          )
+                                        : const Icon(
+                                            Icons.music_note,
+                                            size: 40,
+                                            color: Colors.white54,
                                           ),
-                                        )
-                                      : const Icon(Icons.music_note, size: 40, color: Colors.white54),
-                                ),
-                                title: Text(title, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: Colors.white70)),
-                                subtitle: Text(artista, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: Colors.white54)),
-                                trailing: Row(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    statusChip(),
-                                    const SizedBox(width: 8),
-                                    IconButton(
-                                      icon: const Icon(Icons.download),
-                                      onPressed: () => _queueDownload(c),
-                                      tooltip: widget.getText('download', fallback: 'Download'),
+                                  ),
+                                  title: Text(
+                                    title,
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: const TextStyle(
+                                      color: Colors.white70,
                                     ),
-                                  ],
-                                ),
-                                onTap: () {
-                                  if (widget.onNavigate != null) widget.onNavigate!('music');
-                                },
-                              );
-                            });
+                                  ),
+                                  subtitle: Text(
+                                    artista,
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: const TextStyle(
+                                      color: Colors.white54,
+                                    ),
+                                  ),
+                                  trailing: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      statusChip(),
+                                      const SizedBox(width: 8),
+                                      IconButton(
+                                        icon: const Icon(Icons.download),
+                                        onPressed: () => _queueDownload(c),
+                                        tooltip: widget.getText(
+                                          'download',
+                                          fallback: 'Download',
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                  onTap: () {
+                                    if (widget.onNavigate != null)
+                                      widget.onNavigate!('music');
+                                  },
+                                );
+                              },
+                            );
                           },
                         ),
                       ),
@@ -856,7 +1095,7 @@ class _SpotifyScreenState extends State<SpotifyScreen> with WindowListener, Widg
               foregroundColor: Colors.black87,
               heroTag: 'spotify_downloads_fab',
               child: const Icon(Icons.download),
-            ),   
+            ),
           ],
         ),
       ),

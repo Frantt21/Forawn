@@ -1,4 +1,5 @@
 // translate.dart
+import 'dart:async';
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show Clipboard, ClipboardData;
@@ -34,7 +35,6 @@ class _TranslateScreenState extends State<TranslateScreen> with WindowListener {
   String? _saveFolder;
   SharedPreferences? _prefs;
   static const _prefsKey = 'translate_save_folder';
-  String _status = '';
 
   // Country keys that we send to the API (stable internal values)
   static const List<String> _countryKeys = [
@@ -90,6 +90,7 @@ class _TranslateScreenState extends State<TranslateScreen> with WindowListener {
   // Input resizable
   double _inputHeight = 160;
   bool _isDraggingHandle = false;
+  Timer? _debounce;
 
   // Lightweight http client reuse
   final http.Client _http = http.Client();
@@ -121,8 +122,10 @@ class _TranslateScreenState extends State<TranslateScreen> with WindowListener {
   @override
   void dispose() {
     windowManager.removeListener(this);
+    _debounce?.cancel();
     _inputController.dispose();
-    _http.close();
+    // Don't close HTTP client - prevents "Connection closed" errors in debug mode
+    // _http.close();
     super.dispose();
   }
 
@@ -145,18 +148,13 @@ class _TranslateScreenState extends State<TranslateScreen> with WindowListener {
       _prefs ??= await SharedPreferences.getInstance();
       await _prefs!.setString(_prefsKey, _saveFolder!);
     } catch (_) {}
-    if (!mounted) return;
-    setState(
-      () => _status =
-          '${widget.getText('save_folder_set', fallback: 'Save folder set')}: $_saveFolder',
-    );
   }
 
   String _defaultCountryForLang(String langCode) {
     final code = langCode.toLowerCase();
     if (code.startsWith('es')) return 'spain';
     if (code.startsWith('en')) return 'usa';
-    return 'spain';
+    return 'usa'; // Default to English
   }
 
   // Build API URI using selected country key
@@ -204,19 +202,13 @@ class _TranslateScreenState extends State<TranslateScreen> with WindowListener {
   Future<void> _translate() async {
     final input = _inputController.text.trim();
     if (input.isEmpty) {
-      setState(
-        () => _status = widget.getText(
-          'enter_text',
-          fallback: 'Enter text to translate',
-        ),
-      );
       return;
     }
 
+    if (!mounted) return;
     setState(() {
       _loading = true;
       _translated = '';
-      _status = widget.getText('translating', fallback: 'Translating...');
     });
 
     try {
@@ -227,14 +219,24 @@ class _TranslateScreenState extends State<TranslateScreen> with WindowListener {
       if (!mounted) return;
       setState(() {
         _translated = text;
-        _status = widget.getText('translated', fallback: 'Translated');
       });
+    } on SocketException catch (e) {
+      debugPrint('[TranslateScreen] SocketException: $e');
+      // Silently handle network errors
+    } on HttpException catch (e) {
+      debugPrint('[TranslateScreen] HttpException: $e');
+      // Silently handle HTTP errors
     } catch (e) {
+      // Silently ignore connection closed errors during dispose
+      if (e.toString().contains('Connection closed') ||
+          e.toString().contains('Socket is closed')) {
+        debugPrint(
+          '[TranslateScreen] Connection closed (widget likely disposed)',
+        );
+        return;
+      }
       if (!mounted) return;
-      setState(() {
-        _status =
-            '${widget.getText('translate_error', fallback: 'Translation error')}: ${e.toString()}';
-      });
+      // Silently handle other errors
     } finally {
       if (!mounted) return;
       setState(() => _loading = false);
@@ -242,44 +244,17 @@ class _TranslateScreenState extends State<TranslateScreen> with WindowListener {
   }
 
   Future<void> _copyToClipboard() async {
-    if (_translated.isEmpty) {
-      setState(
-        () => _status = widget.getText(
-          'nothing_to_copy',
-          fallback: 'Nothing to copy',
-        ),
-      );
-      return;
-    }
+    if (_translated.isEmpty) return;
     await Clipboard.setData(ClipboardData(text: _translated));
-    setState(
-      () => _status = widget.getText('copied', fallback: 'Copied to clipboard'),
-    );
   }
 
   Future<void> _downloadTxt() async {
-    if (_translated.isEmpty) {
-      setState(
-        () => _status = widget.getText(
-          'nothing_to_save',
-          fallback: 'Nothing to save',
-        ),
-      );
-      return;
-    }
+    if (_translated.isEmpty) return;
 
     String folder = _saveFolder ?? '';
     if (folder.isEmpty) {
       final picked = await FilePicker.platform.getDirectoryPath();
-      if (picked == null) {
-        setState(
-          () => _status = widget.getText(
-            'save_cancelled',
-            fallback: 'Save cancelled',
-          ),
-        );
-        return;
-      }
+      if (picked == null) return;
       folder = p.normalize(picked);
       _saveFolder = folder;
       try {
@@ -295,17 +270,8 @@ class _TranslateScreenState extends State<TranslateScreen> with WindowListener {
       final f = File(path);
       await f.create(recursive: true);
       await f.writeAsString(_translated);
-      if (!mounted) return;
-      setState(
-        () => _status =
-            '${widget.getText('saved_to', fallback: 'Saved to')}: $path',
-      );
     } catch (e) {
-      if (!mounted) return;
-      setState(
-        () => _status =
-            '${widget.getText('save_error', fallback: 'Error saving')}: ${e.toString()}',
-      );
+      debugPrint('[TranslateScreen] Error saving file: $e');
     }
   }
 
@@ -329,22 +295,22 @@ class _TranslateScreenState extends State<TranslateScreen> with WindowListener {
       backgroundColor: scaffoldBg,
       body: SafeArea(
         child: Padding(
-          padding: const EdgeInsets.all(16),
+          padding: const EdgeInsets.all(20),
           child: Column(
             children: [
               Container(
                 width: double.infinity,
                 decoration: BoxDecoration(
-                  color: Colors.black12,
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: Colors.white.withOpacity(0.04)),
+                  color: Colors.white.withOpacity(0.05),
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(color: Colors.white.withOpacity(0.1)),
                 ),
                 child: Column(
                   children: [
                     SizedBox(
                       height: _inputHeight,
                       child: Padding(
-                        padding: const EdgeInsets.all(8.0),
+                        padding: const EdgeInsets.all(12.0),
                         child: TextField(
                           controller: _inputController,
                           expands: true,
@@ -357,8 +323,21 @@ class _TranslateScreenState extends State<TranslateScreen> with WindowListener {
                               'translate_input_hint',
                               fallback: 'Write the text here',
                             ),
+                            hintStyle: TextStyle(
+                              color: Colors.white.withOpacity(0.3),
+                            ),
                           ),
-                          style: const TextStyle(fontSize: 14),
+                          style: const TextStyle(fontSize: 15),
+                          onChanged: (text) {
+                            if (_debounce?.isActive ?? false)
+                              _debounce!.cancel();
+                            _debounce = Timer(
+                              const Duration(milliseconds: 500),
+                              () {
+                                _translate();
+                              },
+                            );
+                          },
                           onSubmitted: (_) {
                             if (!_loading) _translate();
                           },
@@ -366,72 +345,90 @@ class _TranslateScreenState extends State<TranslateScreen> with WindowListener {
                       ),
                     ),
 
-                    // botones
+                    // Barra inferior de controles (Selector y botones)
                     Padding(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 8.0,
-                        vertical: 2.0,
-                      ),
+                      padding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
                       child: Row(
                         children: [
-                          const Spacer(),
-                          ElevatedButton.icon(
-                            icon: _loading
-                                ? const SizedBox(
-                                    width: 16,
-                                    height: 16,
-                                    child: CircularProgressIndicator(
-                                      strokeWidth: 2,
-                                    ),
-                                  )
-                                : const Icon(Icons.translate),
-                            label: Text(
-                              get('translate_button', fallback: 'Translate'),
+                          // Selector de idioma (estilo ForaAI)
+                          Container(
+                            height: 24,
+                            padding: const EdgeInsets.symmetric(horizontal: 8),
+                            decoration: BoxDecoration(
+                              color: Colors.white.withOpacity(0.08),
+                              borderRadius: BorderRadius.circular(10),
                             ),
-                            onPressed: _loading ? null : _translate,
-                            style: ElevatedButton.styleFrom(
-                              shape: const RoundedRectangleBorder(
-                                borderRadius: BorderRadius.all(
-                                  Radius.circular(10),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                DropdownButton<String>(
+                                  value: _selectedCountryKey,
+                                  underline: const SizedBox.shrink(),
+                                  dropdownColor: const Color(0xFF2d2d2d),
+                                  borderRadius: BorderRadius.circular(10),
+                                  focusColor: Colors.transparent,
+                                  icon: const Icon(
+                                    Icons.keyboard_arrow_down,
+                                    size: 14,
+                                    color: Colors.white54,
+                                  ),
+                                  isDense: true,
+                                  style: const TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 11,
+                                  ),
+                                  items: _countryKeys.map((key) {
+                                    final label =
+                                        _countryLabels[key] ?? _prettyKey(key);
+                                    return DropdownMenuItem<String>(
+                                      value: key,
+                                      child: Text(label),
+                                    );
+                                  }).toList(),
+                                  onChanged: (v) {
+                                    if (v == null) return;
+                                    setState(() {
+                                      _selectedCountryKey = v;
+                                      // Trigger translation immediately on language change if there is text
+                                      if (_inputController.text.isNotEmpty) {
+                                        _translate();
+                                      }
+                                    });
+                                  },
                                 ),
-                              ),
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 12,
-                                vertical: 12,
-                              ),
-                              backgroundColor: const Color.fromARGB(
-                                255,
-                                64,
-                                251,
-                                104,
-                              ),
-                              foregroundColor: Colors.black87,
+                              ],
                             ),
                           ),
+
+                          const Spacer(),
+
+                          // Indicador de carga o estado
+                          if (_loading)
+                            const SizedBox(
+                              width: 16,
+                              height: 16,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                color: Colors.white54,
+                              ),
+                            ),
+
                           const SizedBox(width: 8),
-                          ElevatedButton.icon(
-                            icon: const Icon(Icons.download),
-                            label: Text(
-                              get('download_txt', fallback: 'Download TXT'),
+
+                          // Botón descarga txt
+                          IconButton(
+                            icon: const Icon(Icons.download, size: 20),
+                            tooltip: get(
+                              'download_txt',
+                              fallback: 'Download TXT',
                             ),
                             onPressed: _downloadTxt,
-                            style: ElevatedButton.styleFrom(
-                              shape: const RoundedRectangleBorder(
-                                borderRadius: BorderRadius.all(
-                                  Radius.circular(10),
-                                ),
-                              ),
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 12,
-                                vertical: 12,
-                              ),
-                              backgroundColor: const Color.fromARGB(
-                                255,
-                                64,
-                                251,
-                                104,
-                              ),
-                              foregroundColor: Colors.black87,
+                            style: IconButton.styleFrom(
+                              backgroundColor: Colors.white.withOpacity(0.1),
+                              foregroundColor: Colors.white,
+                              padding: const EdgeInsets.all(8),
+                              minimumSize: const Size(36, 36),
+                              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                             ),
                           ),
                         ],
@@ -458,7 +455,7 @@ class _TranslateScreenState extends State<TranslateScreen> with WindowListener {
                           height: 4,
                           decoration: BoxDecoration(
                             color: _isDraggingHandle
-                                ? const Color.fromARGB(255, 64, 251, 104)
+                                ? Colors.purpleAccent
                                 : Colors.white24,
                             borderRadius: BorderRadius.circular(4),
                           ),
@@ -471,66 +468,13 @@ class _TranslateScreenState extends State<TranslateScreen> with WindowListener {
 
               const SizedBox(height: 12),
 
-              Row(
-                children: [
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 8,
-                      vertical: 6,
-                    ),
-                    decoration: BoxDecoration(
-                      color: Colors.black12,
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                    child: Row(
-                      children: [
-                        Text(get('country_label', fallback: 'Country')),
-                        const SizedBox(width: 8),
-                        // Localized dropdown using keys and _countryLabels
-                        ClipRRect(
-                          borderRadius: BorderRadius.circular(10),
-                          child: DropdownButton<String>(
-                            value: _selectedCountryKey,
-                            underline: const SizedBox.shrink(),
-                            items: _countryKeys.map((key) {
-                              final label =
-                                  _countryLabels[key] ?? _prettyKey(key);
-                              return DropdownMenuItem<String>(
-                                value: key,
-                                child: Text(label),
-                              );
-                            }).toList(),
-                            onChanged: (v) {
-                              if (v == null) return;
-                              setState(() => _selectedCountryKey = v);
-                            },
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-
-                  const SizedBox(width: 12),
-                ],
-              ),
-
-              const SizedBox(height: 12),
-
-              if (_status.isNotEmpty)
-                Align(
-                  alignment: Alignment.centerLeft,
-                  child: Text(_status, style: const TextStyle(fontSize: 12)),
-                ),
-
-              const SizedBox(height: 12),
-
               Expanded(
                 child: Container(
                   width: double.infinity,
                   decoration: BoxDecoration(
-                    color: Colors.black12,
-                    borderRadius: BorderRadius.circular(10),
-                    border: Border.all(color: Colors.white.withOpacity(0.04)),
+                    color: Colors.white.withOpacity(0.05),
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(color: Colors.white.withOpacity(0.1)),
                   ),
                   child: Stack(
                     children: [
