@@ -100,7 +100,7 @@ Future<void> main() async {
       title: 'Forawn',
     );
     windowManager.waitUntilReadyToShow(options, () async {
-      // await windowManager.setResizable(true);
+      await windowManager.setResizable(true);
       await windowManager.setMinimumSize(const Size(1024, 600));
       await windowManager.show();
       await windowManager.focus();

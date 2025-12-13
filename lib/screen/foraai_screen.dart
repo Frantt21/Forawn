@@ -8,7 +8,8 @@ import 'package:markdown/markdown.dart' as md;
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uuid/uuid.dart';
-import 'package:image_picker/image_picker.dart';
+import 'package:url_launcher/url_launcher.dart';
+// import 'package:image_picker/image_picker.dart'; // Deshabilitado hasta que haya soporte de imágenes
 import '../config/api_config.dart';
 import '../widgets/elegant_notification.dart';
 
@@ -47,14 +48,15 @@ class _ForaaiScreenState extends State<ForaaiScreen> {
   final TextEditingController _controller = TextEditingController();
   final FocusNode _focusNode = FocusNode();
   final ScrollController _scrollController = ScrollController();
-  final ImagePicker _imagePicker = ImagePicker();
+  // final ImagePicker _imagePicker = ImagePicker(); // Deshabilitado hasta que haya soporte de imágenes
 
   List<ChatSession> _sessions = [];
   String? _currentSessionId;
   bool _isLoading = false;
-  bool _sidebarOpen = true;
+  bool _sidebarOpen = false; // Se cargará desde SharedPreferences
   AIProvider _selectedProvider = ApiConfig.activeProvider;
-  File? _selectedImage;
+  File?
+  _selectedImage; // Mantener para compatibilidad con API, aunque no se use actualmente
 
   // Sistema de límites
   final Map<AIProvider, int> _apiCallsRemaining = {};
@@ -64,10 +66,17 @@ class _ForaaiScreenState extends State<ForaaiScreen> {
   http.Client? _httpClient;
   final List<CancelToken> _pendingRequests = [];
 
+  // Preferencias del usuario
+  String _userName = 'Usuario';
+  String _aiPersonality = 'amigable'; // amigable, profesional, casual
+  String _responseLength = 'balanceado'; // corto, balanceado, detallado
+
   @override
   void initState() {
     super.initState();
     _httpClient = http.Client();
+    _loadSidebarState();
+    _loadUserPreferences();
     _loadSessions();
     _loadRateLimits();
     // Scroll al último mensaje después de que el widget se construya
@@ -100,7 +109,7 @@ class _ForaaiScreenState extends State<ForaaiScreen> {
   /// Límites por proveedor (llamadas por hora)
   static const Map<AIProvider, int> _rateLimits = {
     AIProvider.groq: 50,
-    AIProvider.gemini: 30,
+    AIProvider.openrouter: 30,
     AIProvider.gpt_oss: 1000000, // Ilimitado prácticamente
   };
 
@@ -183,6 +192,204 @@ class _ForaaiScreenState extends State<ForaaiScreen> {
   }
 
   // ============================================================================
+  // SIDEBAR STATE PERSISTENCE
+  // ============================================================================
+
+  Future<void> _loadSidebarState() async {
+    final prefs = await SharedPreferences.getInstance();
+    if (!mounted) return;
+    setState(() {
+      _sidebarOpen = prefs.getBool('sidebar_open') ?? true;
+    });
+  }
+
+  Future<void> _saveSidebarState() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool('sidebar_open', _sidebarOpen);
+  }
+
+  // ============================================================================
+  // USER PREFERENCES
+  // ============================================================================
+
+  Future<void> _loadUserPreferences() async {
+    final prefs = await SharedPreferences.getInstance();
+    if (!mounted) return;
+    setState(() {
+      _userName = prefs.getString('user_name') ?? 'Usuario';
+      _aiPersonality = prefs.getString('ai_personality') ?? 'amigable';
+      _responseLength = prefs.getString('response_length') ?? 'balanceado';
+    });
+  }
+
+  Future<void> _saveUserPreferences() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('user_name', _userName);
+    await prefs.setString('ai_personality', _aiPersonality);
+    await prefs.setString('response_length', _responseLength);
+  }
+
+  void _showPreferencesDialog() {
+    final nameController = TextEditingController(text: _userName);
+    String tempPersonality = _aiPersonality;
+    String tempLength = _responseLength;
+
+    showDialog(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          insetPadding: const EdgeInsets.symmetric(
+            horizontal: 40,
+            vertical: 24,
+          ),
+          backgroundColor: const Color(0xFF1E1E1E),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(10),
+          ),
+          title: Row(
+            children: [
+              const Icon(Icons.settings, color: Colors.purpleAccent),
+              const SizedBox(width: 8),
+              Text(
+                widget.getText('preferences', fallback: 'Preferencias'),
+                style: const TextStyle(color: Colors.white),
+              ),
+            ],
+          ),
+          content: SizedBox(
+            width: double
+                .maxFinite, // Forza al diálogo a tomar todo el ancho permitido por insetPadding
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // Cómo te llamo
+                  Text(
+                    widget.getText(
+                      'how_to_call_you',
+                      fallback: '¿Cómo quieres que te llame?',
+                    ),
+                    style: const TextStyle(color: Colors.white70, fontSize: 14),
+                  ),
+                  const SizedBox(height: 8),
+                  TextField(
+                    controller: nameController,
+                    style: const TextStyle(color: Colors.white),
+                    decoration: InputDecoration(
+                      hintText: 'Tu nombre',
+                      hintStyle: const TextStyle(color: Colors.white38),
+                      filled: true,
+                      fillColor: Colors.white.withOpacity(0.05),
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(8),
+                        borderSide: BorderSide.none,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 20),
+
+                  // Personalidad de la IA
+                  Text(
+                    widget.getText(
+                      'ai_personality',
+                      fallback: 'Personalidad de la IA',
+                    ),
+                    style: const TextStyle(color: Colors.white70, fontSize: 14),
+                  ),
+                  const SizedBox(height: 8),
+                  ...[
+                    ('amigable', 'Amigable y cercano'),
+                    ('profesional', 'Profesional y formal'),
+                    ('casual', 'Casual y relajado'),
+                  ].map(
+                    (option) => RadioListTile<String>(
+                      value: option.$1,
+                      groupValue: tempPersonality,
+                      onChanged: (value) {
+                        setDialogState(() => tempPersonality = value!);
+                      },
+                      title: Text(
+                        option.$2,
+                        style: const TextStyle(color: Colors.white),
+                      ),
+                      activeColor: Colors.purpleAccent,
+                      contentPadding: EdgeInsets.zero,
+                    ),
+                  ),
+                  const SizedBox(height: 20),
+
+                  // Longitud de respuestas
+                  Text(
+                    widget.getText(
+                      'response_length',
+                      fallback: 'Longitud de respuestas',
+                    ),
+                    style: const TextStyle(color: Colors.white70, fontSize: 14),
+                  ),
+                  const SizedBox(height: 8),
+                  ...[
+                    ('corto', 'Cortas y directas'),
+                    ('balanceado', 'Balanceadas'),
+                    ('detallado', 'Detalladas y completas'),
+                  ].map(
+                    (option) => RadioListTile<String>(
+                      value: option.$1,
+                      groupValue: tempLength,
+                      onChanged: (value) {
+                        setDialogState(() => tempLength = value!);
+                      },
+                      title: Text(
+                        option.$2,
+                        style: const TextStyle(color: Colors.white),
+                      ),
+                      activeColor: Colors.purpleAccent,
+                      contentPadding: EdgeInsets.zero,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: Text(
+                widget.getText('cancel', fallback: 'Cancelar'),
+                style: const TextStyle(color: Colors.white54),
+              ),
+            ),
+            ElevatedButton(
+              onPressed: () {
+                setState(() {
+                  _userName = nameController.text.trim().isEmpty
+                      ? 'Usuario'
+                      : nameController.text.trim();
+                  _aiPersonality = tempPersonality;
+                  _responseLength = tempLength;
+                });
+                _saveUserPreferences();
+                Navigator.pop(context);
+                _showSnackBar(
+                  widget.getText(
+                    'preferences_saved',
+                    fallback: 'Preferencias guardadas',
+                  ),
+                );
+              },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.purpleAccent,
+                foregroundColor: Colors.white,
+              ),
+              child: Text(widget.getText('save', fallback: 'Guardar')),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // ============================================================================
   // GESTIÓN DE SESIONES
   // ============================================================================
 
@@ -250,47 +457,32 @@ class _ForaaiScreenState extends State<ForaaiScreen> {
   }
 
   ChatSession? get _currentSession {
+    if (_currentSessionId == null || _sessions.isEmpty) return null;
     try {
-      return _sessions.firstWhere((s) => s.id == _currentSessionId);
+      return _sessions.firstWhere(
+        (s) => s.id == _currentSessionId,
+        orElse: () => _sessions.first,
+      );
     } catch (_) {
       return null;
     }
   }
 
   // ============================================================================
-  // SELECTOR DE IMAGEN
+  // SELECTOR DE IMAGEN (DESHABILITADO - Ningún modelo actual soporta imágenes)
   // ============================================================================
 
+  /*
   Future<void> _pickImage() async {
-    if (_selectedProvider != AIProvider.gemini) {
-      _showSnackBar(
-        widget.getText(
-          'images_only_gemini',
-          fallback: 'Las imágenes solo están disponibles con Gemini',
-        ),
-      );
-      return;
-    }
-
-    try {
-      final XFile? image = await _imagePicker.pickImage(
-        source: ImageSource.gallery,
-        maxWidth: 1024,
-        maxHeight: 1024,
-        imageQuality: 85,
-      );
-
-      if (image != null) {
-        setState(() {
-          _selectedImage = File(image.path);
-        });
-      }
-    } catch (e) {
-      _showSnackBar(
-        '${widget.getText('select_image_error', fallback: 'Error al seleccionar imagen')}: $e',
-      );
-    }
+    // Ningún proveedor actual soporta imágenes
+    _showSnackBar(
+      widget.getText(
+        'images_not_supported',
+        fallback: 'Las imágenes no están disponibles actualmente',
+      ),
+    );
   }
+  */
 
   void _removeImage() {
     setState(() {
@@ -308,7 +500,12 @@ class _ForaaiScreenState extends State<ForaaiScreen> {
   // API CALLS
   // ============================================================================
 
-  List<Map<String, dynamic>> _buildMessagesForAPI(
+  // ============================================================================
+  // CONSTRUCCIÓN DE MENSAJES POR PROVEEDOR
+  // ============================================================================
+
+  /// Construye mensajes para Groq (Muyai) - Rápido y directo
+  List<Map<String, dynamic>> _buildMessagesForGroq(
     ChatSession session,
     String newUserText,
   ) {
@@ -323,15 +520,223 @@ class _ForaaiScreenState extends State<ForaaiScreen> {
       total += m.content.length;
     }
 
+    // Construir prompt personalizado
+    String personalityPrompt = '';
+    switch (_aiPersonality) {
+      case 'amigable':
+        personalityPrompt =
+            'Sé amigable y buena onda con el usuario. Puedes responder con confianza. ';
+        break;
+      case 'profesional':
+        personalityPrompt =
+            'Mantén un tono profesional y formal. Sé respetuoso y preciso. ';
+        break;
+      case 'casual':
+        personalityPrompt =
+            'Sé casual y relajado. Puedes usar expresiones coloquiales apropiadas. ';
+        break;
+    }
+
+    String lengthPrompt = '';
+    switch (_responseLength) {
+      case 'corto':
+        lengthPrompt = 'Proporciona respuestas breves y al punto. ';
+        break;
+      case 'balanceado':
+        lengthPrompt =
+            'Proporciona respuestas balanceadas, ni muy cortas ni muy largas. ';
+        break;
+      case 'detallado':
+        lengthPrompt =
+            'Proporciona respuestas detalladas con explicaciones completas. ';
+        break;
+    }
+
+    // Determinar si es el primer mensaje (sin historial)
+    final isFirstMessage = picked.isEmpty;
+    String introPrompt = isFirstMessage
+        ? 'Si es tu primera interacción, preséntate brevemente como Muyai. '
+        : '';
+
     return [
       {
         'role': 'system',
         'content':
-            'Eres un modelo de IA avanzado entrando por Google y Meta. Tienes capacidad para buscar en internet información actualizada. '
-            'Siempre trata de responder en el idioma que el usuario te habla.'
-            'IMPORTANTE: Si el usuario te pide generar imágenes, aclárale que para eso debe usar la sección "Generación de Imágenes" de esta aplicación. '
-            'Responde de forma clara, concisa y útil. Para código usa markdown. '
-            'Tu límite de búsquedas diarias es de 500 (gratis). Úsalas sabiamente si se requiere información en tiempo real.',
+            'Eres Muyai, un asistente de IA rápido y eficiente. '
+            '$introPrompt'
+            'Tienes capacidad para buscar en internet información actualizada. '
+            'Tu objetivo es proporcionar respuestas claras, concisas y precisas. '
+            'Siempre responde en el idioma que el usuario te habla. '
+            'Para código, usa formato markdown con bloques de código apropiados. '
+            'Si el usuario pide generar imágenes, indícale que use la sección "Generación de Imágenes" de la aplicación. '
+            '$personalityPrompt'
+            '$lengthPrompt'
+            'El usuario prefiere que lo llames "$_userName". '
+            'Sé directo y evita rodeos innecesarios. '
+            'NO te presentes en cada respuesta, solo responde directamente a la pregunta.',
+      },
+      ...picked.map(
+        (m) => {
+          'role': m.role == 'user' ? 'user' : 'assistant',
+          'content': m.content,
+        },
+      ),
+      {'role': 'user', 'content': newUserText},
+    ];
+  }
+
+  /// Construye mensajes para GPT OSS (Oseiku) - Más detallado y educativo
+  List<Map<String, dynamic>> _buildMessagesForGptOss(
+    ChatSession session,
+    String newUserText,
+  ) {
+    const int maxChars = 4000;
+    int total = 0;
+    final List<ChatMessage> reversed = List.from(session.messages.reversed);
+    final List<ChatMessage> picked = [];
+
+    for (final m in reversed) {
+      if (total + m.content.length > maxChars) break;
+      picked.insert(0, m);
+      total += m.content.length;
+    }
+
+    // Construir prompt personalizado
+    String personalityPrompt = '';
+    switch (_aiPersonality) {
+      case 'amigable':
+        personalityPrompt =
+            'Sé amigable y buena onda con el usuario. Puedes responder con confianza. ';
+        break;
+      case 'profesional':
+        personalityPrompt =
+            'Mantén un tono profesional y formal. Sé respetuoso y preciso. ';
+        break;
+      case 'casual':
+        personalityPrompt =
+            'Sé casual y relajado. Puedes usar expresiones coloquiales apropiadas. ';
+        break;
+    }
+
+    String lengthPrompt = '';
+    switch (_responseLength) {
+      case 'corto':
+        lengthPrompt = 'Proporciona respuestas breves y al punto. ';
+        break;
+      case 'balanceado':
+        lengthPrompt =
+            'Proporciona respuestas balanceadas, ni muy cortas ni muy largas. ';
+        break;
+      case 'detallado':
+        lengthPrompt =
+            'Proporciona respuestas detalladas con explicaciones completas. ';
+        break;
+    }
+
+    // Determinar si es el primer mensaje (sin historial)
+    final isFirstMessage = picked.isEmpty;
+    String introPrompt = isFirstMessage
+        ? 'Si es tu primera interacción, preséntate brevemente como Oseiku. '
+        : '';
+
+    return [
+      {
+        'role': 'system',
+        'content':
+            'Eres Oseiku, un asistente de IA paciente y educativo. '
+            '$introPrompt'
+            'Tienes capacidad para buscar en internet información actualizada. '
+            'Te tomas el tiempo para explicar conceptos de manera detallada y comprensible. '
+            'Siempre responde en el idioma que el usuario te habla. '
+            'Cuando proporciones código, incluye comentarios explicativos y usa markdown. '
+            'Si el usuario pide generar imágenes, explícale amablemente que debe usar la sección "Generación de Imágenes". '
+            '$personalityPrompt'
+            '$lengthPrompt'
+            'El usuario prefiere que lo llames "$_userName". '
+            'Puedes proporcionar ejemplos adicionales cuando sea útil para la comprensión. '
+            'NO te presentes en cada respuesta, solo responde directamente a la pregunta.',
+      },
+      ...picked.map(
+        (m) => {
+          'role': m.role == 'user' ? 'user' : 'assistant',
+          'content': m.content,
+        },
+      ),
+      {'role': 'user', 'content': newUserText},
+    ];
+  }
+
+  /// Construye mensajes para OpenRouter (Agayosu) - Balanceado y versátil
+  List<Map<String, dynamic>> _buildMessagesForOpenRouter(
+    ChatSession session,
+    String newUserText,
+  ) {
+    const int maxChars = 4000;
+    int total = 0;
+    final List<ChatMessage> reversed = List.from(session.messages.reversed);
+    final List<ChatMessage> picked = [];
+
+    for (final m in reversed) {
+      if (total + m.content.length > maxChars) break;
+      picked.insert(0, m);
+      total += m.content.length;
+    }
+
+    // Construir prompt personalizado
+    String personalityPrompt = '';
+    switch (_aiPersonality) {
+      case 'amigable':
+        personalityPrompt =
+            'Sé amigable y buena onda con el usuario. Puedes responder con confianza. ';
+        break;
+      case 'profesional':
+        personalityPrompt =
+            'Mantén un tono profesional y formal. Sé respetuoso y preciso. ';
+        break;
+      case 'casual':
+        personalityPrompt =
+            'Sé casual y relajado. Puedes usar expresiones coloquiales apropiadas. ';
+        break;
+    }
+
+    String lengthPrompt = '';
+    switch (_responseLength) {
+      case 'corto':
+        lengthPrompt = 'Proporciona respuestas breves y al punto. ';
+        break;
+      case 'balanceado':
+        lengthPrompt =
+            'Proporciona respuestas balanceadas, ni muy cortas ni muy largas. ';
+        break;
+      case 'detallado':
+        lengthPrompt =
+            'Proporciona respuestas detalladas con explicaciones completas. ';
+        break;
+    }
+
+    // Determinar si es el primer mensaje (sin historial)
+    final isFirstMessage = picked.isEmpty;
+    String introPrompt = isFirstMessage
+        ? 'Si es tu primera interacción, preséntate brevemente como Agayosu. '
+        : '';
+
+    return [
+      {
+        'role': 'system',
+        'content':
+            'Eres Agayosu, un asistente de IA balanceado y versátil. '
+            '$introPrompt'
+            'Tienes capacidad para buscar en internet información actualizada. '
+            'Combinas velocidad con profundidad según lo requiera la situación. '
+            'Siempre responde en el idioma que el usuario te habla. '
+            'Eres capaz de adaptarte al tono de la conversación: formal, casual, técnico o creativo. '
+            'Para código, usa markdown con sintaxis apropiada. '
+            'Si el usuario pide generar imágenes, sugiérele usar la sección "Generación de Imágenes". '
+            '$personalityPrompt'
+            '$lengthPrompt'
+            'El usuario prefiere que lo llames "$_userName". '
+            'Proporciona respuestas bien estructuradas y fáciles de seguir. '
+            'NO te presentes en cada respuesta, solo responde directamente a la pregunta.',
       },
       ...picked.map(
         (m) => {
@@ -476,7 +881,7 @@ class _ForaaiScreenState extends State<ForaaiScreen> {
     }
   }
 
-  Future<String> _callGeminiAPI(
+  Future<String> _callOpenRouterAPI(
     List<Map<String, dynamic>> messages, {
     File? imageFile,
     required CancelToken token,
@@ -484,57 +889,54 @@ class _ForaaiScreenState extends State<ForaaiScreen> {
     try {
       token.checkCancelled();
 
-      final contents = <Map<String, dynamic>>[];
+      // OpenRouter usa formato OpenAI compatible
+      final apiMessages = <Map<String, dynamic>>[];
 
-      for (var msg in messages.where((m) => m['role'] != 'system')) {
-        contents.add({
-          'role': msg['role'] == 'assistant' ? 'model' : 'user',
-          'parts': [
-            {'text': msg['content']},
-          ],
-        });
+      // Agregar mensajes del historial
+      for (var msg in messages) {
+        apiMessages.add({'role': msg['role'], 'content': msg['content']});
       }
 
-      // Agregar imagen al último mensaje si existe
-      if (imageFile != null && contents.isNotEmpty) {
-        final bytes = await imageFile.readAsBytes();
-        final base64Image = base64Encode(bytes);
+      // Si hay imagen, modificar el último mensaje de usuario para incluirla
+      if (imageFile != null && apiMessages.isNotEmpty) {
+        // Encontrar el último mensaje de usuario
+        for (int i = apiMessages.length - 1; i >= 0; i--) {
+          if (apiMessages[i]['role'] == 'user') {
+            final bytes = await imageFile.readAsBytes();
+            final base64Image = base64Encode(bytes);
 
-        (contents.last['parts'] as List).add({
-          'inline_data': {'mime_type': 'image/jpeg', 'data': base64Image},
-        });
+            // Convertir contenido a formato con imagen
+            final textContent = apiMessages[i]['content'];
+            apiMessages[i]['content'] = [
+              {'type': 'text', 'text': textContent},
+              {
+                'type': 'image_url',
+                'image_url': {'url': 'data:image/jpeg;base64,$base64Image'},
+              },
+            ];
+            break;
+          }
+        }
       }
 
       token.checkCancelled();
 
-      final systemMsg = messages.firstWhere(
-        (m) => m['role'] == 'system',
-        orElse: () => {'content': ''},
-      )['content'];
-      if (systemMsg!.isNotEmpty && contents.isNotEmpty) {
-        final firstPart = (contents.first['parts'] as List).first;
-        firstPart['text'] = '$systemMsg\n\n${firstPart['text']}';
-      }
-
-      // Construir URL correcta con el modelo
-      final model = ApiConfig.getModelForProvider(_selectedProvider);
-      final endpoint =
-          '${ApiConfig.getEndpointForProvider(_selectedProvider)}/$model:generateContent';
+      final endpoint = ApiConfig.getEndpointForProvider(_selectedProvider);
       final apiKey = ApiConfig.getApiKeyForProvider(_selectedProvider);
+      final model = ApiConfig.getModelForProvider(_selectedProvider);
 
       final response = await _httpClient!
           .post(
             Uri.parse(endpoint),
             headers: {
               'Content-Type': 'application/json',
-              'x-goog-api-key': apiKey,
+              'Authorization': 'Bearer $apiKey',
             },
             body: jsonEncode({
-              'contents': contents,
-              'tools': [
-                {'google_search': {}},
-              ],
-              'generationConfig': {'temperature': 0.7, 'maxOutputTokens': 2048},
+              'model': model,
+              'messages': apiMessages,
+              'temperature': 0.7,
+              'max_tokens': 2048,
             }),
           )
           .timeout(const Duration(seconds: 30));
@@ -543,18 +945,24 @@ class _ForaaiScreenState extends State<ForaaiScreen> {
 
       if (response.statusCode >= 200 && response.statusCode < 300) {
         final data = jsonDecode(response.body);
-        return data['candidates']?[0]?['content']?['parts']?[0]?['text'] ??
-            'Error: Respuesta vacía';
+        final choices = data['choices'] as List<dynamic>?;
+        final content = choices?.isNotEmpty == true
+            ? choices![0]['message']['content']
+            : null;
+
+        return (content is String && content.trim().isNotEmpty)
+            ? content
+            : 'Error: Respuesta vacía';
       } else {
-        // Mostrar más detalles del error
-        String errorMsg = 'HTTP ${response.statusCode}';
+        String errMsg = 'Failed (${response.statusCode})';
         try {
-          final errorData = jsonDecode(response.body);
-          errorMsg = errorData['error']?['message'] ?? errorMsg;
-        } catch (_) {
-          errorMsg = response.body;
-        }
-        throw Exception(errorMsg);
+          final err = jsonDecode(response.body);
+          errMsg =
+              err['error']?['message']?.toString() ??
+              err['message']?.toString() ??
+              errMsg;
+        } catch (_) {}
+        throw Exception(errMsg);
       }
     } on TimeoutException {
       if (token.isCancelled) {
@@ -625,7 +1033,20 @@ class _ForaaiScreenState extends State<ForaaiScreen> {
     }
 
     try {
-      final messages = _buildMessagesForAPI(session, text);
+      // Construir mensajes según el proveedor seleccionado
+      final List<Map<String, dynamic>> messages;
+      switch (_selectedProvider) {
+        case AIProvider.groq:
+          messages = _buildMessagesForGroq(session, text);
+          break;
+        case AIProvider.gpt_oss:
+          messages = _buildMessagesForGptOss(session, text);
+          break;
+        case AIProvider.openrouter:
+          messages = _buildMessagesForOpenRouter(session, text);
+          break;
+      }
+
       String result;
 
       // Create cancel token for this request
@@ -641,8 +1062,8 @@ class _ForaaiScreenState extends State<ForaaiScreen> {
           case AIProvider.gpt_oss:
             result = await _callGptOssAPI(messages, cancelToken);
             break;
-          case AIProvider.gemini:
-            result = await _callGeminiAPI(
+          case AIProvider.openrouter:
+            result = await _callOpenRouterAPI(
               messages,
               imageFile: _selectedImage,
               token: cancelToken,
@@ -708,11 +1129,12 @@ class _ForaaiScreenState extends State<ForaaiScreen> {
     if (session == null || session.messages.isEmpty) return;
 
     if (session.messages.last.role == 'ai') {
+      // Solo eliminar la respuesta de la IA, NO el mensaje del usuario
       setState(() => session.messages.removeLast());
 
       if (session.messages.isNotEmpty && session.messages.last.role == 'user') {
         final lastUserMessage = session.messages.last.content;
-        setState(() => session.messages.removeLast());
+        // NO eliminar el mensaje del usuario, solo regenerar la respuesta
         _sendMessage(manualText: lastUserMessage, isRegenerate: true);
       }
     }
@@ -739,6 +1161,13 @@ class _ForaaiScreenState extends State<ForaaiScreen> {
       textColor: Colors.white,
       icon: Icons.info_outline,
       iconColor: Colors.white70,
+    );
+  }
+
+  void _copyToClipboard(String text) {
+    Clipboard.setData(ClipboardData(text: text));
+    _showSnackBar(
+      widget.getText('copied', fallback: 'Copiado al portapapeles'),
     );
   }
 
@@ -940,13 +1369,24 @@ class _ForaaiScreenState extends State<ForaaiScreen> {
         children: [
           IconButton(
             icon: Icon(_sidebarOpen ? Icons.menu_open : Icons.menu),
-            onPressed: () => setState(() => _sidebarOpen = !_sidebarOpen),
+            onPressed: () {
+              setState(() => _sidebarOpen = !_sidebarOpen);
+              _saveSidebarState();
+            },
             tooltip: widget.getText(
               'toggle_sidebar',
               fallback: 'Alternar barra lateral',
             ),
           ),
           const SizedBox(width: 8),
+          const Spacer(),
+          // Botón de configuración
+          IconButton(
+            icon: const Icon(Icons.settings_outlined),
+            onPressed: _showPreferencesDialog,
+            tooltip: widget.getText('preferences', fallback: 'Preferencias'),
+            color: Colors.white70,
+          ),
         ],
       ),
     );
@@ -1026,23 +1466,9 @@ class _ForaaiScreenState extends State<ForaaiScreen> {
                     Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        // Botón de imagen (solo para Gemini)
-                        if (_selectedProvider == AIProvider.gemini)
-                          IconButton(
-                            onPressed: _isLoading ? null : _pickImage,
-                            icon: const Icon(
-                              Icons.add_photo_alternate_outlined,
-                              size: 20,
-                            ),
-                            tooltip: 'Adjuntar imagen',
-                            style: IconButton.styleFrom(
-                              foregroundColor: Colors.white70,
-                              padding: const EdgeInsets.all(8),
-                              minimumSize: Size.zero,
-                              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                            ),
-                          ),
-                        const SizedBox(width: 4),
+                        // Botón de imagen (deshabilitado - ningún modelo soporta imágenes actualmente)
+                        // Descomentar cuando haya un modelo con soporte de imágenes
+
                         // Botón enviar
                         IconButton(
                           onPressed: _isLoading ? null : () => _sendMessage(),
@@ -1250,7 +1676,7 @@ class _ForaaiScreenState extends State<ForaaiScreen> {
                         ),
                         const SizedBox(width: 8),
                         Text(
-                          widget.getText('foraai', fallback: 'ForaAI'),
+                          ApiConfig.getProviderName(_selectedProvider),
                           style: TextStyle(
                             fontSize: 12,
                             fontWeight: FontWeight.bold,
@@ -1269,11 +1695,24 @@ class _ForaaiScreenState extends State<ForaaiScreen> {
                       : MarkdownBody(
                           data: msg.content,
                           selectable: false,
+                          onTapLink: (text, href, title) {
+                            if (href != null) {
+                              // Abrir enlace en el navegador
+                              launchUrl(
+                                Uri.parse(href),
+                                mode: LaunchMode.externalApplication,
+                              );
+                            }
+                          },
                           builders: {
                             'code': CodeElementBuilder(context, widget.getText),
                           },
                           styleSheet: MarkdownStyleSheet(
                             p: const TextStyle(fontSize: 15, height: 1.5),
+                            a: const TextStyle(
+                              color: Colors.blueAccent,
+                              decoration: TextDecoration.underline,
+                            ),
                             code: const TextStyle(
                               backgroundColor: Colors.transparent,
                               fontFamily: 'monospace',
@@ -1291,17 +1730,40 @@ class _ForaaiScreenState extends State<ForaaiScreen> {
           if (!isUser && isLast)
             Padding(
               padding: const EdgeInsets.only(left: 8, bottom: 8),
-              child: TextButton.icon(
-                onPressed: _isLoading ? null : _regenerateLastResponse,
-                icon: const Icon(
-                  Icons.refresh,
-                  size: 14,
-                  color: Colors.white54,
-                ),
-                label: Text(
-                  widget.getText('regenerate', fallback: 'Regenerar'),
-                  style: const TextStyle(color: Colors.white54, fontSize: 12),
-                ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  // Botón copiar
+                  IconButton(
+                    onPressed: _isLoading
+                        ? null
+                        : () => _copyToClipboard(msg.content),
+                    icon: const Icon(Icons.copy, size: 16),
+                    tooltip: widget.getText('copy', fallback: 'Copiar'),
+                    style: IconButton.styleFrom(
+                      foregroundColor: Colors.white54,
+                      padding: const EdgeInsets.all(8),
+                      minimumSize: Size.zero,
+                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                    ),
+                  ),
+                  const SizedBox(width: 4),
+                  // Botón regenerar
+                  IconButton(
+                    onPressed: _isLoading ? null : _regenerateLastResponse,
+                    icon: const Icon(Icons.refresh, size: 16),
+                    tooltip: widget.getText(
+                      'regenerate',
+                      fallback: 'Regenerar',
+                    ),
+                    style: IconButton.styleFrom(
+                      foregroundColor: Colors.white54,
+                      padding: const EdgeInsets.all(8),
+                      minimumSize: Size.zero,
+                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                    ),
+                  ),
+                ],
               ),
             ),
         ],
