@@ -421,10 +421,10 @@ class _R34ScreenState extends State<R34Screen> with WindowListener {
                     Container(
                       width: double.infinity,
                       decoration: BoxDecoration(
-                        color: Colors.white.withOpacity(0.05),
+                        color: Theme.of(context).cardTheme.color,
                         borderRadius: BorderRadius.circular(16),
                         border: Border.all(
-                          color: Colors.white.withOpacity(0.1),
+                          color: Theme.of(context).dividerColor,
                         ),
                       ),
                       child: Stack(
@@ -453,9 +453,9 @@ class _R34ScreenState extends State<R34Screen> with WindowListener {
                                         'query_hint',
                                         fallback: 'e.g. Bulma',
                                       ),
-                                      hintStyle: TextStyle(
-                                        color: Colors.white.withOpacity(0.3),
-                                      ),
+                                      hintStyle: Theme.of(
+                                        context,
+                                      ).inputDecorationTheme.hintStyle,
                                       contentPadding: EdgeInsets.zero,
                                       isDense: true,
                                     ),

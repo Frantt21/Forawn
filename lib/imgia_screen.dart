@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:file_picker/file_picker.dart';
 import 'package:path/path.dart' as p;
@@ -109,9 +110,40 @@ class _AiImageScreenState extends State<AiImageScreen> with WindowListener {
   String? _saveFolder;
   SharedPreferences? _prefs;
   List<ImageMessage> _messages = [];
+  final http.Client _http = http.Client();
 
   static const _prefsKey = 'image_download_folder';
   static const _messagesPrefsKey = 'imgia_messages';
+
+  // Helper: GET seguro (similar a Spotify screen)
+  Future<http.Response?> _safeGet(
+    Uri uri, {
+    Duration timeout = const Duration(seconds: 60),
+  }) async {
+    try {
+      final res = await _http.get(uri).timeout(timeout);
+      return res;
+    } on TimeoutException catch (e, st) {
+      debugPrint('[AiImageScreen] Timeout GET $uri: $e\n$st');
+      return null;
+    } on SocketException catch (e, st) {
+      debugPrint('[AiImageScreen] SocketException GET $uri: $e\n$st');
+      return null;
+    } on HttpException catch (e, st) {
+      debugPrint('[AiImageScreen] HttpException GET $uri: $e\n$st');
+      return null;
+    } catch (e, st) {
+      if (e.toString().contains('Connection closed') ||
+          e.toString().contains('Socket is closed')) {
+        debugPrint(
+          '[AiImageScreen] Connection closed (widget likely disposed): $uri',
+        );
+        return null;
+      }
+      debugPrint('[AiImageScreen] Unknown error GET $uri: $e\n$st');
+      return null;
+    }
+  }
 
   @override
   void initState() {
@@ -250,41 +282,104 @@ class _AiImageScreenState extends State<AiImageScreen> with WindowListener {
     _saveMessages();
 
     try {
+      debugPrint('[AiImageScreen] Starting image generation...');
       final url = _buildApiUrl(prompt, _ratio);
-      final res = await http
-          .get(Uri.parse(url))
-          .timeout(const Duration(seconds: 20));
-      if (res.statusCode != 200) throw Exception('HTTP ${res.statusCode}');
-      final parsed = jsonDecode(res.body) as Map<String, dynamic>;
-      final data = parsed['data'] as Map<String, dynamic>?;
-      final imageLink = data?['image_link'] as String?;
-      final status = data?['status'] as String?;
-      if (status != 'success' || imageLink == null) {
-        throw Exception('API error or no image');
+      debugPrint('[AiImageScreen] Requesting: $url');
+
+      final res = await _safeGet(Uri.parse(url));
+
+      if (res == null) {
+        throw Exception('Failed to connect to API');
       }
 
-      // Download bytes
-      final imgRes = await http
-          .get(Uri.parse(imageLink))
-          .timeout(const Duration(seconds: 20));
+      debugPrint('[AiImageScreen] Response status: ${res.statusCode}');
+      debugPrint('[AiImageScreen] Response body: ${res.body}');
+
+      if (res.statusCode != 200) {
+        throw Exception('HTTP ${res.statusCode}');
+      }
+
+      // Parse JSON safely
+      final dynamic parsedJson = jsonDecode(res.body);
+      if (parsedJson is! Map<String, dynamic>) {
+        throw Exception(
+          'Invalid JSON structure: expected Map, got ${parsedJson.runtimeType}',
+        );
+      }
+
+      final parsed = parsedJson;
+
+      // Check for data field
+      if (!parsed.containsKey('data')) {
+        throw Exception('Missing "data" field in response');
+      }
+
+      final dynamic dataField = parsed['data'];
+      if (dataField is! Map<String, dynamic>) {
+        throw Exception(
+          'Invalid "data" field: expected Map, got ${dataField.runtimeType}',
+        );
+      }
+
+      final data = dataField;
+      final imageLink = data['image_link'] as String?;
+      final status = data['status'] as String?;
+
+      debugPrint('[AiImageScreen] Status: $status, Image link: $imageLink');
+
+      if (status != 'success' || imageLink == null || imageLink.isEmpty) {
+        throw Exception('API error: status=$status, imageLink=$imageLink');
+      }
+
+      // Download image bytes using safe GET
+      debugPrint('[AiImageScreen] Downloading image from: $imageLink');
+      final imgRes = await _safeGet(Uri.parse(imageLink));
+
+      if (imgRes == null) {
+        throw Exception('Failed to download image: network error');
+      }
+
       if (imgRes.statusCode != 200) {
-        throw Exception('Image download ${imgRes.statusCode}');
+        throw Exception('Image download failed: HTTP ${imgRes.statusCode}');
       }
 
-      if (!mounted) return;
-      setState(() {
-        final index = _messages.indexWhere((m) => m.id == messageId);
-        if (index != -1) {
-          _messages[index] = _messages[index].copyWith(
-            imageUrl: imageLink,
-            imageBytes: imgRes.bodyBytes,
-            isGenerating: false,
-          );
-        }
-        _loading = false;
-      });
-      _scrollToBottom();
-      _saveMessages();
+      final imageBytes = imgRes.bodyBytes;
+      debugPrint(
+        '[AiImageScreen] Image downloaded successfully, size: ${imageBytes.length} bytes',
+      );
+
+      if (!mounted) {
+        debugPrint('[AiImageScreen] Widget unmounted, aborting');
+        return;
+      }
+
+      try {
+        debugPrint('[AiImageScreen] Updating message state...');
+        setState(() {
+          final index = _messages.indexWhere((m) => m.id == messageId);
+          debugPrint('[AiImageScreen] Message index: $index');
+          if (index != -1) {
+            _messages[index] = _messages[index].copyWith(
+              imageUrl: imageLink,
+              imageBytes: imageBytes,
+              isGenerating: false,
+            );
+            debugPrint('[AiImageScreen] Message updated successfully');
+          }
+          _loading = false;
+        });
+
+        debugPrint('[AiImageScreen] State updated, scrolling...');
+        _scrollToBottom();
+
+        debugPrint('[AiImageScreen] Saving messages...');
+        await _saveMessages();
+        debugPrint('[AiImageScreen] Generation completed successfully!');
+      } catch (e, stackTrace) {
+        debugPrint('[AiImageScreen] Error in setState/save: $e');
+        debugPrint('[AiImageScreen] Stack trace: $stackTrace');
+        rethrow;
+      }
     } on SocketException catch (e) {
       debugPrint('[AiImageScreen] SocketException: $e');
       if (!mounted) return;
@@ -313,6 +408,23 @@ class _AiImageScreenState extends State<AiImageScreen> with WindowListener {
         _loading = false;
       });
       _saveMessages();
+    } on TimeoutException catch (e) {
+      debugPrint('[AiImageScreen] TimeoutException: $e');
+      if (!mounted) return;
+      setState(() {
+        final index = _messages.indexWhere((m) => m.id == messageId);
+        if (index != -1) {
+          _messages[index] = _messages[index].copyWith(
+            isGenerating: false,
+            error: widget.getText(
+              'timeout_error',
+              fallback: 'La generación tardó demasiado. Intenta de nuevo.',
+            ),
+          );
+        }
+        _loading = false;
+      });
+      _saveMessages();
     } catch (e) {
       // Silently ignore connection closed errors during dispose
       if (e.toString().contains('Connection closed') ||
@@ -323,20 +435,20 @@ class _AiImageScreenState extends State<AiImageScreen> with WindowListener {
         return;
       }
 
+      debugPrint('[AiImageScreen] Error: $e');
       if (!mounted) return;
-
-      // Check if request was cancelled
-      final isCancelled =
-          e is TimeoutException && e.message == 'Request was cancelled';
 
       setState(() {
         final index = _messages.indexWhere((m) => m.id == messageId);
         if (index != -1) {
           _messages[index] = _messages[index].copyWith(
             isGenerating: false,
-            error: isCancelled
-                ? '⏸ ${widget.getText('cancelled', fallback: 'Cancelado')}'
-                : e.toString(),
+            error:
+                widget.getText(
+                  'generation_error',
+                  fallback: 'Error al generar imagen',
+                ) +
+                ': ${e.toString().split('\n').first}',
           );
         }
         _loading = false;
@@ -525,7 +637,9 @@ class _AiImageScreenState extends State<AiImageScreen> with WindowListener {
                 children: [
                   Text(
                     message.prompt,
-                    style: const TextStyle(color: Colors.white),
+                    style: TextStyle(
+                      color: Theme.of(context).textTheme.bodyLarge?.color,
+                    ),
                   ),
                   const SizedBox(height: 8),
                   // Ratio badge
@@ -535,9 +649,9 @@ class _AiImageScreenState extends State<AiImageScreen> with WindowListener {
                       vertical: 4,
                     ),
                     decoration: BoxDecoration(
-                      color: Colors.white.withOpacity(0.1),
+                      color: Theme.of(context).cardTheme.color,
                       borderRadius: BorderRadius.circular(6),
-                      border: Border.all(color: Colors.white.withOpacity(0.2)),
+                      border: Border.all(color: Theme.of(context).dividerColor),
                     ),
                     child: Row(
                       mainAxisSize: MainAxisSize.min,
@@ -545,14 +659,18 @@ class _AiImageScreenState extends State<AiImageScreen> with WindowListener {
                         Icon(
                           Icons.aspect_ratio,
                           size: 12,
-                          color: Colors.white.withOpacity(0.6),
+                          color: Theme.of(
+                            context,
+                          ).iconTheme.color?.withOpacity(0.6),
                         ),
                         const SizedBox(width: 4),
                         Text(
                           message.ratio,
                           style: TextStyle(
                             fontSize: 11,
-                            color: Colors.white.withOpacity(0.7),
+                            color: Theme.of(
+                              context,
+                            ).textTheme.bodyMedium?.color?.withOpacity(0.7),
                             fontWeight: FontWeight.w500,
                           ),
                         ),
@@ -694,9 +812,9 @@ class _AiImageScreenState extends State<AiImageScreen> with WindowListener {
                   // Input container with styled input
                   Container(
                     decoration: BoxDecoration(
-                      color: Colors.white.withOpacity(0.05),
+                      color: Theme.of(context).cardTheme.color,
                       borderRadius: BorderRadius.circular(16),
-                      border: Border.all(color: Colors.white.withOpacity(0.1)),
+                      border: Border.all(color: Theme.of(context).dividerColor),
                     ),
                     padding: const EdgeInsets.all(8),
                     child: Column(
@@ -714,9 +832,9 @@ class _AiImageScreenState extends State<AiImageScreen> with WindowListener {
                                     'prompt_hint',
                                     fallback: 'Describe the image you want...',
                                   ),
-                                  hintStyle: TextStyle(
-                                    color: Colors.white.withOpacity(0.3),
-                                  ),
+                                  hintStyle: Theme.of(
+                                    context,
+                                  ).inputDecorationTheme.hintStyle,
                                   border: InputBorder.none,
                                   contentPadding: const EdgeInsets.symmetric(
                                     horizontal: 16,
@@ -775,7 +893,7 @@ class _AiImageScreenState extends State<AiImageScreen> with WindowListener {
                                   horizontal: 8,
                                 ),
                                 decoration: BoxDecoration(
-                                  color: Colors.white.withOpacity(0.08),
+                                  color: Theme.of(context).cardTheme.color,
                                   borderRadius: BorderRadius.circular(10),
                                 ),
                                 child: Row(
@@ -784,18 +902,24 @@ class _AiImageScreenState extends State<AiImageScreen> with WindowListener {
                                     DropdownButton<String>(
                                       value: _ratio,
                                       underline: const SizedBox.shrink(),
-                                      dropdownColor: const Color(0xFF2C2C2C),
+                                      dropdownColor: Theme.of(
+                                        context,
+                                      ).cardColor,
                                       borderRadius: BorderRadius.circular(10),
                                       focusColor: Colors
                                           .transparent, // Evita el resaltado persistente
-                                      icon: const Icon(
+                                      icon: Icon(
                                         Icons.keyboard_arrow_down,
                                         size: 14,
-                                        color: Colors.white54,
+                                        color: Theme.of(
+                                          context,
+                                        ).iconTheme.color?.withOpacity(0.54),
                                       ),
                                       isDense: true,
-                                      style: const TextStyle(
-                                        color: Colors.white,
+                                      style: TextStyle(
+                                        color: Theme.of(
+                                          context,
+                                        ).textTheme.bodyLarge?.color,
                                         fontSize: 11,
                                       ),
                                       items:

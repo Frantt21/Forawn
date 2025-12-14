@@ -281,10 +281,10 @@ class _QrGeneratorScreenState extends State<QrGeneratorScreen> {
                     // Input area con handle de redimensionado
                     Container(
                       decoration: BoxDecoration(
-                        color: Colors.white.withOpacity(0.05),
+                        color: Theme.of(context).cardTheme.color,
                         borderRadius: BorderRadius.circular(16),
                         border: Border.all(
-                          color: Colors.white.withOpacity(0.1),
+                          color: Theme.of(context).dividerColor,
                         ),
                       ),
                       padding: const EdgeInsets.all(8),
@@ -298,9 +298,9 @@ class _QrGeneratorScreenState extends State<QrGeneratorScreen> {
                                   'qr_label_url',
                                   fallback: 'URL a codificar',
                                 ),
-                                hintStyle: TextStyle(
-                                  color: Colors.white.withOpacity(0.3),
-                                ),
+                                hintStyle: Theme.of(
+                                  context,
+                                ).inputDecorationTheme.hintStyle,
                                 border: InputBorder.none,
                                 errorText: _errorText,
                                 contentPadding: const EdgeInsets.symmetric(

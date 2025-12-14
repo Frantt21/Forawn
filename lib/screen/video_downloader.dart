@@ -517,7 +517,7 @@ class _VideoDownloaderScreenState extends State<VideoDownloaderScreen>
         return StatefulBuilder(
           builder: (ctx2, setStateDialog) {
             return AlertDialog(
-              backgroundColor: Colors.grey[900],
+              backgroundColor: Theme.of(context).cardTheme.color,
               title: Text(
                 widget.getText(
                   'choose_resolution',
@@ -536,7 +536,7 @@ class _VideoDownloaderScreenState extends State<VideoDownloaderScreen>
                             Container(
                               width: 100,
                               height: 56,
-                              color: Colors.black26,
+                              color: Theme.of(context).cardTheme.color,
                               child: Image.memory(
                                 _thumbnailBytes!,
                                 fit: BoxFit.cover,
@@ -546,10 +546,12 @@ class _VideoDownloaderScreenState extends State<VideoDownloaderScreen>
                             Container(
                               width: 100,
                               height: 56,
-                              color: Colors.black26,
-                              child: const Icon(
+                              color: Theme.of(context).cardTheme.color,
+                              child: Icon(
                                 Icons.image,
-                                color: Colors.white24,
+                                color: Theme.of(
+                                  context,
+                                ).iconTheme.color?.withOpacity(0.24),
                               ),
                             ),
                           const SizedBox(width: 8),
@@ -713,9 +715,9 @@ class _VideoDownloaderScreenState extends State<VideoDownloaderScreen>
               // URL input + inspect button
               Container(
                 decoration: BoxDecoration(
-                  color: Colors.white.withOpacity(0.05),
+                  color: Theme.of(context).cardTheme.color,
                   borderRadius: BorderRadius.circular(16),
-                  border: Border.all(color: Colors.white.withOpacity(0.1)),
+                  border: Border.all(color: Theme.of(context).dividerColor),
                 ),
                 padding: const EdgeInsets.all(8),
                 child: Row(
@@ -728,9 +730,9 @@ class _VideoDownloaderScreenState extends State<VideoDownloaderScreen>
                             'video_url_label',
                             fallback: 'YouTube URL',
                           ),
-                          hintStyle: TextStyle(
-                            color: Colors.white.withOpacity(0.3),
-                          ),
+                          hintStyle: Theme.of(
+                            context,
+                          ).inputDecorationTheme.hintStyle,
                           border: InputBorder.none,
                           contentPadding: const EdgeInsets.symmetric(
                             horizontal: 16,
@@ -796,8 +798,13 @@ class _VideoDownloaderScreenState extends State<VideoDownloaderScreen>
                         color: Colors.black26,
                         child: _thumbnailBytes != null
                             ? Image.memory(_thumbnailBytes!, fit: BoxFit.cover)
-                            : const Center(
-                                child: Icon(Icons.image, color: Colors.white24),
+                            : Center(
+                                child: Icon(
+                                  Icons.image,
+                                  color: Theme.of(
+                                    context,
+                                  ).iconTheme.color?.withOpacity(0.24),
+                                ),
                               ),
                       ),
                       const SizedBox(width: 12),
@@ -852,10 +859,12 @@ class _VideoDownloaderScreenState extends State<VideoDownloaderScreen>
                     child: Column(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        const Icon(
+                        Icon(
                           Icons.video_library,
                           size: 48,
-                          color: Colors.white24,
+                          color: Theme.of(
+                            context,
+                          ).iconTheme.color?.withOpacity(0.24),
                         ),
                         const SizedBox(height: 12),
                         Text(
@@ -863,7 +872,11 @@ class _VideoDownloaderScreenState extends State<VideoDownloaderScreen>
                             'enter_url_desc',
                             fallback: 'Enter a YouTube URL to start',
                           ),
-                          style: const TextStyle(color: Colors.white54),
+                          style: TextStyle(
+                            color: Theme.of(
+                              context,
+                            ).textTheme.bodyMedium?.color?.withOpacity(0.54),
+                          ),
                         ),
                       ],
                     ),

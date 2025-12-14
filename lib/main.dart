@@ -322,6 +322,26 @@ class _ForawnAppRootState extends State<ForawnAppRoot> {
                     displayColor: Colors.white,
                   ),
                   iconTheme: const IconThemeData(color: Colors.white),
+                  // Input decoration theme for dark backgrounds
+                  inputDecorationTheme: InputDecorationTheme(
+                    hintStyle: TextStyle(color: Colors.white.withOpacity(0.3)),
+                    border: InputBorder.none,
+                    contentPadding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 12,
+                    ),
+                    isDense: true,
+                  ),
+                  // Card theme for containers
+                  cardTheme: CardThemeData(
+                    color: Colors.white.withOpacity(0.05),
+                    elevation: 0,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(16),
+                      side: BorderSide(color: Colors.white.withOpacity(0.1)),
+                    ),
+                  ),
+                  dividerColor: Colors.white.withOpacity(0.1),
                 )
               : ThemeData.light(useMaterial3: true).copyWith(
                   appBarTheme: const AppBarTheme(
@@ -335,6 +355,26 @@ class _ForawnAppRootState extends State<ForawnAppRoot> {
                     displayColor: Colors.black87,
                   ),
                   iconTheme: const IconThemeData(color: Colors.black87),
+                  // Input decoration theme for light backgrounds
+                  inputDecorationTheme: InputDecorationTheme(
+                    hintStyle: TextStyle(color: Colors.black.withOpacity(0.3)),
+                    border: InputBorder.none,
+                    contentPadding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 12,
+                    ),
+                    isDense: true,
+                  ),
+                  // Card theme for containers
+                  cardTheme: CardThemeData(
+                    color: Colors.black.withOpacity(0.05),
+                    elevation: 0,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(16),
+                      side: BorderSide(color: Colors.black.withOpacity(0.1)),
+                    ),
+                  ),
+                  dividerColor: Colors.black.withOpacity(0.1),
                 ),
           debugShowCheckedModeBanner: false,
           home: HomeScreen(

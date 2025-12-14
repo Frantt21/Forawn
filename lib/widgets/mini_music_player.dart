@@ -159,8 +159,10 @@ class _MiniMusicPlayerState extends State<MiniMusicPlayer> {
                                   : title,
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
-                              style: const TextStyle(
-                                color: Colors.white,
+                              style: TextStyle(
+                                color: Theme.of(
+                                  context,
+                                ).textTheme.bodyLarge?.color,
                                 fontSize: 12,
                                 fontWeight: FontWeight.bold,
                               ),
@@ -223,8 +225,10 @@ class _MiniMusicPlayerState extends State<MiniMusicPlayer> {
                                     : title,
                                 maxLines: 1,
                                 overflow: TextOverflow.ellipsis,
-                                style: const TextStyle(
-                                  color: Colors.white,
+                                style: TextStyle(
+                                  color: Theme.of(
+                                    context,
+                                  ).textTheme.bodyLarge?.color,
                                   fontSize: 13,
                                   fontWeight: FontWeight.bold,
                                 ),
@@ -248,7 +252,11 @@ class _MiniMusicPlayerState extends State<MiniMusicPlayer> {
               ),
             ),
             IconButton(
-              icon: const Icon(Icons.close, color: Colors.white, size: 16),
+              icon: Icon(
+                Icons.close,
+                color: Theme.of(context).iconTheme.color,
+                size: 16,
+              ),
               onPressed: () {
                 _musicPlayer.showMiniPlayer.value = false;
               },

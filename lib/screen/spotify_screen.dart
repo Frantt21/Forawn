@@ -734,10 +734,10 @@ class _SpotifyScreenState extends State<SpotifyScreen>
                     // Search bar
                     Container(
                       decoration: BoxDecoration(
-                        color: Colors.white.withOpacity(0.05),
+                        color: Theme.of(context).cardTheme.color,
                         borderRadius: BorderRadius.circular(16),
                         border: Border.all(
-                          color: Colors.white.withOpacity(0.1),
+                          color: Theme.of(context).dividerColor,
                         ),
                       ),
                       padding: const EdgeInsets.all(8),
@@ -752,9 +752,9 @@ class _SpotifyScreenState extends State<SpotifyScreen>
                                   fallback:
                                       'Nombre de la canción o del artista',
                                 ),
-                                hintStyle: TextStyle(
-                                  color: Colors.white.withOpacity(0.3),
-                                ),
+                                hintStyle: Theme.of(
+                                  context,
+                                ).inputDecorationTheme.hintStyle,
                                 border: InputBorder.none,
                                 contentPadding: const EdgeInsets.symmetric(
                                   horizontal: 16,
@@ -997,9 +997,12 @@ class _SpotifyScreenState extends State<SpotifyScreen>
                                               height: 48,
                                               fit: BoxFit.cover,
                                               errorBuilder: (_, __, ___) =>
-                                                  const Icon(
+                                                  Icon(
                                                     Icons.music_note,
-                                                    color: Colors.white54,
+                                                    color: Theme.of(context)
+                                                        .iconTheme
+                                                        .color
+                                                        ?.withOpacity(0.54),
                                                   ),
                                               loadingBuilder:
                                                   (ctx, child, progress) {
@@ -1018,26 +1021,37 @@ class _SpotifyScreenState extends State<SpotifyScreen>
                                                   },
                                             ),
                                           )
-                                        : const Icon(
+                                        : Icon(
                                             Icons.music_note,
                                             size: 40,
-                                            color: Colors.white54,
+                                            color: Theme.of(context)
+                                                .iconTheme
+                                                .color
+                                                ?.withOpacity(0.54),
                                           ),
                                   ),
                                   title: Text(
                                     title,
                                     maxLines: 1,
                                     overflow: TextOverflow.ellipsis,
-                                    style: const TextStyle(
-                                      color: Colors.white70,
+                                    style: TextStyle(
+                                      color: Theme.of(context)
+                                          .textTheme
+                                          .bodyLarge
+                                          ?.color
+                                          ?.withOpacity(0.7),
                                     ),
                                   ),
                                   subtitle: Text(
                                     artista,
                                     maxLines: 1,
                                     overflow: TextOverflow.ellipsis,
-                                    style: const TextStyle(
-                                      color: Colors.white54,
+                                    style: TextStyle(
+                                      color: Theme.of(context)
+                                          .textTheme
+                                          .bodyMedium
+                                          ?.color
+                                          ?.withOpacity(0.54),
                                     ),
                                   ),
                                   trailing: Row(

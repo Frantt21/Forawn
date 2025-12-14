@@ -121,8 +121,10 @@ class _SettingsScreenState extends State<SettingsScreen> with WindowListener {
   }
 
   Future<void> _loadVisualPrefs() async {
-    await Future.delayed(const Duration(milliseconds: 300)); // Esperar a que se detecte SO
-    
+    await Future.delayed(
+      const Duration(milliseconds: 300),
+    ); // Esperar a que se detecte SO
+
     final prefs = await SharedPreferences.getInstance();
     if (!mounted) return;
 
@@ -192,7 +194,9 @@ class _SettingsScreenState extends State<SettingsScreen> with WindowListener {
       _currentEffectKey = label;
       _selectedColor = color;
     });
-    debugPrint('[Settings] Applied effect: $label, current: $_currentEffectKey');
+    debugPrint(
+      '[Settings] Applied effect: $label, current: $_currentEffectKey',
+    );
 
     final effect = effects[label] ?? acrylic.WindowEffect.solid;
     await widget.onChangeWindowEffect(effect, color, dark: _darkMode);
@@ -208,10 +212,7 @@ class _SettingsScreenState extends State<SettingsScreen> with WindowListener {
     final topLeft = rb.localToGlobal(Offset.zero);
     final items = availableKeys.map((key) {
       final label = widget.getText('effect_$key', fallback: key.capitalize());
-      return PopupMenuItem<String>(
-        value: key,
-        child: Text(label),
-      );
+      return PopupMenuItem<String>(value: key, child: Text(label));
     }).toList();
 
     final selected = await showMenu<String>(
@@ -224,9 +225,7 @@ class _SettingsScreenState extends State<SettingsScreen> with WindowListener {
       ),
       items: items,
       color: Colors.grey[900],
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(10),
-      ),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
     );
 
     _effectMenuOpen = false;
@@ -414,9 +413,7 @@ class _SettingsScreenState extends State<SettingsScreen> with WindowListener {
           .toList(),
       elevation: 4,
       color: Colors.grey[900],
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(10),
-      ),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
     );
 
     setState(() {
@@ -535,7 +532,7 @@ class _SettingsScreenState extends State<SettingsScreen> with WindowListener {
                             vertical: 6,
                           ),
                           decoration: BoxDecoration(
-                            color: Colors.black12,
+                            color: Theme.of(context).cardTheme.color,
                             borderRadius: BorderRadius.circular(10),
                             border: Border.all(color: borderColorLang),
                           ),
@@ -610,7 +607,7 @@ class _SettingsScreenState extends State<SettingsScreen> with WindowListener {
                             vertical: 6,
                           ),
                           decoration: BoxDecoration(
-                            color: Colors.black12,
+                            color: Theme.of(context).cardTheme.color,
                             borderRadius: BorderRadius.circular(10),
                             border: Border.all(color: borderColorEffect),
                           ),
@@ -712,41 +709,15 @@ class _SettingsScreenState extends State<SettingsScreen> with WindowListener {
                       ],
                       const SizedBox(height: 24),
 
-                      Theme(
-                        data: Theme.of(context).copyWith(
-                          switchTheme: SwitchThemeData(
-                            thumbColor: WidgetStateProperty.resolveWith<Color?>(
-                              (states) {
-                                if (states.contains(WidgetState.selected)) {
-                                  return Colors.white;
-                                }
-                                return Colors.white54;
-                              },
-                            ),
-                            trackColor: WidgetStateProperty.resolveWith<Color?>(
-                              (states) {
-                                if (states.contains(WidgetState.selected)) {
-                                  return Colors.white24;
-                                }
-                                return Colors.white10;
-                              },
-                            ),
-                          ),
+                      SwitchListTile(
+                        title: Text(
+                          get('nsfw_toggle', fallback: 'Activar sección NSFW'),
                         ),
-                        child: SwitchListTile(
-                          title: Text(
-                            get(
-                              'nsfw_toggle',
-                              fallback: 'Activar sección NSFW',
-                            ),
-                            style: const TextStyle(color: Colors.white),
-                          ),
-                          value: _nsfw,
-                          onChanged: (v) => _toggleNsfw(v),
-                          secondary: const Icon(
-                            Icons.warning,
-                            color: Colors.white,
-                          ),
+                        value: _nsfw,
+                        onChanged: (v) => _toggleNsfw(v),
+                        secondary: Icon(
+                          Icons.warning,
+                          color: Theme.of(context).iconTheme.color,
                         ),
                       ),
                       const SizedBox(height: 24),
@@ -760,48 +731,6 @@ class _SettingsScreenState extends State<SettingsScreen> with WindowListener {
                           ),
                         ),
                         onPressed: () => checkForUpdate(context, get),
-                        style:
-                            ElevatedButton.styleFrom(
-                              backgroundColor: Colors.transparent,
-                              foregroundColor: Colors.white,
-                              shadowColor: Colors.transparent,
-                              elevation: 0,
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 18,
-                                vertical: 12,
-                              ),
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(10),
-                              ),
-                              side: const BorderSide(
-                                color: Colors.white,
-                                width: 1,
-                              ),
-                            ).merge(
-                              ButtonStyle(
-                                overlayColor:
-                                    WidgetStateProperty.resolveWith<Color?>((
-                                      states,
-                                    ) {
-                                      if (states.contains(
-                                        WidgetState.pressed,
-                                      )) {
-                                        return Colors.white.withOpacity(0.10);
-                                      }
-                                      if (states.contains(
-                                        WidgetState.hovered,
-                                      )) {
-                                        return Colors.white.withOpacity(0.06);
-                                      }
-                                      if (states.contains(
-                                        WidgetState.focused,
-                                      )) {
-                                        return Colors.white.withOpacity(0.06);
-                                      }
-                                      return null;
-                                    }),
-                              ),
-                            ),
                       ),
                     ],
                   ),

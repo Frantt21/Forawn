@@ -20,7 +20,8 @@ class DownloadsScreen extends StatefulWidget {
   State<DownloadsScreen> createState() => _DownloadsScreenState();
 }
 
-class _DownloadsScreenState extends State<DownloadsScreen> with WindowListener, WidgetsBindingObserver {
+class _DownloadsScreenState extends State<DownloadsScreen>
+    with WindowListener, WidgetsBindingObserver {
   final DownloadManager _dm = DownloadManager();
   late final VoidCallback _dmListener;
   bool _listenerAdded = false;
@@ -138,9 +139,12 @@ class _DownloadsScreenState extends State<DownloadsScreen> with WindowListener, 
                 child: ClipRRect(
                   borderRadius: BorderRadius.circular(8),
                   child: Container(
-                    color: Colors.black26,
+                    color: Theme.of(context).cardTheme.color?.withOpacity(0.5),
                     alignment: Alignment.center,
-                    child: const Icon(Icons.download, color: Colors.cyanAccent),
+                    child: Icon(
+                      Icons.download,
+                      color: Theme.of(context).iconTheme.color,
+                    ),
                   ),
                 ),
               ),
@@ -201,9 +205,7 @@ class _DownloadsScreenState extends State<DownloadsScreen> with WindowListener, 
       return Container(
         height: 42,
         color: Colors.black26,
-        child: const Center(
-          child: Text('Title bar error'),
-        ),
+        child: const Center(child: Text('Title bar error')),
       );
     }
   }
@@ -214,10 +216,10 @@ class _DownloadsScreenState extends State<DownloadsScreen> with WindowListener, 
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          const Icon(
+          Icon(
             Icons.download_for_offline,
             size: 56,
-            color: Colors.white24,
+            color: Theme.of(context).iconTheme.color?.withOpacity(0.24),
           ),
           const SizedBox(height: 12),
           Text(
@@ -230,7 +232,12 @@ class _DownloadsScreenState extends State<DownloadsScreen> with WindowListener, 
               'no_downloads_desc',
               fallback: 'Queued and completed downloads will appear here.',
             ),
-            style: const TextStyle(fontSize: 12, color: Colors.white70),
+            style: TextStyle(
+              fontSize: 12,
+              color: Theme.of(
+                context,
+              ).textTheme.bodyMedium?.color?.withOpacity(0.7),
+            ),
           ),
         ],
       ),
@@ -240,7 +247,7 @@ class _DownloadsScreenState extends State<DownloadsScreen> with WindowListener, 
   Widget _buildTaskTile(DownloadTask t) {
     final get = widget.getText;
     return Card(
-      color: Colors.black12,
+      color: Theme.of(context).cardTheme.color,
       child: ListTile(
         contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
         leading: t.image.isNotEmpty
@@ -261,9 +268,12 @@ class _DownloadsScreenState extends State<DownloadsScreen> with WindowListener, 
           children: [
             t.type == TaskType.audio
                 ? Text(t.artist, style: const TextStyle(fontSize: 12))
-                : const Text(
+                : Text(
                     'Video',
-                    style: TextStyle(fontSize: 12, color: Colors.blueGrey),
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: Theme.of(context).textTheme.bodyMedium?.color,
+                    ),
                   ),
             if (t.errorMessage != null && t.errorMessage!.isNotEmpty)
               Padding(
@@ -304,9 +314,10 @@ class _DownloadsScreenState extends State<DownloadsScreen> with WindowListener, 
                       (t.status == DownloadStatus.running)
                           ? '${(t.progress * 100).toStringAsFixed(1)}%'
                           : t.statusString(),
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontSize: 12,
                         fontFamily: 'Courier',
+                        color: Theme.of(context).textTheme.bodyMedium?.color,
                       ),
                     ),
                   ],
@@ -340,7 +351,10 @@ class _DownloadsScreenState extends State<DownloadsScreen> with WindowListener, 
             else
               IconButton(
                 tooltip: get('queue', fallback: 'Queued'),
-                icon: const Icon(Icons.hourglass_top, color: Colors.white70),
+                icon: Icon(
+                  Icons.hourglass_top,
+                  color: Theme.of(context).iconTheme.color?.withOpacity(0.7),
+                ),
                 onPressed: null,
               ),
           ],
@@ -366,7 +380,7 @@ class _DownloadsScreenState extends State<DownloadsScreen> with WindowListener, 
       final get = widget.getText;
       final tasks = _dm.tasksReversed;
       return Scaffold(
-        backgroundColor: const Color.fromARGB(255, 27, 27, 27),
+        backgroundColor: Colors.transparent,
         body: Column(
           children: [
             _buildTitleBar(),
@@ -397,7 +411,9 @@ class _DownloadsScreenState extends State<DownloadsScreen> with WindowListener, 
                       try {
                         _dm.clearCompleted();
                       } catch (e) {
-                        debugPrint('[DownloadsScreen] Error clearing completed: $e');
+                        debugPrint(
+                          '[DownloadsScreen] Error clearing completed: $e',
+                        );
                       }
                     },
                     icon: const Icon(Icons.delete_sweep, size: 18),
@@ -415,22 +431,34 @@ class _DownloadsScreenState extends State<DownloadsScreen> with WindowListener, 
     } catch (e, st) {
       debugPrint('[DownloadsScreen] Build error: $e\n$st');
       return Scaffold(
-        backgroundColor: const Color.fromARGB(255, 27, 27, 27),
+        backgroundColor: Colors.transparent,
         body: Center(
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              const Icon(Icons.error_outline, size: 64, color: Colors.redAccent),
+              const Icon(
+                Icons.error_outline,
+                size: 64,
+                color: Colors.redAccent,
+              ),
               const SizedBox(height: 16),
               Text(
                 'Error loading downloads',
-                style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                style: const TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
+                ),
               ),
               const SizedBox(height: 8),
               Text(
                 e.toString(),
                 textAlign: TextAlign.center,
-                style: const TextStyle(fontSize: 12, color: Colors.white70),
+                style: TextStyle(
+                  fontSize: 12,
+                  color: Theme.of(
+                    context,
+                  ).textTheme.bodyMedium?.color?.withOpacity(0.7),
+                ),
               ),
               const SizedBox(height: 16),
               ElevatedButton.icon(
@@ -455,7 +483,7 @@ class _DownloadsScreenState extends State<DownloadsScreen> with WindowListener, 
     } catch (e) {
       debugPrint('[DownloadsScreen] Error building task tile: $e');
       return Card(
-        color: Colors.black12,
+        color: Theme.of(context).cardTheme.color,
         child: ListTile(
           title: Text(t.title, maxLines: 1, overflow: TextOverflow.ellipsis),
           subtitle: const Text('Error loading task details'),

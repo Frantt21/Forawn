@@ -1253,17 +1253,19 @@ class _ForaaiScreenState extends State<ForaaiScreen> {
                   ),
                 ),
                 selected: isSelected,
-                selectedTileColor: Colors.white.withOpacity(0.05),
+                selectedTileColor: Theme.of(context).cardTheme.color,
                 onTap: () {
                   setState(() => _currentSessionId = s.id);
                   _scrollToBottom();
                 },
                 trailing: isSelected
                     ? IconButton(
-                        icon: const Icon(
+                        icon: Icon(
                           Icons.delete,
                           size: 16,
-                          color: Colors.white54,
+                          color: Theme.of(
+                            context,
+                          ).iconTheme.color?.withOpacity(0.54),
                         ),
                         onPressed: () => _deleteSession(s.id),
                       )
@@ -1277,7 +1279,7 @@ class _ForaaiScreenState extends State<ForaaiScreen> {
           padding: const EdgeInsets.all(12),
           decoration: BoxDecoration(
             border: Border(
-              top: BorderSide(color: Colors.white.withOpacity(0.1)),
+              top: BorderSide(color: Theme.of(context).dividerColor),
             ),
           ),
           child: Column(
@@ -1295,7 +1297,9 @@ class _ForaaiScreenState extends State<ForaaiScreen> {
                     ApiConfig.getProviderName(_selectedProvider),
                     style: TextStyle(
                       fontSize: 11,
-                      color: Colors.white.withOpacity(0.5),
+                      color: Theme.of(
+                        context,
+                      ).textTheme.bodyMedium?.color?.withOpacity(0.5),
                     ),
                   ),
                 ],
@@ -1420,9 +1424,9 @@ class _ForaaiScreenState extends State<ForaaiScreen> {
           // Input Container
           Container(
             decoration: BoxDecoration(
-              color: Colors.white.withOpacity(0.05),
+              color: Theme.of(context).cardTheme.color,
               borderRadius: BorderRadius.circular(16),
-              border: Border.all(color: Colors.white.withOpacity(0.1)),
+              border: Border.all(color: Theme.of(context).dividerColor),
             ),
             padding: const EdgeInsets.all(8),
             child: Column(
@@ -1440,15 +1444,18 @@ class _ForaaiScreenState extends State<ForaaiScreen> {
                         child: TextField(
                           controller: _controller,
                           focusNode: _focusNode,
-                          style: const TextStyle(fontSize: 15),
+                          style: TextStyle(
+                            fontSize: 15,
+                            color: Theme.of(context).textTheme.bodyLarge?.color,
+                          ),
                           decoration: InputDecoration(
                             hintText: widget.getText(
                               'foraai_input_hint',
                               fallback: 'Escribe un mensaje...',
                             ),
-                            hintStyle: TextStyle(
-                              color: Colors.white.withOpacity(0.3),
-                            ),
+                            hintStyle: Theme.of(
+                              context,
+                            ).inputDecorationTheme.hintStyle,
                             border: InputBorder.none,
                             contentPadding: const EdgeInsets.symmetric(
                               horizontal: 16,
@@ -1527,7 +1534,7 @@ class _ForaaiScreenState extends State<ForaaiScreen> {
       height: 24,
       padding: const EdgeInsets.symmetric(horizontal: 8),
       decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.08),
+        color: Theme.of(context).cardTheme.color,
         borderRadius: BorderRadius.circular(10),
       ),
       child: ClipRRect(
@@ -1535,16 +1542,19 @@ class _ForaaiScreenState extends State<ForaaiScreen> {
         child: DropdownButtonHideUnderline(
           child: DropdownButton<AIProvider>(
             value: _selectedProvider,
-            dropdownColor: const Color(0xFF2d2d2d),
+            dropdownColor: Theme.of(context).cardColor,
             borderRadius: BorderRadius.circular(10),
             focusColor: Colors.transparent, // Evita el resaltado persistente
-            icon: const Icon(
+            icon: Icon(
               Icons.keyboard_arrow_down,
               size: 14,
-              color: Colors.white54,
+              color: Theme.of(context).iconTheme.color?.withOpacity(0.54),
             ),
             isDense: true,
-            style: const TextStyle(color: Colors.white, fontSize: 11),
+            style: TextStyle(
+              color: Theme.of(context).textTheme.bodyLarge?.color,
+              fontSize: 11,
+            ),
             onChanged: _isLoading
                 ? null
                 : (AIProvider? newValue) {
@@ -1572,7 +1582,7 @@ class _ForaaiScreenState extends State<ForaaiScreen> {
       margin: const EdgeInsets.only(bottom: 12),
       padding: const EdgeInsets.all(8),
       decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.05),
+        color: Theme.of(context).cardTheme.color,
         borderRadius: BorderRadius.circular(8),
         border: Border.all(color: Colors.purpleAccent.withOpacity(0.3)),
       ),
@@ -1588,10 +1598,15 @@ class _ForaaiScreenState extends State<ForaaiScreen> {
             ),
           ),
           const SizedBox(width: 12),
-          const Expanded(
+          Expanded(
             child: Text(
               'Imagen lista para enviar',
-              style: TextStyle(fontSize: 12, color: Colors.white70),
+              style: TextStyle(
+                fontSize: 12,
+                color: Theme.of(
+                  context,
+                ).textTheme.bodyMedium?.color?.withOpacity(0.7),
+              ),
             ),
           ),
           IconButton(
@@ -1623,7 +1638,7 @@ class _ForaaiScreenState extends State<ForaaiScreen> {
             decoration: BoxDecoration(
               color: isUser
                   ? Colors.purpleAccent.withOpacity(0.2)
-                  : Colors.white.withOpacity(0.05),
+                  : Theme.of(context).cardTheme.color,
               borderRadius: BorderRadius.only(
                 topLeft: const Radius.circular(10),
                 topRight: const Radius.circular(10),
@@ -1633,7 +1648,7 @@ class _ForaaiScreenState extends State<ForaaiScreen> {
               border: Border.all(
                 color: isUser
                     ? Colors.purpleAccent.withOpacity(0.3)
-                    : Colors.white.withOpacity(0.1),
+                    : Theme.of(context).dividerColor,
               ),
             ),
             child: SelectionArea(

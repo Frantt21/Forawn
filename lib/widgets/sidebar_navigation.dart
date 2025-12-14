@@ -81,8 +81,8 @@ class _SidebarNavigationState extends State<SidebarNavigation> {
       //   label: widget.getText('notes_title', fallback: 'Notas'),
       // ),
       NavigationItem(
-        id: 'player', 
-        icon: Icons.play_circle_fill, 
+        id: 'player',
+        icon: Icons.play_circle_fill,
         label: widget.getText('player_reproducer', fallback: 'Reproductor'),
       ),
       NavigationItem(
@@ -116,7 +116,7 @@ class _SidebarNavigationState extends State<SidebarNavigation> {
       decoration: BoxDecoration(
         color: Colors.transparent,
         border: Border(
-          right: BorderSide(color: Colors.white.withOpacity(0.1), width: 1),
+          right: BorderSide(color: Theme.of(context).dividerColor, width: 1),
         ),
       ),
       child: Column(
@@ -133,7 +133,7 @@ class _SidebarNavigationState extends State<SidebarNavigation> {
                   width: 32,
                   height: 32,
                   decoration: BoxDecoration(
-                    color: Colors.black26,
+                    color: Theme.of(context).cardTheme.color,
                     borderRadius: BorderRadius.circular(8),
                   ),
                   child: const Icon(
@@ -147,10 +147,10 @@ class _SidebarNavigationState extends State<SidebarNavigation> {
                   Expanded(
                     child: Text(
                       widget.getText('title', fallback: 'Forawn'),
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontSize: 16,
                         fontWeight: FontWeight.bold,
-                        color: Colors.white,
+                        color: Theme.of(context).textTheme.bodyLarge?.color,
                         letterSpacing: 0.5,
                       ),
                       overflow: TextOverflow.ellipsis,
@@ -181,7 +181,7 @@ class _SidebarNavigationState extends State<SidebarNavigation> {
               alignment: Alignment.center,
               child: Icon(
                 _expanded ? Icons.chevron_left : Icons.chevron_right,
-                color: Colors.white70,
+                color: Theme.of(context).iconTheme.color?.withOpacity(0.7),
               ),
             ),
           ),
@@ -200,10 +200,12 @@ class _SidebarNavigationState extends State<SidebarNavigation> {
             padding: const EdgeInsets.fromLTRB(12, 16, 12, 4),
             child: Text(
               categoryName.toUpperCase(),
-              style: const TextStyle(
+              style: TextStyle(
                 fontSize: 10,
                 fontWeight: FontWeight.bold,
-                color: Colors.white38,
+                color: Theme.of(
+                  context,
+                ).textTheme.bodyMedium?.color?.withOpacity(0.38),
                 letterSpacing: 1.2,
               ),
               overflow: TextOverflow.ellipsis,
@@ -245,7 +247,9 @@ class _SidebarNavigationState extends State<SidebarNavigation> {
                   Icon(
                     item.icon,
                     size: 20,
-                    color: isSelected ? Colors.purpleAccent : Colors.white70,
+                    color: isSelected
+                        ? Colors.purpleAccent
+                        : Theme.of(context).iconTheme.color?.withOpacity(0.7),
                   ),
                   const SizedBox(width: 12),
                   Expanded(
@@ -253,7 +257,11 @@ class _SidebarNavigationState extends State<SidebarNavigation> {
                       item.label,
                       style: TextStyle(
                         fontSize: 13,
-                        color: isSelected ? Colors.white : Colors.white70,
+                        color: isSelected
+                            ? Theme.of(context).textTheme.bodyLarge?.color
+                            : Theme.of(
+                                context,
+                              ).textTheme.bodyMedium?.color?.withOpacity(0.7),
                         fontWeight: isSelected
                             ? FontWeight.w600
                             : FontWeight.normal,
@@ -268,7 +276,9 @@ class _SidebarNavigationState extends State<SidebarNavigation> {
                 child: Icon(
                   item.icon,
                   size: 20,
-                  color: isSelected ? Colors.purpleAccent : Colors.white70,
+                  color: isSelected
+                      ? Colors.purpleAccent
+                      : Theme.of(context).iconTheme.color?.withOpacity(0.7),
                 ),
               ),
       ),

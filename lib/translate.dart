@@ -301,9 +301,9 @@ class _TranslateScreenState extends State<TranslateScreen> with WindowListener {
               Container(
                 width: double.infinity,
                 decoration: BoxDecoration(
-                  color: Colors.white.withOpacity(0.05),
+                  color: Theme.of(context).cardTheme.color,
                   borderRadius: BorderRadius.circular(16),
-                  border: Border.all(color: Colors.white.withOpacity(0.1)),
+                  border: Border.all(color: Theme.of(context).dividerColor),
                 ),
                 child: Column(
                   children: [
@@ -323,9 +323,9 @@ class _TranslateScreenState extends State<TranslateScreen> with WindowListener {
                               'translate_input_hint',
                               fallback: 'Write the text here',
                             ),
-                            hintStyle: TextStyle(
-                              color: Colors.white.withOpacity(0.3),
-                            ),
+                            hintStyle: Theme.of(
+                              context,
+                            ).inputDecorationTheme.hintStyle,
                           ),
                           style: const TextStyle(fontSize: 15),
                           onChanged: (text) {
@@ -355,7 +355,7 @@ class _TranslateScreenState extends State<TranslateScreen> with WindowListener {
                             height: 24,
                             padding: const EdgeInsets.symmetric(horizontal: 8),
                             decoration: BoxDecoration(
-                              color: Colors.white.withOpacity(0.08),
+                              color: Theme.of(context).cardTheme.color,
                               borderRadius: BorderRadius.circular(10),
                             ),
                             child: Row(
@@ -364,17 +364,21 @@ class _TranslateScreenState extends State<TranslateScreen> with WindowListener {
                                 DropdownButton<String>(
                                   value: _selectedCountryKey,
                                   underline: const SizedBox.shrink(),
-                                  dropdownColor: const Color(0xFF2d2d2d),
+                                  dropdownColor: Theme.of(context).cardColor,
                                   borderRadius: BorderRadius.circular(10),
                                   focusColor: Colors.transparent,
-                                  icon: const Icon(
+                                  icon: Icon(
                                     Icons.keyboard_arrow_down,
                                     size: 14,
-                                    color: Colors.white54,
+                                    color: Theme.of(
+                                      context,
+                                    ).iconTheme.color?.withOpacity(0.54),
                                   ),
                                   isDense: true,
-                                  style: const TextStyle(
-                                    color: Colors.white,
+                                  style: TextStyle(
+                                    color: Theme.of(
+                                      context,
+                                    ).textTheme.bodyLarge?.color,
                                     fontSize: 11,
                                   ),
                                   items: _countryKeys.map((key) {
@@ -424,8 +428,12 @@ class _TranslateScreenState extends State<TranslateScreen> with WindowListener {
                             ),
                             onPressed: _downloadTxt,
                             style: IconButton.styleFrom(
-                              backgroundColor: Colors.white.withOpacity(0.1),
-                              foregroundColor: Colors.white,
+                              backgroundColor: Theme.of(
+                                context,
+                              ).colorScheme.surface.withOpacity(0.1),
+                              foregroundColor: Theme.of(
+                                context,
+                              ).iconTheme.color,
                               padding: const EdgeInsets.all(8),
                               minimumSize: const Size(36, 36),
                               tapTargetSize: MaterialTapTargetSize.shrinkWrap,
@@ -472,9 +480,9 @@ class _TranslateScreenState extends State<TranslateScreen> with WindowListener {
                 child: Container(
                   width: double.infinity,
                   decoration: BoxDecoration(
-                    color: Colors.white.withOpacity(0.05),
+                    color: Theme.of(context).cardTheme.color,
                     borderRadius: BorderRadius.circular(16),
-                    border: Border.all(color: Colors.white.withOpacity(0.1)),
+                    border: Border.all(color: Theme.of(context).dividerColor),
                   ),
                   child: Stack(
                     children: [
