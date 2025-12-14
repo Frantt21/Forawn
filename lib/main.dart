@@ -28,6 +28,7 @@ import 'widgets/sidebar_navigation.dart';
 import 'widgets/mini_music_player.dart';
 import 'screen/home_content.dart';
 import 'screen/foraai_screen.dart';
+import 'services/discord_service.dart';
 
 const String kDefaultLangCode = 'en';
 const _prefEffectKey = 'window_effect';
@@ -112,6 +113,16 @@ Future<void> main() async {
   final saved = prefs.getString('preferred_lang') ?? kDefaultLangCode;
   currentLang = saved;
   lang = await loadLanguageFromExeOrAssets(saved);
+
+  // Inicializar Discord Rich Presence si está habilitado
+  final discordEnabled = prefs.getBool('discord_enabled') ?? false;
+  if (discordEnabled) {
+    try {
+      await DiscordService().initialize();
+    } catch (e) {
+      debugPrint('[Discord] Error al inicializar: $e');
+    }
+  }
 
   runApp(ForawnAppRoot(initialLangCode: currentLang, initialLangMap: lang));
 }
@@ -467,6 +478,11 @@ class _HomeScreenState extends State<HomeScreen> with WindowListener {
       _currentScreen = screenId;
       _onFolderAction = null;
     });
+
+    // Actualizar Discord Rich Presence si está conectado
+    if (DiscordService().isConnected) {
+      DiscordService().updateScreenPresence(screenId);
+    }
   }
 
   void _registerFolderAction(VoidCallback action) {
@@ -513,6 +529,8 @@ class _HomeScreenState extends State<HomeScreen> with WindowListener {
   @override
   void dispose() {
     windowManager.removeListener(this);
+    // Limpiar Discord Rich Presence
+    DiscordService().dispose();
     super.dispose();
   }
 
@@ -695,7 +713,7 @@ class _HomeScreenState extends State<HomeScreen> with WindowListener {
                                   if (_currentScreen != 'home')
                                     IconButton(
                                       tooltip: widget.getText(
-                                        'home_button',
+                                        'home_title',
                                         fallback: 'Inicio',
                                       ),
                                       icon: const Icon(Icons.home, size: 20),

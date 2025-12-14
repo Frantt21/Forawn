@@ -7,6 +7,7 @@ import 'package:window_manager/window_manager.dart';
 import 'main.dart' show checkForUpdate;
 import 'package:flutter_acrylic/flutter_acrylic.dart' as acrylic;
 import 'widgets/elegant_notification.dart';
+import 'services/discord_service.dart';
 
 typedef TextGetter = String Function(String key, {String? fallback});
 typedef LanguageSelector = Future<void> Function(String code);
@@ -63,6 +64,12 @@ class _SettingsScreenState extends State<SettingsScreen> with WindowListener {
   static const _preferredLangKey = 'preferred_lang';
   String? _selectedLang;
   SharedPreferences? _prefs;
+
+  // Discord Rich Presence
+  bool _discordEnabled = false;
+  bool _discordConnected = false;
+  bool _discordConnecting = false;
+  static const _discordEnabledKey = 'discord_enabled';
 
   bool _langMenuOpen = false;
   bool _langHovered = false;
@@ -178,9 +185,12 @@ class _SettingsScreenState extends State<SettingsScreen> with WindowListener {
       _prefs ??= await SharedPreferences.getInstance();
       final enabled = _prefs!.getBool(_nsfwKey) ?? false;
       final savedLang = _prefs!.getString(_preferredLangKey);
+      final discordEnabled = _prefs!.getBool(_discordEnabledKey) ?? false;
       if (!mounted) return;
       setState(() {
         _nsfw = enabled;
+        _discordEnabled = discordEnabled;
+        _discordConnected = DiscordService().isConnected;
         if (savedLang != null && savedLang.isNotEmpty) {
           _selectedLang = savedLang;
         }
@@ -343,6 +353,93 @@ class _SettingsScreenState extends State<SettingsScreen> with WindowListener {
       if (!mounted) return;
       setState(() => _nsfw = value);
     } catch (_) {}
+  }
+
+  Future<void> _toggleDiscord(bool value) async {
+    try {
+      _prefs ??= await SharedPreferences.getInstance();
+      await _prefs!.setBool(_discordEnabledKey, value);
+
+      if (value) {
+        // Intentar conectar
+        setState(() => _discordConnecting = true);
+        final success = await DiscordService().initialize();
+        if (!mounted) return;
+        setState(() {
+          _discordEnabled = value;
+          _discordConnected = success;
+          _discordConnecting = false;
+        });
+
+        if (!success && mounted) {
+          showElegantNotification(
+            context,
+            widget.getText(
+              'discord_connect_error',
+              fallback:
+                  'No se pudo conectar a Discord. Asegúrate de que Discord esté abierto.',
+            ),
+            backgroundColor: const Color(0xFFE53935),
+            textColor: Colors.white,
+            icon: Icons.error_outline,
+            iconColor: Colors.white,
+          );
+        }
+      } else {
+        // Desconectar
+        await DiscordService().dispose();
+        if (!mounted) return;
+        setState(() {
+          _discordEnabled = value;
+          _discordConnected = false;
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _discordConnecting = false;
+          _discordConnected = false;
+        });
+      }
+    }
+  }
+
+  Future<void> _reconnectDiscord() async {
+    setState(() => _discordConnecting = true);
+    final success = await DiscordService().reconnect();
+    if (!mounted) return;
+
+    setState(() {
+      _discordConnected = success;
+      _discordConnecting = false;
+    });
+
+    if (success && mounted) {
+      showElegantNotification(
+        context,
+        widget.getText(
+          'discord_reconnected',
+          fallback: 'Reconectado a Discord exitosamente',
+        ),
+        backgroundColor: const Color(0xFF4CAF50),
+        textColor: Colors.white,
+        icon: Icons.check_circle_outline,
+        iconColor: Colors.white,
+      );
+    } else if (mounted) {
+      showElegantNotification(
+        context,
+        widget.getText(
+          'discord_reconnect_error',
+          fallback:
+              'No se pudo reconectar. Asegúrate de que Discord esté abierto.',
+        ),
+        backgroundColor: const Color(0xFFE53935),
+        textColor: Colors.white,
+        icon: Icons.error_outline,
+        iconColor: Colors.white,
+      );
+    }
   }
 
   Future<void> _persistPreferredLang(String code) async {
@@ -720,6 +817,110 @@ class _SettingsScreenState extends State<SettingsScreen> with WindowListener {
                           color: Theme.of(context).iconTheme.color,
                         ),
                       ),
+                      const SizedBox(height: 24),
+
+                      // Discord Rich Presence Section
+                      Text(
+                        get(
+                          'discord_section',
+                          fallback: 'Discord Rich Presence',
+                        ),
+                        style: const TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+
+                      SwitchListTile(
+                        title: Text(
+                          get(
+                            'discord_toggle',
+                            fallback: 'Mostrar presencia en Discord',
+                          ),
+                        ),
+                        subtitle: _discordConnecting
+                            ? Row(
+                                children: [
+                                  const SizedBox(
+                                    width: 12,
+                                    height: 12,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                    ),
+                                  ),
+                                  const SizedBox(width: 8),
+                                  Text(
+                                    get(
+                                      'connecting',
+                                      fallback: 'Connecting...',
+                                    ),
+                                  ),
+                                ],
+                              )
+                            : Row(
+                                children: [
+                                  Icon(
+                                    _discordConnected
+                                        ? Icons.check_circle
+                                        : Icons.cancel,
+                                    size: 14,
+                                    color: _discordConnected
+                                        ? Colors.green
+                                        : Colors.red,
+                                  ),
+                                  const SizedBox(width: 4),
+                                  Text(
+                                    _discordConnected
+                                        ? get(
+                                            'discord_connected',
+                                            fallback: 'Conectado',
+                                          )
+                                        : get(
+                                            'discord_disconnected',
+                                            fallback: 'Desconectado',
+                                          ),
+                                    style: TextStyle(
+                                      color: _discordConnected
+                                          ? Colors.green
+                                          : Colors.red,
+                                      fontSize: 12,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                        value: _discordEnabled,
+                        onChanged: _discordConnecting
+                            ? null
+                            : (v) => _toggleDiscord(v),
+                        secondary: Icon(
+                          Icons.discord,
+                          color: Theme.of(context).iconTheme.color,
+                        ),
+                      ),
+
+                      if (_discordEnabled &&
+                          !_discordConnected &&
+                          !_discordConnecting) ...[
+                        const SizedBox(height: 8),
+                        Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 16),
+                          child: ElevatedButton.icon(
+                            onPressed: _reconnectDiscord,
+                            icon: const Icon(Icons.refresh, size: 18),
+                            label: Text(
+                              get(
+                                'discord_reconnect',
+                                fallback: 'Intentar reconectar',
+                              ),
+                            ),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: Colors.blueAccent,
+                              foregroundColor: Colors.white,
+                            ),
+                          ),
+                        ),
+                      ],
                       const SizedBox(height: 24),
 
                       ElevatedButton.icon(

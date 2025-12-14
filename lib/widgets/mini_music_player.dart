@@ -262,7 +262,12 @@ class _MiniMusicPlayerState extends State<MiniMusicPlayer> {
               },
               padding: EdgeInsets.zero,
               constraints: const BoxConstraints(),
-              tooltip: 'Cerrar (click en Player para mostrar)',
+              tooltip:
+                  widget.getText?.call(
+                    'close_miniplayer',
+                    fallback: 'Close (click on Player to show)',
+                  ) ??
+                  'Close (click on Player to show)',
             ),
           ],
         ),
@@ -357,7 +362,8 @@ class _MiniMusicPlayerState extends State<MiniMusicPlayer> {
                     final nextMode = modes[(currentIndex + 1) % modes.length];
                     _musicPlayer.loopMode.value = nextMode;
                   },
-                  tooltip: 'Loop: ${mode.name}',
+                  tooltip:
+                      '${widget.getText?.call('loop', fallback: 'Loop') ?? 'Loop'}: ${mode.name}',
                   constraints: const BoxConstraints(),
                   padding: const EdgeInsets.all(4),
                 );
@@ -400,7 +406,9 @@ class _MiniMusicPlayerState extends State<MiniMusicPlayer> {
                   onPressed: () {
                     _musicPlayer.isShuffle.value = !isShuffle;
                   },
-                  tooltip: 'Shuffle',
+                  tooltip:
+                      widget.getText?.call('shuffle', fallback: 'Shuffle') ??
+                      'Shuffle',
                   constraints: const BoxConstraints(),
                   padding: const EdgeInsets.all(4),
                 );
@@ -417,7 +425,9 @@ class _MiniMusicPlayerState extends State<MiniMusicPlayer> {
               onPressed: () {
                 widget.onExpandPressed();
               },
-              tooltip: 'Expand',
+              tooltip:
+                  widget.getText?.call('expand', fallback: 'Expand') ??
+                  'Expand',
               constraints: const BoxConstraints(),
               padding: const EdgeInsets.all(4),
             ),

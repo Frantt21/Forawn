@@ -13,6 +13,11 @@ import '../services/global_music_player.dart';
 import '../services/music_history.dart';
 import '../services/global_keyboard_service.dart';
 import '../services/album_color_cache.dart';
+import '../services/music_state_service.dart';
+import '../services/discord_service.dart';
+import '../services/thumbnail_search_service.dart';
+import '../services/lyrics_service.dart';
+import '../models/synced_lyrics.dart';
 import 'package:audio_metadata_reader/audio_metadata_reader.dart';
 import 'package:palette_generator/palette_generator.dart';
 
@@ -57,6 +62,12 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen> {
   int? _currentIndex;
   final Set<int> _playedIndices = {}; // Rastreo para shuffle inteligente
 
+  // Lyrics
+  bool _showLyrics = false;
+  SyncedLyrics? _currentLyrics;
+  int? _currentLyricIndex;
+  final ScrollController _lyricsScrollController = ScrollController();
+
   @override
   void initState() {
     super.initState();
@@ -67,6 +78,9 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen> {
 
     // Cargar caché de colores
     AlbumColorCache().loadCache();
+
+    // Inicializar servicio de lyrics
+    LyricsService().initialize();
 
     // Cargar estado de la playlist y otros valores cacheados
     _loadCachedState();
@@ -106,6 +120,13 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen> {
     if (widget.onRegisterFolderAction != null) {
       widget.onRegisterFolderAction!(_selectFolder);
     }
+
+    // Timer para actualizar lyrics
+    Timer.periodic(const Duration(milliseconds: 500), (timer) {
+      if (mounted && _isPlaying) {
+        _updateCurrentLyricLine();
+      }
+    });
   }
 
   Future<void> _loadCachedState() async {
@@ -503,6 +524,47 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen> {
         _musicPlayer.currentArt.value = artwork;
       }
 
+      // Buscar thumbnail de YouTube para Discord (en background)
+      ThumbnailSearchService().searchThumbnail(title, artist).then((
+        thumbnailUrl,
+      ) {
+        if (thumbnailUrl != null) {
+          MusicStateService().updateMusicState(thumbnailUrl: thumbnailUrl);
+          // Actualizar Discord con el nuevo thumbnail
+          if (DiscordService().isConnected) {
+            DiscordService().updateMusicPresence();
+          }
+        }
+      });
+
+      // Buscar lyrics (en background)
+      LyricsService().fetchLyrics(title, artist).then((lyrics) {
+        if (mounted && lyrics != null) {
+          setState(() {
+            _currentLyrics = lyrics;
+            _currentLyricIndex = null;
+          });
+          debugPrint(
+            '[MusicPlayer] Lyrics cargados: ${lyrics.lineCount} líneas',
+          );
+        }
+      });
+
+      // Actualizar servicio de estado de música para Discord
+      MusicStateService().updateMusicState(
+        title: title,
+        artist: artist,
+        artwork: artwork,
+        isPlaying: _isPlaying,
+        duration: _musicPlayer.duration.value,
+        position: _musicPlayer.position.value,
+      );
+
+      // Actualizar Discord Rich Presence si está conectado
+      if (DiscordService().isConnected) {
+        DiscordService().updateMusicPresence();
+      }
+
       debugPrint(
         '[MusicPlayer] Loaded metadata: $title by $artist (color: ${dominantColor != null})',
       );
@@ -527,6 +589,21 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen> {
       _musicPlayer.currentTitle.value = title;
       _musicPlayer.currentArtist.value = artist;
       _musicPlayer.currentArt.value = null;
+
+      // Actualizar servicio de estado de música para Discord
+      MusicStateService().updateMusicState(
+        title: title,
+        artist: artist,
+        artwork: null,
+        isPlaying: _isPlaying,
+        duration: _musicPlayer.duration.value,
+        position: _musicPlayer.position.value,
+      );
+
+      // Actualizar Discord Rich Presence si está conectado
+      if (DiscordService().isConnected) {
+        DiscordService().updateMusicPresence();
+      }
     }
   }
 
@@ -698,6 +775,15 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen> {
       _player.pause();
       // Actualizar estado global y local inmediatamente
       _musicPlayer.isPlaying.value = false;
+
+      // Actualizar estado de reproducción para Discord
+      MusicStateService().updateMusicState(isPlaying: false);
+
+      // Actualizar Discord para mostrar "En pausa"
+      if (DiscordService().isConnected) {
+        DiscordService().updateMusicPresence();
+      }
+
       if (mounted) {
         setState(() {
           debugPrint('[MusicPlayer] UI updated to paused');
@@ -715,11 +801,50 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen> {
         _player.resume();
         // Actualizar estado global y local inmediatamente
         _musicPlayer.isPlaying.value = true;
+
+        // Actualizar estado de reproducción para Discord
+        MusicStateService().updateMusicState(isPlaying: true);
+
+        // Actualizar Discord para mostrar "Reproduciendo"
+        if (DiscordService().isConnected) {
+          DiscordService().updateMusicPresence();
+        }
+
         if (mounted) {
           setState(() {
             debugPrint('[MusicPlayer] UI updated to playing');
           });
         }
+      }
+    }
+  }
+
+  /// Actualiza la línea actual de lyrics basada en la posición de reproducción
+  void _updateCurrentLyricLine() {
+    if (_currentLyrics == null || !_currentLyrics!.hasLyrics) return;
+
+    final position = _musicPlayer.position.value;
+    final newIndex = _currentLyrics!.getCurrentLineIndex(position);
+
+    if (newIndex != _currentLyricIndex && newIndex != null) {
+      setState(() {
+        _currentLyricIndex = newIndex;
+      });
+
+      // Auto-scroll a la línea actual
+      if (_showLyrics && _lyricsScrollController.hasClients) {
+        final itemHeight = 60.0; // Altura aproximada de cada línea
+        final targetOffset =
+            (newIndex * itemHeight) - 100; // Centrar en pantalla
+
+        _lyricsScrollController.animateTo(
+          targetOffset.clamp(
+            0.0,
+            _lyricsScrollController.position.maxScrollExtent,
+          ),
+          duration: const Duration(milliseconds: 300),
+          curve: Curves.easeOut,
+        );
       }
     }
   }
@@ -749,24 +874,34 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen> {
               final autoUpdate = snapshot.data ?? false;
 
               return AlertDialog(
-                title: const Text('Opciones de Reproductor'),
+                title: Text(
+                  widget.getText('player_options', fallback: 'Player Options'),
+                ),
                 content: Column(
                   mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      'Colores en caché: ${AlbumColorCache().getStats()['totalColors']}',
+                      '${widget.getText('cached_colors', fallback: 'Cached colors')}: ${AlbumColorCache().getStats()['totalColors']}',
                       style: const TextStyle(fontSize: 14),
                     ),
                     const SizedBox(height: 16),
-                    const Text(
-                      'Configuración:',
-                      style: TextStyle(fontWeight: FontWeight.bold),
+                    Text(
+                      widget.getText(
+                        'configuration',
+                        fallback: 'Configuration:',
+                      ),
+                      style: const TextStyle(fontWeight: FontWeight.bold),
                     ),
                     const SizedBox(height: 8),
                     // Opción de fondo difuminado
                     CheckboxListTile(
-                      title: const Text('Fondo difuminado de portada'),
+                      title: Text(
+                        widget.getText(
+                          'blur_background',
+                          fallback: 'Blurred album cover background',
+                        ),
+                      ),
                       value: _useBlurBackground,
                       onChanged: (value) async {
                         if (value != null) {
@@ -780,9 +915,17 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen> {
                     ),
                     // Opción de auto-actualización
                     CheckboxListTile(
-                      title: const Text('Actualizar colores al abrir'),
-                      subtitle: const Text(
-                        'Puede tardar un poco más en iniciar',
+                      title: Text(
+                        widget.getText(
+                          'auto_update_colors',
+                          fallback: 'Update colors on startup',
+                        ),
+                      ),
+                      subtitle: Text(
+                        widget.getText(
+                          'may_take_longer',
+                          fallback: 'May take a bit longer to start',
+                        ),
                       ),
                       value: autoUpdate,
                       onChanged: (value) async {
@@ -801,7 +944,12 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen> {
                       Navigator.pop(dialogContext);
                       await _preloadAllColors();
                     },
-                    child: const Text('Pre-cargar Colores'),
+                    child: Text(
+                      widget.getText(
+                        'preload_colors',
+                        fallback: 'Preload Colors',
+                      ),
+                    ),
                   ),
                   TextButton(
                     onPressed: () async {
@@ -809,15 +957,24 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen> {
                       await AlbumColorCache().clearCache();
                       if (mounted) {
                         ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(content: Text('Caché limpiado')),
+                          SnackBar(
+                            content: Text(
+                              widget.getText(
+                                'cache_cleared',
+                                fallback: 'Cache cleared',
+                              ),
+                            ),
+                          ),
                         );
                       }
                     },
-                    child: const Text('Limpiar Caché'),
+                    child: Text(
+                      widget.getText('clear_cache', fallback: 'Clear Cache'),
+                    ),
                   ),
                   TextButton(
                     onPressed: () => Navigator.pop(dialogContext),
-                    child: const Text('Cerrar'),
+                    child: Text(widget.getText('close', fallback: 'Close')),
                   ),
                 ],
               );
@@ -833,7 +990,11 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen> {
     if (_files.isEmpty) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('No hay canciones cargadas')),
+          SnackBar(
+            content: Text(
+              widget.getText('no_songs_loaded', fallback: 'No songs loaded'),
+            ),
+          ),
         );
       }
       return;
@@ -850,7 +1011,12 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen> {
         valueListenable: processedNotifier,
         builder: (context, processed, _) {
           return AlertDialog(
-            title: const Text('Procesando Colores'),
+            title: Text(
+              widget.getText(
+                'processing_colors',
+                fallback: 'Processing Colors',
+              ),
+            ),
             content: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
@@ -858,7 +1024,9 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen> {
                   value: total > 0 ? processed / total : 0,
                 ),
                 const SizedBox(height: 16),
-                Text('$processed / $total canciones'),
+                Text(
+                  '$processed / $total ${widget.getText('songs_count', fallback: 'songs')}',
+                ),
               ],
             ),
           );
@@ -909,7 +1077,9 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen> {
         Navigator.of(context, rootNavigator: true).pop();
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('${processedNotifier.value} colores procesados'),
+            content: Text(
+              '${processedNotifier.value} ${widget.getText('colors_processed', fallback: 'colors processed')}',
+            ),
           ),
         );
       }
@@ -951,6 +1121,101 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen> {
                             color: _dominantColor != null
                                 ? _dominantColor!.withOpacity(0.3)
                                 : Colors.black.withOpacity(0.5),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+
+                // Panel de Lyrics (entre fondo y controles)
+                if (_currentLyrics != null && _currentLyrics!.hasLyrics)
+                  Positioned.fill(
+                    child: IgnorePointer(
+                      child: Center(
+                        child: Container(
+                          constraints: const BoxConstraints(maxWidth: 600),
+                          child: ListView.builder(
+                            controller: _lyricsScrollController,
+                            padding: const EdgeInsets.symmetric(vertical: 200),
+                            itemCount: _currentLyrics!.lineCount,
+                            itemBuilder: (context, index) {
+                              final line = _currentLyrics!.lines[index];
+                              final isCurrent = index == _currentLyricIndex;
+                              final isPast =
+                                  _currentLyricIndex != null &&
+                                  index < _currentLyricIndex!;
+                              final isFuture =
+                                  _currentLyricIndex != null &&
+                                  index > _currentLyricIndex!;
+
+                              // Calcular opacidad y offset para animación
+                              double opacity = 0.3;
+                              double offsetY = 0;
+
+                              if (isCurrent) {
+                                opacity = 1.0;
+                                offsetY = 0;
+                              } else if (isPast) {
+                                opacity = 0.2;
+                                offsetY = -10;
+                              } else if (isFuture) {
+                                final distance =
+                                    index - (_currentLyricIndex ?? 0);
+                                opacity = (0.5 - (distance * 0.1)).clamp(
+                                  0.0,
+                                  0.5,
+                                );
+                                offsetY = 20;
+                              }
+
+                              return AnimatedOpacity(
+                                duration: const Duration(milliseconds: 400),
+                                opacity: opacity,
+                                child: AnimatedSlide(
+                                  duration: const Duration(milliseconds: 600),
+                                  curve: Curves.easeOutCubic,
+                                  offset: Offset(0, offsetY / 100),
+                                  child: AnimatedContainer(
+                                    duration: const Duration(milliseconds: 400),
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 32,
+                                      vertical: 8,
+                                    ),
+                                    child: Text(
+                                      line.text,
+                                      textAlign: TextAlign.center,
+                                      style: TextStyle(
+                                        fontSize: isCurrent ? 28 : 18,
+                                        fontWeight: isCurrent
+                                            ? FontWeight.bold
+                                            : FontWeight.w500,
+                                        color: Colors.white,
+                                        height: 1.6,
+                                        shadows: isCurrent
+                                            ? [
+                                                Shadow(
+                                                  color:
+                                                      _dominantColor ??
+                                                      Colors.purple,
+                                                  blurRadius: 20,
+                                                ),
+                                                const Shadow(
+                                                  color: Colors.black,
+                                                  blurRadius: 10,
+                                                ),
+                                              ]
+                                            : [
+                                                const Shadow(
+                                                  color: Colors.black87,
+                                                  blurRadius: 8,
+                                                ),
+                                              ],
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              );
+                            },
                           ),
                         ),
                       ),
@@ -1259,7 +1524,10 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen> {
                             onPressed: () {
                               _musicPlayer.showMiniPlayer.value = true;
                             },
-                            tooltip: 'Mostrar mini reproductor',
+                            tooltip: widget.getText(
+                              'show_miniplayer',
+                              fallback: 'Show mini player',
+                            ),
                           ),
                         ],
                       ),
@@ -1275,7 +1543,10 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen> {
                   child: IconButton(
                     icon: const Icon(Icons.more_vert, color: Colors.white70),
                     onPressed: _showColorCacheMenu,
-                    tooltip: 'Opciones de caché',
+                    tooltip: widget.getText(
+                      'cache_options',
+                      fallback: 'Cache options',
+                    ),
                   ),
                 ),
               ],
@@ -1323,7 +1594,10 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen> {
                       onChanged: _filterFiles,
                       style: const TextStyle(color: Colors.white),
                       decoration: InputDecoration(
-                        hintText: 'Buscar canción...',
+                        hintText: widget.getText(
+                          'search_song',
+                          fallback: 'Search song...',
+                        ),
                         hintStyle: const TextStyle(color: Colors.white54),
                         prefixIcon: const Icon(
                           Icons.search,
@@ -1361,7 +1635,10 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen> {
                         ? Center(
                             child: Text(
                               _searchController.text.isNotEmpty
-                                  ? 'No se encontraron canciones'
+                                  ? widget.getText(
+                                      'no_songs_found_search',
+                                      fallback: 'No songs found',
+                                    )
                                   : widget.getText(
                                       'no_files',
                                       fallback: 'Empty',

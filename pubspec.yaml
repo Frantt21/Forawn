@@ -51,6 +51,7 @@ dependencies:
   audio_metadata_reader: ^1.4.2
   palette_generator: ^0.3.3+3
   hotkey_manager: ^0.2.3
+  discord_rich_presence: ^1.0.0
 
 dev_dependencies:
   flutter_test:
