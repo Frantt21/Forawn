@@ -328,6 +328,30 @@ class _DownloadsScreenState extends State<DownloadsScreen>
         trailing: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
+            // Botón de bypass (solo para tareas de audio de Spotify)
+            if (t.type == TaskType.audio &&
+                t.sourceUrl.toLowerCase().contains('spotify') &&
+                (t.status == DownloadStatus.queued ||
+                    t.status == DownloadStatus.failed))
+              Tooltip(
+                message: t.bypassSpotifyApi
+                    ? get(
+                        'bypass_active',
+                        fallback: 'Bypass Spotify API (Active)',
+                      )
+                    : get('bypass_inactive', fallback: 'Use Spotify API'),
+                child: IconButton(
+                  icon: Icon(
+                    t.bypassSpotifyApi ? Icons.flash_off : Icons.flash_on,
+                    color: t.bypassSpotifyApi
+                        ? Colors.orangeAccent
+                        : Colors.grey,
+                    size: 20,
+                  ),
+                  onPressed: () =>
+                      DownloadManager().toggleBypassSpotifyApi(t.id),
+                ),
+              ),
             if (t.status == DownloadStatus.running)
               IconButton(
                 tooltip: get('cancel2', fallback: 'Cancel'),

@@ -96,11 +96,15 @@ class SyncedLyrics {
   }
 
   /// Obtiene el índice de la línea actual
+  /// Adelanta 500ms para mejor sincronización
   int? getCurrentLineIndex(Duration position) {
     if (lines.isEmpty) return null;
 
+    // Adelantar 500ms para mejor sincronización visual
+    final adjustedPosition = position + const Duration(milliseconds: 500);
+
     for (int i = lines.length - 1; i >= 0; i--) {
-      if (lines[i].timestamp <= position) {
+      if (lines[i].timestamp <= adjustedPosition) {
         return i;
       }
     }

@@ -364,7 +364,11 @@ class _TranslateScreenState extends State<TranslateScreen> with WindowListener {
                                 DropdownButton<String>(
                                   value: _selectedCountryKey,
                                   underline: const SizedBox.shrink(),
-                                  dropdownColor: Theme.of(context).cardColor,
+                                  dropdownColor:
+                                      Theme.of(context).brightness ==
+                                          Brightness.dark
+                                      ? const Color(0xFF1E1E1E)
+                                      : const Color(0xFFEEEEEE),
                                   borderRadius: BorderRadius.circular(10),
                                   focusColor: Colors.transparent,
                                   icon: Icon(

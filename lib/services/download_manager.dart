@@ -8,6 +8,7 @@ import 'package:path/path.dart' as p;
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/download_task.dart';
 import '../config/api_config.dart';
+import 'lyrics_service.dart';
 
 class DownloadManager extends ChangeNotifier {
   static final DownloadManager _instance = DownloadManager._internal();
@@ -148,9 +149,10 @@ class DownloadManager extends ChangeNotifier {
         sourceUrl: old.sourceUrl,
         type: old.type,
         formatId: old.formatId,
+        bypassSpotifyApi: old.bypassSpotifyApi, // Preservar el bypass flag
       );
       debugPrint(
-        '[DownloadManager] retryTask: re-enqueue ${old.id} -> ${retry.id}',
+        '[DownloadManager] retryTask: re-enqueue ${old.id} -> ${retry.id} (bypass: ${retry.bypassSpotifyApi})',
       );
       addTask(retry);
     } else {
@@ -186,6 +188,31 @@ class DownloadManager extends ChangeNotifier {
       finishedAt: DateTime.now(),
     );
     Future.microtask(() => _scheduleQueue());
+  }
+
+  /// Cambia el flag de bypass de Spotify API para una tarea
+  void toggleBypassSpotifyApi(String id) {
+    final tIndex = _tasks.indexWhere((x) => x.id == id);
+    if (tIndex < 0) {
+      debugPrint('[DownloadManager] toggleBypass: not found $id');
+      return;
+    }
+    final t = _tasks[tIndex];
+
+    // Solo permitir cambiar el bypass en tareas que no estén corriendo
+    if (t.status == DownloadStatus.running) {
+      debugPrint(
+        '[DownloadManager] toggleBypass: cannot change bypass on running task $id',
+      );
+      return;
+    }
+
+    t.bypassSpotifyApi = !t.bypassSpotifyApi;
+    debugPrint(
+      '[DownloadManager] toggleBypass: task $id bypass now ${t.bypassSpotifyApi}',
+    );
+    _savePersisted();
+    notifyListeners();
   }
 
   // cola de programación
@@ -294,31 +321,42 @@ class DownloadManager extends ChangeNotifier {
         return;
       }
 
-      // Pruewba descarga directa con spotify direct API
-      debugPrint('[DownloadManager] trying spotify direct for task ${t.id}');
-      final spotifyDirect = await _trySpotifyDirectDownload(
-        t,
-        downloadFolder,
-        safeBase,
-      );
-      if (spotifyDirect) {
-        final path = p.join(downloadFolder, '$safeBase.mp3');
-        await _updateTask(
+      // Verificar si se debe saltar la API de Spotify
+      if (!t.bypassSpotifyApi) {
+        // Prueba descarga directa con spotify direct API
+        debugPrint('[DownloadManager] trying spotify direct for task ${t.id}');
+        final spotifyDirect = await _trySpotifyDirectDownload(
           t,
-          localPath: path,
-          progress: 1.0,
-          status: DownloadStatus.completed,
-          finishedAt: DateTime.now(),
+          downloadFolder,
+          safeBase,
         );
+        if (spotifyDirect) {
+          final path = p.join(downloadFolder, '$safeBase.mp3');
+          await _updateTask(
+            t,
+            localPath: path,
+            progress: 1.0,
+            status: DownloadStatus.completed,
+            finishedAt: DateTime.now(),
+          );
+          debugPrint(
+            '[DownloadManager] spotify direct success ${t.id} -> ${t.localPath}',
+          );
+
+          // Descargar lyrics en segundo plano
+          _downloadLyricsInBackground(t.title, t.artist);
+
+          Future.microtask(() => _scheduleQueue());
+          return;
+        }
         debugPrint(
-          '[DownloadManager] spotify direct success ${t.id} -> ${t.localPath}',
+          '[DownloadManager] spotify direct did not return file for ${t.id}',
         );
-        Future.microtask(() => _scheduleQueue());
-        return;
+      } else {
+        debugPrint(
+          '[DownloadManager] bypassing spotify direct API for task ${t.id} (bypass flag set)',
+        );
       }
-      debugPrint(
-        '[DownloadManager] spotify direct did not return file for ${t.id}',
-      );
 
       // Fallback a yt-dlp
       // Construir plantilla de salida
@@ -426,6 +464,10 @@ class DownloadManager extends ChangeNotifier {
         debugPrint(
           '[DownloadManager] task completed (mp3) ${t.id} -> ${t.localPath}',
         );
+
+        // Descargar lyrics en segundo plano
+        _downloadLyricsInBackground(t.title, t.artist);
+
         Future.microtask(() {
           _scheduleQueue();
           refreshStatus();
@@ -467,6 +509,10 @@ class DownloadManager extends ChangeNotifier {
           debugPrint(
             '[DownloadManager] converted and completed ${t.id} -> ${t.localPath}',
           );
+
+          // Descargar lyrics en segundo plano
+          _downloadLyricsInBackground(t.title, t.artist);
+
           Future.microtask(() {
             _scheduleQueue();
             refreshStatus();
@@ -486,6 +532,10 @@ class DownloadManager extends ChangeNotifier {
         debugPrint(
           '[DownloadManager] completed without conversion ${t.id} -> ${t.localPath}',
         );
+
+        // Descargar lyrics en segundo plano
+        _downloadLyricsInBackground(t.title, t.artist);
+
         Future.microtask(() {
           _scheduleQueue();
           refreshStatus();
@@ -885,5 +935,29 @@ class DownloadManager extends ChangeNotifier {
     );
     debugPrint('[DownloadManager] ffmpeg exitCode=$exitCode for task $taskId');
     return exitCode == 0;
+  }
+
+  /// Descarga lyrics en segundo plano sin bloquear
+  void _downloadLyricsInBackground(String title, String artist) {
+    if (title.isEmpty) return;
+
+    // Ejecutar en segundo plano sin esperar
+    Future.microtask(() async {
+      try {
+        debugPrint(
+          '[DownloadManager] Downloading lyrics for: $title - $artist',
+        );
+        final lyrics = await LyricsService().fetchLyrics(title, artist);
+        if (lyrics != null) {
+          debugPrint(
+            '[DownloadManager] Lyrics downloaded successfully: ${lyrics.lineCount} lines',
+          );
+        } else {
+          debugPrint('[DownloadManager] No lyrics found for: $title - $artist');
+        }
+      } catch (e) {
+        debugPrint('[DownloadManager] Error downloading lyrics: $e');
+      }
+    });
   }
 }

@@ -1542,7 +1542,9 @@ class _ForaaiScreenState extends State<ForaaiScreen> {
         child: DropdownButtonHideUnderline(
           child: DropdownButton<AIProvider>(
             value: _selectedProvider,
-            dropdownColor: Theme.of(context).cardColor,
+            dropdownColor: Theme.of(context).brightness == Brightness.dark
+                ? const Color(0xFF1E1E1E)
+                : const Color(0xFFEEEEEE),
             borderRadius: BorderRadius.circular(10),
             focusColor: Colors.transparent, // Evita el resaltado persistente
             icon: Icon(

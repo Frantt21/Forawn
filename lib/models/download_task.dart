@@ -18,6 +18,7 @@ class DownloadTask {
     this.errorMessage,
     this.type = TaskType.audio,
     this.formatId,
+    this.bypassSpotifyApi = false,
   }) : createdAt = createdAt ?? DateTime.now();
 
   final String artist;
@@ -34,6 +35,7 @@ class DownloadTask {
   final String title;
   TaskType type;
   String? formatId;
+  bool bypassSpotifyApi;
 
   Map<String, dynamic> toJson() => {
     'id': id,
@@ -50,6 +52,7 @@ class DownloadTask {
     'errorMessage': errorMessage,
     'type': type.index,
     'formatId': formatId,
+    'bypassSpotifyApi': bypassSpotifyApi,
   };
 
   static DownloadTask fromJson(Map<String, dynamic> j) => DownloadTask(
@@ -71,6 +74,7 @@ class DownloadTask {
     errorMessage: j['errorMessage'] as String?,
     type: TaskType.values[(j['type'] ?? 0) as int],
     formatId: j['formatId'] as String?,
+    bypassSpotifyApi: j['bypassSpotifyApi'] as bool? ?? false,
   );
 
   String statusString() {

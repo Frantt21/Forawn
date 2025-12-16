@@ -89,36 +89,45 @@ class LyricsService {
         final data = json.decode(response.body);
 
         // Verificar si hay resultados
-        if (data['status'] == true && data['results'] != null) {
-          final results = data['results'] as List;
+        // La API puede devolver directamente 'results' o tener un 'status'
+        final results = (data['results'] ?? data) as dynamic;
 
+        if (results is List && results.isNotEmpty) {
           // Iterar sobre los resultados hasta encontrar uno con syncedLyrics
           for (final result in results) {
-            final details = result['details'];
-            if (details != null && details['syncedLyrics'] != null) {
-              final lrcContent = details['syncedLyrics'] as String;
+            // Intentar obtener syncedLyrics directamente o desde details
+            String? lrcContent;
 
-              // Verificar que no esté vacío
-              if (lrcContent.trim().isEmpty) continue;
-
-              // Crear objeto SyncedLyrics
-              final lyrics = SyncedLyrics.fromLRC(
-                songTitle: title,
-                artist: artist,
-                lrcContent: lrcContent,
-              );
-
-              // Guardar en base de datos
-              await _storeLyrics(title, artist, lrcContent);
-
-              // Guardar en cache
-              _cache[cacheKey] = lyrics;
-
-              _log.info(
-                'Lyrics descargados y guardados: $title - $artist (${lyrics.lineCount} líneas)',
-              );
-              return lyrics;
+            // Primero intentar desde details.syncedLyrics
+            if (result['details'] != null &&
+                result['details']['syncedLyrics'] != null) {
+              lrcContent = result['details']['syncedLyrics'] as String?;
             }
+            // Si no está en details, intentar directamente en result
+            else if (result['syncedLyrics'] != null) {
+              lrcContent = result['syncedLyrics'] as String?;
+            }
+
+            // Verificar que no esté vacío
+            if (lrcContent == null || lrcContent.trim().isEmpty) continue;
+
+            // Crear objeto SyncedLyrics
+            final lyrics = SyncedLyrics.fromLRC(
+              songTitle: title,
+              artist: artist,
+              lrcContent: lrcContent,
+            );
+
+            // Guardar en base de datos
+            await _storeLyrics(title, artist, lrcContent);
+
+            // Guardar en cache
+            _cache[cacheKey] = lyrics;
+
+            _log.info(
+              'Lyrics descargados y guardados: $title - $artist (${lyrics.lineCount} líneas)',
+            );
+            return lyrics;
           }
 
           _log.warning(

@@ -20,6 +20,7 @@ import '../services/lyrics_service.dart';
 import '../models/synced_lyrics.dart';
 import 'package:audio_metadata_reader/audio_metadata_reader.dart';
 import 'package:palette_generator/palette_generator.dart';
+import 'lyrics_display_widget.dart';
 
 typedef TextGetter = String Function(String key, {String? fallback});
 
@@ -61,12 +62,6 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen> {
   Color? _dominantColor;
   int? _currentIndex;
   final Set<int> _playedIndices = {}; // Rastreo para shuffle inteligente
-
-  // Lyrics
-  bool _showLyrics = false;
-  SyncedLyrics? _currentLyrics;
-  int? _currentLyricIndex;
-  final ScrollController _lyricsScrollController = ScrollController();
 
   @override
   void initState() {
@@ -120,13 +115,6 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen> {
     if (widget.onRegisterFolderAction != null) {
       widget.onRegisterFolderAction!(_selectFolder);
     }
-
-    // Timer para actualizar lyrics
-    Timer.periodic(const Duration(milliseconds: 500), (timer) {
-      if (mounted && _isPlaying) {
-        _updateCurrentLyricLine();
-      }
-    });
   }
 
   Future<void> _loadCachedState() async {
@@ -151,7 +139,7 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen> {
     try {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setBool('playlistVisible', _showPlaylist);
-      debugPrint('[MusicPlayer] Cached playlist state: $_showPlaylist');
+      debugPrint('[MusicPlayer] Cached state - Playlist: $_showPlaylist');
     } catch (e) {
       debugPrint('[MusicPlayer] Error saving cached state: $e');
     }
@@ -537,19 +525,6 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen> {
         }
       });
 
-      // Buscar lyrics (en background)
-      LyricsService().fetchLyrics(title, artist).then((lyrics) {
-        if (mounted && lyrics != null) {
-          setState(() {
-            _currentLyrics = lyrics;
-            _currentLyricIndex = null;
-          });
-          debugPrint(
-            '[MusicPlayer] Lyrics cargados: ${lyrics.lineCount} líneas',
-          );
-        }
-      });
-
       // Actualizar servicio de estado de música para Discord
       MusicStateService().updateMusicState(
         title: title,
@@ -819,36 +794,6 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen> {
     }
   }
 
-  /// Actualiza la línea actual de lyrics basada en la posición de reproducción
-  void _updateCurrentLyricLine() {
-    if (_currentLyrics == null || !_currentLyrics!.hasLyrics) return;
-
-    final position = _musicPlayer.position.value;
-    final newIndex = _currentLyrics!.getCurrentLineIndex(position);
-
-    if (newIndex != _currentLyricIndex && newIndex != null) {
-      setState(() {
-        _currentLyricIndex = newIndex;
-      });
-
-      // Auto-scroll a la línea actual
-      if (_showLyrics && _lyricsScrollController.hasClients) {
-        final itemHeight = 60.0; // Altura aproximada de cada línea
-        final targetOffset =
-            (newIndex * itemHeight) - 100; // Centrar en pantalla
-
-        _lyricsScrollController.animateTo(
-          targetOffset.clamp(
-            0.0,
-            _lyricsScrollController.position.maxScrollExtent,
-          ),
-          duration: const Duration(milliseconds: 300),
-          curve: Curves.easeOut,
-        );
-      }
-    }
-  }
-
   /// Calcular color con buen contraste basado en el color dominante
   Color _getContrastColor(Color? baseColor) {
     if (baseColor == null)
@@ -874,8 +819,22 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen> {
               final autoUpdate = snapshot.data ?? false;
 
               return AlertDialog(
-                title: Text(
-                  widget.getText('player_options', fallback: 'Player Options'),
+                backgroundColor: const Color(0xFF1E1E1E),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                title: Row(
+                  children: [
+                    const Icon(Icons.settings, color: Colors.purpleAccent),
+                    const SizedBox(width: 8),
+                    Text(
+                      widget.getText(
+                        'player_options',
+                        fallback: 'Player Options',
+                      ),
+                      style: const TextStyle(color: Colors.white),
+                    ),
+                  ],
                 ),
                 content: Column(
                   mainAxisSize: MainAxisSize.min,
@@ -883,7 +842,10 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen> {
                   children: [
                     Text(
                       '${widget.getText('cached_colors', fallback: 'Cached colors')}: ${AlbumColorCache().getStats()['totalColors']}',
-                      style: const TextStyle(fontSize: 14),
+                      style: const TextStyle(
+                        fontSize: 14,
+                        color: Colors.white70,
+                      ),
                     ),
                     const SizedBox(height: 16),
                     Text(
@@ -891,90 +853,155 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen> {
                         'configuration',
                         fallback: 'Configuration:',
                       ),
-                      style: const TextStyle(fontWeight: FontWeight.bold),
+                      style: const TextStyle(
+                        fontWeight: FontWeight.bold,
+                        color: Colors.white,
+                      ),
                     ),
-                    const SizedBox(height: 8),
+                    const SizedBox(height: 12),
                     // Opción de fondo difuminado
-                    CheckboxListTile(
-                      title: Text(
-                        widget.getText(
-                          'blur_background',
-                          fallback: 'Blurred album cover background',
+                    Theme(
+                      data: ThemeData(
+                        unselectedWidgetColor: Colors.white54,
+                        checkboxTheme: CheckboxThemeData(
+                          fillColor: MaterialStateProperty.resolveWith(
+                            (states) => states.contains(MaterialState.selected)
+                                ? Colors.purpleAccent
+                                : Colors.white54,
+                          ),
                         ),
                       ),
-                      value: _useBlurBackground,
-                      onChanged: (value) async {
-                        if (value != null) {
-                          setState(() => _useBlurBackground = value);
-                          setDialogState(() {});
-                          final prefs = await SharedPreferences.getInstance();
-                          await prefs.setBool('use_blur_background', value);
-                        }
-                      },
-                      contentPadding: EdgeInsets.zero,
+                      child: CheckboxListTile(
+                        title: Text(
+                          widget.getText(
+                            'blur_background',
+                            fallback: 'Blurred album cover background',
+                          ),
+                          style: const TextStyle(color: Colors.white),
+                        ),
+                        value: _useBlurBackground,
+                        onChanged: (value) async {
+                          if (value != null) {
+                            setState(() => _useBlurBackground = value);
+                            setDialogState(() {});
+                            final prefs = await SharedPreferences.getInstance();
+                            await prefs.setBool('use_blur_background', value);
+                          }
+                        },
+                        contentPadding: EdgeInsets.zero,
+                        activeColor: Colors.purpleAccent,
+                      ),
                     ),
                     // Opción de auto-actualización
-                    CheckboxListTile(
-                      title: Text(
-                        widget.getText(
-                          'auto_update_colors',
-                          fallback: 'Update colors on startup',
+                    Theme(
+                      data: ThemeData(
+                        unselectedWidgetColor: Colors.white54,
+                        checkboxTheme: CheckboxThemeData(
+                          fillColor: MaterialStateProperty.resolveWith(
+                            (states) => states.contains(MaterialState.selected)
+                                ? Colors.purpleAccent
+                                : Colors.white54,
+                          ),
                         ),
                       ),
-                      subtitle: Text(
-                        widget.getText(
-                          'may_take_longer',
-                          fallback: 'May take a bit longer to start',
+                      child: CheckboxListTile(
+                        title: Text(
+                          widget.getText(
+                            'auto_update_colors',
+                            fallback: 'Update colors on startup',
+                          ),
+                          style: const TextStyle(color: Colors.white),
                         ),
+                        subtitle: Text(
+                          widget.getText(
+                            'may_take_longer',
+                            fallback: 'May take a bit longer to start',
+                          ),
+                          style: const TextStyle(color: Colors.white54),
+                        ),
+                        value: autoUpdate,
+                        onChanged: (value) async {
+                          if (value != null) {
+                            await AlbumColorCache().setAutoUpdateOnStartup(
+                              value,
+                            );
+                            setDialogState(() {});
+                          }
+                        },
+                        contentPadding: EdgeInsets.zero,
+                        activeColor: Colors.purpleAccent,
                       ),
-                      value: autoUpdate,
-                      onChanged: (value) async {
-                        if (value != null) {
-                          await AlbumColorCache().setAutoUpdateOnStartup(value);
-                          setDialogState(() {});
-                        }
-                      },
-                      contentPadding: EdgeInsets.zero,
+                    ),
+                    const SizedBox(height: 16),
+                    // Botones de acción adicionales
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                      children: [
+                        TextButton.icon(
+                          onPressed: () async {
+                            Navigator.pop(dialogContext);
+                            await _preloadAllColors();
+                          },
+                          icon: const Icon(
+                            Icons.refresh,
+                            size: 16,
+                            color: Colors.purpleAccent,
+                          ),
+                          label: Text(
+                            widget.getText(
+                              'preload_colors',
+                              fallback: 'Preload',
+                            ),
+                            style: const TextStyle(color: Colors.purpleAccent),
+                          ),
+                        ),
+                        TextButton.icon(
+                          onPressed: () async {
+                            Navigator.pop(dialogContext);
+                            await AlbumColorCache().clearCache();
+                            if (mounted) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(
+                                  content: Text(
+                                    widget.getText(
+                                      'cache_cleared',
+                                      fallback: 'Cache cleared',
+                                    ),
+                                  ),
+                                  backgroundColor: const Color(0xFF2C2C2C),
+                                  action: SnackBarAction(
+                                    label: 'OK',
+                                    onPressed: () {},
+                                    textColor: Colors.purpleAccent,
+                                  ),
+                                ),
+                              );
+                            }
+                          },
+                          icon: const Icon(
+                            Icons.delete_outline,
+                            size: 16,
+                            color: Colors.redAccent,
+                          ),
+                          label: Text(
+                            widget.getText(
+                              'clear_cache',
+                              fallback: 'Clear Cache',
+                            ),
+                            style: const TextStyle(color: Colors.redAccent),
+                          ),
+                        ),
+                      ],
                     ),
                   ],
                 ),
                 actions: [
                   TextButton(
-                    onPressed: () async {
-                      Navigator.pop(dialogContext);
-                      await _preloadAllColors();
-                    },
-                    child: Text(
-                      widget.getText(
-                        'preload_colors',
-                        fallback: 'Preload Colors',
-                      ),
-                    ),
-                  ),
-                  TextButton(
-                    onPressed: () async {
-                      Navigator.pop(dialogContext);
-                      await AlbumColorCache().clearCache();
-                      if (mounted) {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(
-                            content: Text(
-                              widget.getText(
-                                'cache_cleared',
-                                fallback: 'Cache cleared',
-                              ),
-                            ),
-                          ),
-                        );
-                      }
-                    },
-                    child: Text(
-                      widget.getText('clear_cache', fallback: 'Clear Cache'),
-                    ),
-                  ),
-                  TextButton(
                     onPressed: () => Navigator.pop(dialogContext),
-                    child: Text(widget.getText('close', fallback: 'Close')),
+                    child: Text(
+                      widget.getText('close', fallback: 'Close'),
+                      style: const TextStyle(color: Colors.white54),
+                    ),
                   ),
                 ],
               );
@@ -1127,100 +1154,31 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen> {
                     ),
                   ),
 
-                // Panel de Lyrics (entre fondo y controles)
-                if (_currentLyrics != null && _currentLyrics!.hasLyrics)
-                  Positioned.fill(
-                    child: IgnorePointer(
-                      child: Center(
-                        child: Container(
-                          constraints: const BoxConstraints(maxWidth: 600),
-                          child: ListView.builder(
-                            controller: _lyricsScrollController,
-                            padding: const EdgeInsets.symmetric(vertical: 200),
-                            itemCount: _currentLyrics!.lineCount,
-                            itemBuilder: (context, index) {
-                              final line = _currentLyrics!.lines[index];
-                              final isCurrent = index == _currentLyricIndex;
-                              final isPast =
-                                  _currentLyricIndex != null &&
-                                  index < _currentLyricIndex!;
-                              final isFuture =
-                                  _currentLyricIndex != null &&
-                                  index > _currentLyricIndex!;
+                // Panel de Lyrics Global (entre fondo y controles)
+                ValueListenableBuilder<bool>(
+                  valueListenable: _musicPlayer.showLyrics,
+                  builder: (context, showLyrics, _) {
+                    if (!showLyrics) return const SizedBox.shrink();
 
-                              // Calcular opacidad y offset para animación
-                              double opacity = 0.3;
-                              double offsetY = 0;
+                    return ValueListenableBuilder<SyncedLyrics?>(
+                      valueListenable: _musicPlayer.currentLyrics,
+                      builder: (context, lyrics, _) {
+                        if (lyrics == null || !lyrics.hasLyrics) {
+                          return const SizedBox.shrink();
+                        }
 
-                              if (isCurrent) {
-                                opacity = 1.0;
-                                offsetY = 0;
-                              } else if (isPast) {
-                                opacity = 0.2;
-                                offsetY = -10;
-                              } else if (isFuture) {
-                                final distance =
-                                    index - (_currentLyricIndex ?? 0);
-                                opacity = (0.5 - (distance * 0.1)).clamp(
-                                  0.0,
-                                  0.5,
-                                );
-                                offsetY = 20;
-                              }
-
-                              return AnimatedOpacity(
-                                duration: const Duration(milliseconds: 400),
-                                opacity: opacity,
-                                child: AnimatedSlide(
-                                  duration: const Duration(milliseconds: 600),
-                                  curve: Curves.easeOutCubic,
-                                  offset: Offset(0, offsetY / 100),
-                                  child: AnimatedContainer(
-                                    duration: const Duration(milliseconds: 400),
-                                    padding: const EdgeInsets.symmetric(
-                                      horizontal: 32,
-                                      vertical: 8,
-                                    ),
-                                    child: Text(
-                                      line.text,
-                                      textAlign: TextAlign.center,
-                                      style: TextStyle(
-                                        fontSize: isCurrent ? 28 : 18,
-                                        fontWeight: isCurrent
-                                            ? FontWeight.bold
-                                            : FontWeight.w500,
-                                        color: Colors.white,
-                                        height: 1.6,
-                                        shadows: isCurrent
-                                            ? [
-                                                Shadow(
-                                                  color:
-                                                      _dominantColor ??
-                                                      Colors.purple,
-                                                  blurRadius: 20,
-                                                ),
-                                                const Shadow(
-                                                  color: Colors.black,
-                                                  blurRadius: 10,
-                                                ),
-                                              ]
-                                            : [
-                                                const Shadow(
-                                                  color: Colors.black87,
-                                                  blurRadius: 8,
-                                                ),
-                                              ],
-                                      ),
-                                    ),
-                                  ),
-                                ),
-                              );
-                            },
+                        return Positioned.fill(
+                          child: LyricsDisplay(
+                            lyrics: lyrics,
+                            currentIndexNotifier:
+                                _musicPlayer.currentLyricIndex,
+                            getText: widget.getText,
                           ),
-                        ),
-                      ),
-                    ),
-                  ),
+                        );
+                      },
+                    );
+                  },
+                ),
 
                 AnimatedContainer(
                   duration: const Duration(milliseconds: 600),
@@ -1533,6 +1491,32 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen> {
                       ),
                       const SizedBox(height: 24),
                     ],
+                  ),
+                ),
+
+                // Botón de lyrics flotante
+                Positioned(
+                  top: 16,
+                  right: 64,
+                  child: ValueListenableBuilder<bool>(
+                    valueListenable: _musicPlayer.showLyrics,
+                    builder: (context, showLyrics, child) {
+                      return IconButton(
+                        icon: Icon(
+                          showLyrics ? Icons.lyrics : Icons.lyrics_outlined,
+                          color: showLyrics
+                              ? Colors.purpleAccent
+                              : Colors.white70,
+                        ),
+                        onPressed: () {
+                          _musicPlayer.showLyrics.value = !showLyrics;
+                        },
+                        tooltip: widget.getText(
+                          showLyrics ? 'hide_lyrics' : 'show_lyrics',
+                          fallback: showLyrics ? 'Hide lyrics' : 'Show lyrics',
+                        ),
+                      );
+                    },
                   ),
                 ),
 

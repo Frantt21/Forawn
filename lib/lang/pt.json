@@ -373,5 +373,5 @@
     "discord_connected": "Conectado",
     "discord_disconnected": "Desconectado",
     "discord_reconnect": "Tentar reconectar",
-    // "music_player_title": "Reprodutor de música"
+    "music_player_title": "Reprodutor de música"
 }

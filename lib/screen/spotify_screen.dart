@@ -657,6 +657,105 @@ class _SpotifyScreenState extends State<SpotifyScreen>
     );
   }
 
+  /// Descarga directa desde YouTube (bypass Spotify API)
+  Future<void> _queueDirectDownload(Map<String, dynamic> c) async {
+    debugPrint('[SpotifyScreen] queueDirectDownload for item: ${c.toString()}');
+    final prefs = await SharedPreferences.getInstance();
+    String? downloadFolder = prefs.getString('download_folder');
+
+    if (downloadFolder == null || downloadFolder.isEmpty) {
+      debugPrint('[SpotifyScreen] no download folder pref, asking user');
+      final carpeta = await FilePicker.platform.getDirectoryPath();
+      if (carpeta == null) {
+        _uiLog('Descarga cancelada por usuario (no hay carpeta)');
+        showElegantNotification(
+          context,
+          widget.getText('download_cancelled', fallback: 'Descarga cancelada'),
+          backgroundColor: const Color(0xFFE53935),
+          textColor: Colors.white,
+          icon: Icons.cancel,
+          iconColor: Colors.white,
+        );
+        return;
+      }
+      downloadFolder = p.normalize(carpeta);
+      await prefs.setString('download_folder', downloadFolder);
+      showElegantNotification(
+        context,
+        widget.getText(
+          'download_folder_set',
+          fallback: 'Carpeta de descargas establecida',
+        ),
+        backgroundColor: const Color(0xFF2C2C2C),
+        textColor: Colors.white,
+        icon: Icons.folder_open,
+        iconColor: Colors.blue,
+      );
+    }
+
+    try {
+      final dir = Directory(downloadFolder);
+      if (!dir.existsSync()) dir.createSync(recursive: true);
+      final testFile = File(p.join(downloadFolder, '.forawn_write_test'));
+      testFile.writeAsStringSync('ok');
+      testFile.deleteSync();
+    } catch (e) {
+      debugPrint('[SpotifyScreen] download folder writable test failed: $e');
+      showElegantNotification(
+        context,
+        widget.getText(
+          'download_folder_invalid',
+          fallback: 'Carpeta inválida o sin permisos',
+        ),
+        backgroundColor: const Color(0xFFE53935),
+        textColor: Colors.white,
+        icon: Icons.error_outline,
+        iconColor: Colors.white,
+      );
+      return;
+    }
+
+    final title = (c['title'] ?? 'Unknown').toString();
+    String artista = widget.getText(
+      'unknown_artist',
+      fallback: 'Unknown artist',
+    );
+    if (title.contains(' - ')) {
+      final partes = title.split(' - ');
+      artista = partes.isNotEmpty ? partes[0] : artista;
+    }
+    final nombre = title;
+    final imageUrl = (c['image'] ?? '').toString();
+    final url = c['url']?.toString() ?? nombre;
+    final id = DateTime.now().millisecondsSinceEpoch.toString();
+
+    final task = DownloadTask(
+      id: id,
+      title: nombre,
+      artist: artista,
+      image: imageUrl,
+      sourceUrl: url,
+      bypassSpotifyApi: true, // Activar bypass para descarga directa
+    );
+
+    debugPrint(
+      '[SpotifyScreen] enqueuing DIRECT task ${task.id} title="${task.title}" url="${task.sourceUrl}" bypass=true',
+    );
+    _uiLog('Encolada (YouTube directo): ${task.title}');
+    DownloadManager().addTask(task);
+    showElegantNotification(
+      context,
+      widget.getText(
+        'download_direct_queued',
+        fallback: 'Direct download queued',
+      ),
+      backgroundColor: const Color(0xFF2C2C2C),
+      textColor: Colors.white,
+      icon: Icons.flash_on,
+      iconColor: Colors.orangeAccent,
+    );
+  }
+
   void _openDownloadsScreen() {
     if (!mounted) return;
     try {
@@ -1059,12 +1158,27 @@ class _SpotifyScreenState extends State<SpotifyScreen>
                                     children: [
                                       statusChip(),
                                       const SizedBox(width: 8),
+                                      // Botón de descarga normal (Spotify API)
                                       IconButton(
                                         icon: const Icon(Icons.download),
                                         onPressed: () => _queueDownload(c),
                                         tooltip: widget.getText(
                                           'download',
                                           fallback: 'Download',
+                                        ),
+                                      ),
+                                      // Botón de descarga directa (YouTube)
+                                      IconButton(
+                                        icon: const Icon(
+                                          Icons.flash_on,
+                                          size: 20,
+                                        ),
+                                        color: Colors.orangeAccent,
+                                        onPressed: () =>
+                                            _queueDirectDownload(c),
+                                        tooltip: widget.getText(
+                                          'download_direct',
+                                          fallback: 'Direct YouTube Download',
                                         ),
                                       ),
                                     ],

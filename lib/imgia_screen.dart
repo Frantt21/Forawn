@@ -902,9 +902,11 @@ class _AiImageScreenState extends State<AiImageScreen> with WindowListener {
                                     DropdownButton<String>(
                                       value: _ratio,
                                       underline: const SizedBox.shrink(),
-                                      dropdownColor: Theme.of(
-                                        context,
-                                      ).cardColor,
+                                      dropdownColor:
+                                          Theme.of(context).brightness ==
+                                              Brightness.dark
+                                          ? const Color(0xFF1E1E1E)
+                                          : const Color(0xFFEEEEEE),
                                       borderRadius: BorderRadius.circular(10),
                                       focusColor: Colors
                                           .transparent, // Evita el resaltado persistente
