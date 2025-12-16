@@ -21,15 +21,47 @@ class LyricsDisplay extends StatefulWidget {
 }
 
 class _LyricsDisplayState extends State<LyricsDisplay> {
-  late FixedExtentScrollController _controller;
+  late ScrollController _controller;
+  final Map<int, GlobalKey> _itemKeys = {};
 
   @override
   void initState() {
     super.initState();
-    _controller = FixedExtentScrollController(
-      initialItem: widget.currentIndexNotifier.value ?? 0,
-    );
+    _controller = ScrollController();
     widget.currentIndexNotifier.addListener(_onIndexChanged);
+
+    // Crear keys para cada item
+    for (int i = 0; i < widget.lyrics.lineCount; i++) {
+      _itemKeys[i] = GlobalKey();
+    }
+
+    // Scroll al inicio después de que el widget se construya
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (_controller.hasClients) {
+        _controller.jumpTo(0);
+      }
+    });
+  }
+
+  @override
+  void didUpdateWidget(LyricsDisplay oldWidget) {
+    super.didUpdateWidget(oldWidget);
+
+    // Si cambiaron las lyrics (nueva canción), resetear scroll
+    if (oldWidget.lyrics != widget.lyrics) {
+      // Recrear keys para los nuevos items
+      _itemKeys.clear();
+      for (int i = 0; i < widget.lyrics.lineCount; i++) {
+        _itemKeys[i] = GlobalKey();
+      }
+
+      // Scroll al inicio
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (_controller.hasClients) {
+          _controller.jumpTo(0);
+        }
+      });
+    }
   }
 
   @override
@@ -42,13 +74,13 @@ class _LyricsDisplayState extends State<LyricsDisplay> {
   void _onIndexChanged() {
     final index = widget.currentIndexNotifier.value;
     if (index != null && _controller.hasClients) {
-      if ((_controller.selectedItem - index).abs() > 10) {
-        _controller.jumpToItem(index);
-      } else {
-        _controller.animateToItem(
-          index,
+      final key = _itemKeys[index];
+      if (key?.currentContext != null) {
+        Scrollable.ensureVisible(
+          key!.currentContext!,
           duration: const Duration(milliseconds: 600),
           curve: Curves.easeInOutCubic,
+          alignment: 0.5, // Centrar en la pantalla
         );
       }
     }
@@ -67,48 +99,46 @@ class _LyricsDisplayState extends State<LyricsDisplay> {
             Colors.black,
             Colors.transparent,
           ],
-          stops: [0.0, 0.2, 0.8, 1.0],
+          stops: [0.0, 0.3, 0.7, 1.0],
         ).createShader(rect);
       },
       blendMode: BlendMode.dstIn,
-      child: ListWheelScrollView.useDelegate(
+      child: ListView.builder(
         controller: _controller,
-        itemExtent: 70,
-        diameterRatio: 100, // Ratio alto para que se vea plano
-        perspective: 0.0001,
-        physics: const NeverScrollableScrollPhysics(),
-        childDelegate: ListWheelChildBuilderDelegate(
-          childCount: widget.lyrics.lineCount,
-          builder: (context, index) {
-            return ValueListenableBuilder<int?>(
-              valueListenable: widget.currentIndexNotifier,
-              builder: (context, currentIndex, _) {
-                final isCurrent = index == currentIndex;
+        padding: const EdgeInsets.symmetric(vertical: 200),
+        itemCount: widget.lyrics.lineCount,
+        itemBuilder: (context, index) {
+          return ValueListenableBuilder<int?>(
+            valueListenable: widget.currentIndexNotifier,
+            builder: (context, currentIndex, _) {
+              final isCurrent = index == currentIndex;
 
-                return Center(
+              return Container(
+                key: _itemKeys[index],
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 24,
+                  vertical: 16,
+                ),
+                child: ImageFiltered(
+                  imageFilter: isCurrent
+                      ? ImageFilter.blur(sigmaX: 0, sigmaY: 0)
+                      : ImageFilter.blur(sigmaX: 1.5, sigmaY: 1.5),
                   child: AnimatedDefaultTextStyle(
                     duration: const Duration(milliseconds: 300),
                     style: TextStyle(
-                      fontSize: isCurrent ? 34 : 22,
-                      fontWeight: isCurrent
-                          ? FontWeight.bold
-                          : FontWeight.normal,
+                      fontSize: 28, // Tamaño fijo para todas las líneas
+                      fontWeight: FontWeight.w600, // Mismo peso para todos
                       color: isCurrent
                           ? Colors.white
                           : Colors.white.withOpacity(0.5),
-                      height: 1.2,
+                      height: 1.3,
                       letterSpacing: 0.5,
                       shadows: isCurrent
                           ? [
                               BoxShadow(
-                                color: Colors.purpleAccent.withOpacity(0.6),
-                                blurRadius: 20,
-                                spreadRadius: 2,
-                              ),
-                              const Shadow(
-                                color: Colors.black87,
-                                blurRadius: 4,
-                                offset: Offset(2, 2),
+                                color: Colors.black.withOpacity(0.3),
+                                blurRadius: 8,
+                                offset: const Offset(0, 2),
                               ),
                             ]
                           : [],
@@ -116,15 +146,14 @@ class _LyricsDisplayState extends State<LyricsDisplay> {
                     textAlign: TextAlign.center,
                     child: Text(
                       widget.lyrics.lines[index].text,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
+                      textAlign: TextAlign.center,
                     ),
                   ),
-                );
-              },
-            );
-          },
-        ),
+                ),
+              );
+            },
+          );
+        },
       ),
     );
   }

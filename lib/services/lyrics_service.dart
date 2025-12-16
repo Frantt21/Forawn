@@ -26,14 +26,15 @@ class LyricsService {
 
       _database = await openDatabase(
         path,
-        version: 1,
+        version: 2,
         onCreate: (db, version) async {
           await db.execute('''
             CREATE TABLE lyrics (
               id INTEGER PRIMARY KEY AUTOINCREMENT,
               song_title TEXT NOT NULL,
               artist TEXT NOT NULL,
-              lrc_content TEXT NOT NULL,
+              lrc_content TEXT,
+              not_found INTEGER DEFAULT 0,
               created_at INTEGER NOT NULL,
               UNIQUE(song_title, artist)
             )
@@ -43,6 +44,19 @@ class LyricsService {
           await db.execute('''
             CREATE INDEX idx_song_artist ON lyrics(song_title, artist)
           ''');
+        },
+        onUpgrade: (db, oldVersion, newVersion) async {
+          if (oldVersion < 2) {
+            // Agregar columna not_found a bases de datos existentes
+            try {
+              await db.execute(
+                'ALTER TABLE lyrics ADD COLUMN not_found INTEGER DEFAULT 0',
+              );
+              _log.info('Base de datos actualizada a versión 2');
+            } catch (e) {
+              _log.warning('Error al actualizar base de datos: $e');
+            }
+          }
         },
       );
 
@@ -62,11 +76,20 @@ class LyricsService {
         return _cache[cacheKey];
       }
 
-      // Verificar base de datos
-      final stored = await _getStoredLyrics(title, artist);
+      // Verificar base de datos (incluyendo si ya se intentó y no se encontró)
+      final stored = await getStoredLyrics(title, artist);
       if (stored != null) {
         _cache[cacheKey] = stored;
         return stored;
+      }
+
+      // Verificar si ya se intentó descargar antes y no se encontró
+      final alreadyChecked = await wasAlreadyChecked(title, artist);
+      if (alreadyChecked) {
+        _log.fine(
+          'Ya se verificó anteriormente (no encontrado): $title - $artist',
+        );
+        return null;
       }
 
       // Descargar de la API
@@ -74,7 +97,7 @@ class LyricsService {
       final encodedQuery = Uri.encodeComponent(query);
       final url = '${ApiConfig.lyricsApiUrl}?query=$encodedQuery';
 
-      _log.fine('Descargando lyrics: $query');
+      _log.info('Descargando lyrics: $query');
 
       final response = await http
           .get(Uri.parse(url))
@@ -119,7 +142,7 @@ class LyricsService {
             );
 
             // Guardar en base de datos
-            await _storeLyrics(title, artist, lrcContent);
+            await _storeLyrics(title, artist, lrcContent, notFound: false);
 
             // Guardar en cache
             _cache[cacheKey] = lyrics;
@@ -140,7 +163,11 @@ class LyricsService {
         }
       }
 
-      _log.warning('No se encontraron lyrics para: $title - $artist');
+      // Marcar como no encontrado para no volver a intentar
+      await _storeLyrics(title, artist, '', notFound: true);
+      _log.warning(
+        'No se encontraron lyrics para: $title - $artist (marcado como no encontrado)',
+      );
       return null;
     } catch (e) {
       _log.warning('Error al obtener lyrics: $e');
@@ -149,7 +176,38 @@ class LyricsService {
   }
 
   /// Obtiene lyrics almacenados localmente
-  Future<SyncedLyrics?> _getStoredLyrics(String title, String artist) async {
+  Future<SyncedLyrics?> getStoredLyrics(String title, String artist) async {
+    if (_database == null) await initialize();
+
+    try {
+      final results = await _database!.query(
+        'lyrics',
+        where: 'LOWER(song_title) = ? AND LOWER(artist) = ? AND not_found = 0',
+        whereArgs: [title.toLowerCase(), artist.toLowerCase()],
+        limit: 1,
+      );
+
+      if (results.isNotEmpty) {
+        final row = results.first;
+        final lrcContent = row['lrc_content'] as String?;
+        if (lrcContent != null && lrcContent.isNotEmpty) {
+          return SyncedLyrics.fromLRC(
+            songTitle: row['song_title'] as String,
+            artist: row['artist'] as String,
+            lrcContent: lrcContent,
+          );
+        }
+      }
+
+      return null;
+    } catch (e) {
+      _log.warning('Error al leer lyrics almacenados: $e');
+      return null;
+    }
+  }
+
+  /// Verifica si ya se intentó descargar lyrics para esta canción
+  Future<bool> wasAlreadyChecked(String title, String artist) async {
     if (_database == null) await initialize();
 
     try {
@@ -160,19 +218,10 @@ class LyricsService {
         limit: 1,
       );
 
-      if (results.isNotEmpty) {
-        final row = results.first;
-        return SyncedLyrics.fromLRC(
-          songTitle: row['song_title'] as String,
-          artist: row['artist'] as String,
-          lrcContent: row['lrc_content'] as String,
-        );
-      }
-
-      return null;
+      return results.isNotEmpty;
     } catch (e) {
-      _log.warning('Error al leer lyrics almacenados: $e');
-      return null;
+      _log.warning('Error al verificar si ya se revisó: $e');
+      return false;
     }
   }
 
@@ -180,8 +229,9 @@ class LyricsService {
   Future<void> _storeLyrics(
     String title,
     String artist,
-    String lrcContent,
-  ) async {
+    String lrcContent, {
+    required bool notFound,
+  }) async {
     if (_database == null) await initialize();
 
     try {
@@ -189,6 +239,7 @@ class LyricsService {
         'song_title': title,
         'artist': artist,
         'lrc_content': lrcContent,
+        'not_found': notFound ? 1 : 0,
         'created_at': DateTime.now().millisecondsSinceEpoch,
       }, conflictAlgorithm: ConflictAlgorithm.replace);
     } catch (e) {
@@ -223,19 +274,40 @@ class LyricsService {
     _log.info('Cache de lyrics limpiado');
   }
 
+  /// Limpia las entradas marcadas como "no encontrado" para permitir reintentar
+  Future<void> clearNotFoundEntries() async {
+    if (_database == null) await initialize();
+
+    try {
+      final count = await _database!.delete('lyrics', where: 'not_found = 1');
+      _log.info('Eliminadas $count entradas marcadas como no encontradas');
+    } catch (e) {
+      _log.warning('Error al limpiar entradas no encontradas: $e');
+    }
+  }
+
   /// Obtiene estadísticas
   Future<Map<String, int>> getStats() async {
     if (_database == null) await initialize();
 
     try {
-      final result = await _database!.rawQuery(
-        'SELECT COUNT(*) as count FROM lyrics',
+      final successResult = await _database!.rawQuery(
+        'SELECT COUNT(*) as count FROM lyrics WHERE not_found = 0',
       );
-      final count = Sqflite.firstIntValue(result) ?? 0;
+      final successCount = Sqflite.firstIntValue(successResult) ?? 0;
 
-      return {'totalLyrics': count, 'cacheSize': _cache.length};
+      final failedResult = await _database!.rawQuery(
+        'SELECT COUNT(*) as count FROM lyrics WHERE not_found = 1',
+      );
+      final failedCount = Sqflite.firstIntValue(failedResult) ?? 0;
+
+      return {
+        'totalLyrics': successCount,
+        'notFound': failedCount,
+        'cacheSize': _cache.length,
+      };
     } catch (e) {
-      return {'totalLyrics': 0, 'cacheSize': _cache.length};
+      return {'totalLyrics': 0, 'notFound': 0, 'cacheSize': _cache.length};
     }
   }
 
