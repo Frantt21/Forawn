@@ -17,6 +17,7 @@ import '../services/music_state_service.dart';
 import '../services/discord_service.dart';
 import '../services/thumbnail_search_service.dart';
 import '../services/lyrics_service.dart';
+import '../services/spotify_metadata_service.dart';
 import '../models/synced_lyrics.dart';
 import 'package:audio_metadata_reader/audio_metadata_reader.dart';
 import 'package:palette_generator/palette_generator.dart';
@@ -229,6 +230,94 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen> {
     }
   }
 
+  /// Normaliza caracteres especiales mal codificados
+  String _normalizeText(String text) {
+    // Mapa de caracteres mal codificados comunes a sus equivalentes correctos
+    final replacements = {
+      'Ã­': 'í', // í
+      'Ã¡': 'á', // á
+      'Ã©': 'é', // é
+      'Ã³': 'ó', // ó
+      'Ãº': 'ú', // ú
+      'Ã±': 'ñ', // ñ
+      'Ã': 'Í', // Í
+      'Ã': 'Á', // Á
+      'Ã': 'É', // É
+      'Ã': 'Ó', // Ó
+      'Ã': 'Ú', // Ú
+      'Ã': 'Ñ', // Ñ
+    };
+
+    String normalized = text;
+    replacements.forEach((bad, good) {
+      normalized = normalized.replaceAll(bad, good);
+    });
+
+    return normalized;
+  }
+
+  /// Parsea metadatos de YouTube para extraer artista y título
+  Map<String, String> _parseMetadata(String rawTitle, String rawArtist) {
+    // Normalizar caracteres primero
+    String title = _normalizeText(rawTitle);
+    String artist = _normalizeText(rawArtist);
+
+    // Remover patrones comunes de YouTube del título
+    final patterns = [
+      r'\(Official Video\)',
+      r'\(Official Audio\)',
+      r'\(Official Music Video\)',
+      r'\(Visualizer\)',
+      r'\(Lyric Video\)',
+      r'\(Lyrics\)',
+      r'\(Audio\)',
+      r'\(Video\)',
+      r'\[Official Video\]',
+      r'\[Official Audio\]',
+      r'\[Visualizer\]',
+      r'\[Lyric Video\]',
+      r'\[Lyrics\]',
+      r'- Topic\$',
+      r'\| Topic\$',
+    ];
+
+    for (final pattern in patterns) {
+      title = title.replaceAll(RegExp(pattern, caseSensitive: false), '');
+    }
+
+    // Si hay un pipe (|), la parte antes es el artista y después el título
+    // Ejemplo: "kLOuFRENS (Visualizer) | DeBÍ TiRAR MáS FOTos"
+    if (title.contains('|')) {
+      final parts = title.split('|');
+      if (parts.length > 1) {
+        // Si no hay artista o es "Unknown Artist", usar la parte antes del pipe
+        if (artist.isEmpty || artist == 'Unknown Artist') {
+          artist = parts[0].trim();
+        }
+        title = parts.last.trim();
+      }
+    }
+    // Si hay un guion " - " y no tenemos artista, intentar separar
+    // Ejemplo: "Bad Bunny - KLOuFRENS"
+    else if (title.contains(' - ') &&
+        (artist.isEmpty || artist == 'Unknown Artist')) {
+      final parts = title.split(' - ');
+      if (parts.length == 2) {
+        artist = parts[0].trim();
+        title = parts[1].trim();
+      }
+    }
+
+    // Limpiar espacios extras
+    title = title.trim();
+    artist = artist.trim();
+
+    return {
+      'title': title.isNotEmpty ? title : rawTitle,
+      'artist': artist.isNotEmpty ? artist : rawArtist,
+    };
+  }
+
   Future<void> _updateMetadataFromFile(int index) async {
     if (index < 0 || index >= _files.length) return;
     _playedIndices.add(
@@ -265,8 +354,9 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen> {
       await _musicPlayer.player.play(DeviceFileSource(file.path));
 
       // Actualizar estado global INMEDIATAMENTE con metadatos
-      _musicPlayer.currentTitle.value = title;
-      _musicPlayer.currentArtist.value = artist;
+      final parsed = _parseMetadata(title, artist);
+      _musicPlayer.currentTitle.value = parsed['title']!;
+      _musicPlayer.currentArtist.value = parsed['artist']!;
       _musicPlayer.currentArt.value = artwork; // Actualizar portada!
       _musicPlayer.currentIndex.value = index;
       _musicPlayer.currentFilePath.value = file.path;
@@ -472,6 +562,59 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen> {
       }
       if (metadata.pictures.isNotEmpty) {
         artwork = metadata.pictures.first.bytes;
+      }
+
+      // Parsear metadatos para limpiar títulos de YouTube
+      final originalTitle = title; // Guardar título original
+      final parsed = _parseMetadata(title, artist);
+      title = parsed['title']!;
+      artist = parsed['artist']!;
+
+      // Detectar si probablemente viene de YouTube:
+      // 1. Artista desconocido
+      // 2. Título original tenía caracteres de YouTube
+      // 3. No hay artwork (YouTube no embebe portadas correctamente)
+      // 4. Título tiene caracteres mal codificados
+      final likelyFromYouTube =
+          artist == 'Unknown Artist' ||
+          originalTitle.contains('|') ||
+          originalTitle.contains('(') ||
+          originalTitle.contains('Visualizer') ||
+          originalTitle.contains('Official') ||
+          artwork == null ||
+          title.contains('�'); // Caracteres mal codificados
+
+      // Intentar enriquecer con metadatos de Spotify
+      if (likelyFromYouTube) {
+        try {
+          debugPrint(
+            '[MusicPlayer] Attempting to enrich metadata from Spotify for: $title - $artist',
+          );
+          final spotifyMetadata = await SpotifyMetadataService().searchMetadata(
+            title,
+            artist != 'Unknown Artist' ? artist : null,
+          );
+
+          if (spotifyMetadata != null) {
+            debugPrint(
+              '[MusicPlayer] Enriched: ${spotifyMetadata.title} by ${spotifyMetadata.artist}',
+            );
+            title = spotifyMetadata.title;
+            artist = spotifyMetadata.artist;
+
+            // Descargar portada de Spotify si no hay artwork local
+            if (artwork == null && spotifyMetadata.albumArtUrl != null) {
+              final spotifyArtwork = await SpotifyMetadataService()
+                  .downloadAlbumArt(spotifyMetadata.albumArtUrl);
+              if (spotifyArtwork != null) {
+                artwork = spotifyArtwork;
+                debugPrint('[MusicPlayer] Using Spotify album art');
+              }
+            }
+          }
+        } catch (e) {
+          debugPrint('[MusicPlayer] Error enriching metadata: $e');
+        }
       }
 
       // Intentar obtener color del caché primero
@@ -1133,6 +1276,94 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen> {
                             style: const TextStyle(color: Colors.redAccent),
                           ),
                         ),
+                        const SizedBox(width: 8),
+                        // Botón para limpiar caché de lyrics
+                        ElevatedButton.icon(
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: Colors.orange.withOpacity(0.2),
+                            foregroundColor: Colors.orangeAccent,
+                          ),
+                          onPressed: () async {
+                            // Limpiar caché de lyrics
+                            LyricsService().clearCache();
+                            await LyricsService().clearNotFoundEntries();
+
+                            if (mounted) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(
+                                  content: Text(
+                                    widget.getText(
+                                      'lyrics_cache_cleared',
+                                      fallback: 'Lyrics cache cleared',
+                                    ),
+                                  ),
+                                  backgroundColor: const Color(0xFF2C2C2C),
+                                  action: SnackBarAction(
+                                    label: 'OK',
+                                    onPressed: () {},
+                                    textColor: Colors.orangeAccent,
+                                  ),
+                                ),
+                              );
+                            }
+                          },
+                          icon: const Icon(
+                            Icons.lyrics_outlined,
+                            size: 16,
+                            color: Colors.orangeAccent,
+                          ),
+                          label: Text(
+                            widget.getText(
+                              'clear_lyrics_cache',
+                              fallback: 'Clear Lyrics',
+                            ),
+                            style: const TextStyle(color: Colors.orangeAccent),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        // Botón para limpiar caché de Spotify
+                        ElevatedButton.icon(
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: Colors.green.withOpacity(0.2),
+                            foregroundColor: Colors.greenAccent,
+                          ),
+                          onPressed: () async {
+                            // Limpiar caché de Spotify
+                            SpotifyMetadataService().clearCache();
+                            await SpotifyMetadataService().clearServerCache();
+
+                            if (mounted) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(
+                                  content: Text(
+                                    widget.getText(
+                                      'spotify_cache_cleared',
+                                      fallback: 'Spotify cache cleared',
+                                    ),
+                                  ),
+                                  backgroundColor: const Color(0xFF2C2C2C),
+                                  action: SnackBarAction(
+                                    label: 'OK',
+                                    onPressed: () {},
+                                    textColor: Colors.greenAccent,
+                                  ),
+                                ),
+                              );
+                            }
+                          },
+                          icon: const Icon(
+                            Icons.music_note,
+                            size: 16,
+                            color: Colors.greenAccent,
+                          ),
+                          label: Text(
+                            widget.getText(
+                              'clear_spotify_cache',
+                              fallback: 'Clear Spotify',
+                            ),
+                            style: const TextStyle(color: Colors.greenAccent),
+                          ),
+                        ),
                       ],
                     ),
                   ],
@@ -1288,8 +1519,8 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen> {
                           ),
                           child: Container(
                             color: _dominantColor != null
-                                ? _dominantColor!.withOpacity(0.65)
-                                : Colors.black.withOpacity(0.7),
+                                ? _dominantColor!.withOpacity(0.75)
+                                : Colors.black.withOpacity(0.8),
                           ),
                         ),
                       ),

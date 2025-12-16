@@ -9,6 +9,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../models/download_task.dart';
 import '../config/api_config.dart';
 import 'lyrics_service.dart';
+import 'spotify_metadata_service.dart';
 
 class DownloadManager extends ChangeNotifier {
   static final DownloadManager _instance = DownloadManager._internal();
@@ -454,6 +455,140 @@ class DownloadManager extends ChangeNotifier {
       debugPrint('[DownloadManager] yt-dlp produced file: ${found.path}');
 
       if (p.extension(found.path).toLowerCase() == '.mp3') {
+        // Intentar enriquecer metadatos con Spotify
+        try {
+          debugPrint(
+            '[DownloadManager] Attempting to enrich metadata from Spotify',
+          );
+
+          // El título de Spotify siempre viene como "Artista - Título"
+          // Extraemos la parte después del " - " que es el título real
+          String searchTitle = t.title;
+
+          if (searchTitle.contains(' - ')) {
+            final parts = searchTitle.split(' - ');
+            // Tomar la última parte (después del último " - ")
+            searchTitle = parts.last.trim();
+          }
+
+          debugPrint('[DownloadManager] Searching Spotify for: $searchTitle');
+
+          // Buscar solo con el título de la canción
+          final spotifyMetadata = await SpotifyMetadataService().searchMetadata(
+            searchTitle,
+            null, // No pasar artista para búsqueda más amplia
+          );
+
+          if (spotifyMetadata != null) {
+            debugPrint(
+              '[DownloadManager] Found Spotify metadata: ${spotifyMetadata.title} by ${spotifyMetadata.artist}',
+            );
+
+            // Usar ffmpeg para escribir metadatos
+            final ffmpegExe = p.join(toolsDir, 'ffmpeg', 'bin', 'ffmpeg.exe');
+            if (File(ffmpegExe).existsSync()) {
+              final tempPath = '${found.path}.temp.mp3';
+
+              final args = [
+                '-i',
+                found.path,
+                '-c',
+                'copy',
+                '-metadata',
+                'title=${spotifyMetadata.title}',
+                '-metadata',
+                'artist=${spotifyMetadata.artist}',
+                '-metadata',
+                'album=${spotifyMetadata.album}',
+                if (spotifyMetadata.year != null) '-metadata',
+                if (spotifyMetadata.year != null)
+                  'date=${spotifyMetadata.year}',
+                if (spotifyMetadata.trackNumber != null) '-metadata',
+                if (spotifyMetadata.trackNumber != null)
+                  'track=${spotifyMetadata.trackNumber}',
+                '-y',
+                tempPath,
+              ];
+
+              debugPrint('[DownloadManager] Writing metadata with ffmpeg');
+              final result = await Process.run(ffmpegExe, args);
+
+              if (result.exitCode == 0) {
+                // Reemplazar archivo original con el que tiene metadatos
+                await File(found.path).delete();
+                await File(tempPath).rename(found.path);
+                debugPrint('[DownloadManager] Metadata written successfully');
+
+                // Descargar y escribir portada si está disponible
+                if (spotifyMetadata.albumArtUrl != null) {
+                  try {
+                    debugPrint('[DownloadManager] Downloading album art');
+                    final artworkBytes = await SpotifyMetadataService()
+                        .downloadAlbumArt(spotifyMetadata.albumArtUrl);
+
+                    if (artworkBytes != null) {
+                      final artworkPath = '${found.path}.jpg';
+                      await File(artworkPath).writeAsBytes(artworkBytes);
+
+                      final tempPath2 = '${found.path}.temp2.mp3';
+                      final artArgs = [
+                        '-i',
+                        found.path,
+                        '-i',
+                        artworkPath,
+                        '-map',
+                        '0:0',
+                        '-map',
+                        '1:0',
+                        '-c',
+                        'copy',
+                        '-id3v2_version',
+                        '3',
+                        '-metadata:s:v',
+                        'title=Album cover',
+                        '-metadata:s:v',
+                        'comment=Cover (front)',
+                        '-y',
+                        tempPath2,
+                      ];
+
+                      final artResult = await Process.run(ffmpegExe, artArgs);
+                      if (artResult.exitCode == 0) {
+                        await File(found.path).delete();
+                        await File(tempPath2).rename(found.path);
+                        debugPrint(
+                          '[DownloadManager] Album art embedded successfully',
+                        );
+                      }
+
+                      // Limpiar archivo temporal de artwork
+                      try {
+                        await File(artworkPath).delete();
+                      } catch (_) {}
+                    }
+                  } catch (e) {
+                    debugPrint(
+                      '[DownloadManager] Error embedding album art: $e',
+                    );
+                  }
+                }
+              } else {
+                debugPrint('[DownloadManager] ffmpeg failed: ${result.stderr}');
+                // Limpiar archivo temporal si falló
+                try {
+                  if (File(tempPath).existsSync()) {
+                    await File(tempPath).delete();
+                  }
+                } catch (_) {}
+              }
+            }
+          } else {
+            debugPrint('[DownloadManager] No Spotify metadata found');
+          }
+        } catch (e) {
+          debugPrint('[DownloadManager] Error enriching metadata: $e');
+        }
+
         await _updateTask(
           t,
           localPath: found.path,
@@ -842,6 +977,7 @@ class DownloadManager extends ChangeNotifier {
       '--ignore-errors',
       '--no-warnings',
       '--newline',
+      '--no-post-overwrites', // Evitar post-procesar archivos existentes
       '--add-header',
       'User-Agent: Mozilla/5.0',
       '--add-header',
