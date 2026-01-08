@@ -20,6 +20,7 @@ import 'package:path/path.dart' as p;
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import 'services/download_manager.dart';
 import 'services/global_keyboard_service.dart';
+import 'services/global_theme_service.dart';
 import 'version.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'widgets/fade_transition_screen.dart';
@@ -673,159 +674,185 @@ class _HomeScreenState extends State<HomeScreen> with WindowListener {
 
   @override
   Widget build(BuildContext context) {
-    return Stack(
-      children: [
-        Scaffold(
-          backgroundColor: Colors.transparent,
-          body: ValueListenableBuilder<double>(
-            valueListenable: backgroundOpacity,
-            builder: (_, opacity, __) {
-              return Opacity(
-                opacity: opacity,
-                child: Row(
-                  children: [
-                    // Sidebar Navigation (Full Height)
-                    SidebarNavigation(
-                      key: ValueKey('sidebar_${widget.currentLangCode}'),
-                      onNavigate: _handleNavigation,
-                      currentScreen: _currentScreen,
-                      getText: widget.getText,
-                      nsfwEnabled: _nsfwEnabled,
-                    ),
+    return ValueListenableBuilder<Color?>(
+      valueListenable: GlobalThemeService().dominantColor,
+      builder: (context, dominantColor, child) {
+        return Stack(
+          children: [
+            Scaffold(
+              backgroundColor: Colors.transparent,
+              body: ValueListenableBuilder<double>(
+                valueListenable: backgroundOpacity,
+                builder: (_, opacity, __) {
+                  return Opacity(
+                    opacity: opacity,
+                    child: Row(
+                      children: [
+                        // Sidebar Navigation (Full Height)
+                        SidebarNavigation(
+                          key: ValueKey('sidebar_${widget.currentLangCode}'),
+                          onNavigate: _handleNavigation,
+                          currentScreen: _currentScreen,
+                          getText: widget.getText,
+                          nsfwEnabled: _nsfwEnabled,
+                        ),
 
-                    // Main content area with Title Bar
-                    Expanded(
-                      child: Column(
-                        children: [
-                          // Title bar with Screen Title and Controls
-                          GestureDetector(
-                            behavior: HitTestBehavior.translucent,
-                            onPanStart: (_) => windowManager.startDragging(),
-                            child: Container(
-                              height: 42,
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 10,
-                              ),
-                              color: Colors.transparent,
-                              child: Row(
-                                children: [
-                                  // Home button
-                                  if (_currentScreen != 'home')
-                                    IconButton(
-                                      tooltip: widget.getText(
-                                        'home_title',
-                                        fallback: 'Inicio',
-                                      ),
-                                      icon: const Icon(Icons.home, size: 20),
-                                      onPressed: () =>
-                                          _handleNavigation('home'),
-                                    ),
-                                  const SizedBox(width: 8),
-                                  // Screen title
-                                  Text(
-                                    _getScreenTitle(),
-                                    style: const TextStyle(
-                                      fontSize: 16,
-                                      fontWeight: FontWeight.w600,
-                                    ),
+                        // Main content area with Title Bar
+                        Expanded(
+                          child: Column(
+                            children: [
+                              // Title bar with Screen Title and Controls
+                              GestureDetector(
+                                behavior: HitTestBehavior.translucent,
+                                onPanStart: (_) =>
+                                    windowManager.startDragging(),
+                                child: AnimatedContainer(
+                                  duration: const Duration(milliseconds: 500),
+                                  height: 42,
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 10,
                                   ),
-                                  const Spacer(),
-                                  if (_onFolderAction != null)
-                                    IconButton(
-                                      tooltip: widget.getText(
-                                        'folder_button',
-                                        fallback: 'Folder',
+                                  decoration: BoxDecoration(
+                                    color:
+                                        (dominantColor != null &&
+                                            _currentScreen == 'player')
+                                        ? dominantColor.withOpacity(0.12)
+                                        : Colors.transparent,
+                                  ),
+                                  child: Row(
+                                    children: [
+                                      // Home button
+                                      if (_currentScreen != 'home')
+                                        IconButton(
+                                          tooltip: widget.getText(
+                                            'home_title',
+                                            fallback: 'Inicio',
+                                          ),
+                                          icon: const Icon(
+                                            Icons.home,
+                                            size: 20,
+                                          ),
+                                          onPressed: () =>
+                                              _handleNavigation('home'),
+                                        ),
+                                      const SizedBox(width: 8),
+                                      // Screen title
+                                      Text(
+                                        _getScreenTitle(),
+                                        style: const TextStyle(
+                                          fontSize: 16,
+                                          fontWeight: FontWeight.w600,
+                                        ),
                                       ),
-                                      icon: const Icon(
-                                        Icons.folder_open,
-                                        size: 20,
-                                      ),
-                                      onPressed: _onFolderAction,
-                                    ),
-                                  IconButton(
-                                    tooltip: widget.getText(
-                                      'setting_tittle',
-                                      fallback: 'Settings',
-                                    ),
-                                    icon: const Icon(Icons.settings, size: 20),
-                                    onPressed: () async {
-                                      backgroundOpacity.value = 0.0;
+                                      const Spacer(),
+                                      if (_onFolderAction != null)
+                                        IconButton(
+                                          tooltip: widget.getText(
+                                            'folder_button',
+                                            fallback: 'Folder',
+                                          ),
+                                          icon: const Icon(
+                                            Icons.folder_open,
+                                            size: 20,
+                                          ),
+                                          onPressed: _onFolderAction,
+                                        ),
+                                      IconButton(
+                                        tooltip: widget.getText(
+                                          'setting_tittle',
+                                          fallback: 'Settings',
+                                        ),
+                                        icon: const Icon(
+                                          Icons.settings,
+                                          size: 20,
+                                        ),
+                                        onPressed: () async {
+                                          backgroundOpacity.value = 0.0;
 
-                                      final selected =
-                                          await Navigator.of(
-                                            context,
-                                          ).push<String?>(
-                                            PageRouteBuilder(
-                                              opaque: false,
-                                              barrierColor: Colors.transparent,
-                                              transitionDuration:
-                                                  const Duration(
-                                                    milliseconds: 400,
-                                                  ),
-                                              pageBuilder: (_, __, ___) =>
-                                                  FadeTransitionScreen(
-                                                    child: SettingsScreen(
-                                                      currentLang: widget
-                                                          .currentLangCode,
-                                                      getText: widget.getText,
-                                                      onSelectLanguage:
-                                                          (
-                                                            code,
-                                                          ) async => await widget
-                                                              .onRequestLanguageChange(
-                                                                code,
-                                                              ),
-                                                      onChangeWindowEffect:
-                                                          _applyWindowEffect,
-                                                    ),
-                                                  ),
-                                              transitionsBuilder:
-                                                  (_, animation, __, child) {
-                                                    return FadeTransition(
-                                                      opacity: animation,
-                                                      child: child,
-                                                    );
-                                                  },
-                                            ),
-                                          );
-                                      backgroundOpacity.value = 1.0;
-                                      if (!mounted) return;
-                                      setState(
-                                        () {},
-                                      ); // fuerza reconstrucción para limpiar visual
-                                      if (selected != null) {
-                                        await widget.onRequestLanguageChange(
-                                          selected,
-                                        );
-                                      }
-                                      await _loadNsfwPref();
-                                    },
+                                          final selected =
+                                              await Navigator.of(
+                                                context,
+                                              ).push<String?>(
+                                                PageRouteBuilder(
+                                                  opaque: false,
+                                                  barrierColor:
+                                                      Colors.transparent,
+                                                  transitionDuration:
+                                                      const Duration(
+                                                        milliseconds: 400,
+                                                      ),
+                                                  pageBuilder: (_, __, ___) =>
+                                                      FadeTransitionScreen(
+                                                        child: SettingsScreen(
+                                                          currentLang: widget
+                                                              .currentLangCode,
+                                                          getText:
+                                                              widget.getText,
+                                                          onSelectLanguage:
+                                                              (code) async =>
+                                                                  await widget
+                                                                      .onRequestLanguageChange(
+                                                                        code,
+                                                                      ),
+                                                          onChangeWindowEffect:
+                                                              _applyWindowEffect,
+                                                        ),
+                                                      ),
+                                                  transitionsBuilder:
+                                                      (
+                                                        _,
+                                                        animation,
+                                                        __,
+                                                        child,
+                                                      ) {
+                                                        return FadeTransition(
+                                                          opacity: animation,
+                                                          child: child,
+                                                        );
+                                                      },
+                                                ),
+                                              );
+                                          backgroundOpacity.value = 1.0;
+                                          if (!mounted) return;
+                                          setState(
+                                            () {},
+                                          ); // fuerza reconstrucción para limpiar visual
+                                          if (selected != null) {
+                                            await widget
+                                                .onRequestLanguageChange(
+                                                  selected,
+                                                );
+                                          }
+                                          await _loadNsfwPref();
+                                        },
+                                      ),
+                                      _windowButtons(),
+                                    ],
                                   ),
-                                  _windowButtons(),
-                                ],
+                                ),
                               ),
-                            ),
+
+                              // Content
+                              Expanded(child: _getContentWidget()),
+                            ],
                           ),
-
-                          // Content
-                          Expanded(child: _getContentWidget()),
-                        ],
-                      ),
+                        ),
+                      ],
                     ),
-                  ],
-                ),
-              );
-            },
-          ),
-        ),
-        // Mini Music Player overlay
-        MiniMusicPlayer(
-          getText: widget.getText,
-          onExpandPressed: () {
-            _handleNavigation('player');
-          },
-        ),
-      ],
+                  );
+                },
+              ),
+            ),
+            // Mini Music Player overlay
+            MiniMusicPlayer(
+              getText: widget.getText,
+              onExpandPressed: () {
+                _handleNavigation('player');
+              },
+            ),
+          ],
+        );
+      },
     );
   }
 }

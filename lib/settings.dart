@@ -8,6 +8,12 @@ import 'main.dart' show checkForUpdate;
 import 'package:flutter_acrylic/flutter_acrylic.dart' as acrylic;
 import 'widgets/elegant_notification.dart';
 import 'services/discord_service.dart';
+import 'services/album_color_cache.dart';
+import 'services/lyrics_service.dart';
+import 'services/metadata_service.dart';
+import 'services/global_theme_service.dart';
+import 'package:path/path.dart' as p;
+import 'package:audio_metadata_reader/audio_metadata_reader.dart';
 
 typedef TextGetter = String Function(String key, {String? fallback});
 typedef LanguageSelector = Future<void> Function(String code);
@@ -32,6 +38,7 @@ class SettingsScreen extends StatefulWidget {
     bool dark,
   })
   onChangeWindowEffect;
+
   const SettingsScreen({
     super.key,
     required this.currentLang,
@@ -65,11 +72,15 @@ class _SettingsScreenState extends State<SettingsScreen> with WindowListener {
   String? _selectedLang;
   SharedPreferences? _prefs;
 
-  // Discord Rich Presence
+  // Discord
   bool _discordEnabled = false;
   bool _discordConnected = false;
   bool _discordConnecting = false;
   static const _discordEnabledKey = 'discord_enabled';
+
+  // Player Prefs
+  bool _useBlurBackground = false;
+  bool _autoUpdateColors = false;
 
   bool _langMenuOpen = false;
   bool _langHovered = false;
@@ -79,7 +90,7 @@ class _SettingsScreenState extends State<SettingsScreen> with WindowListener {
   // Visual prefs state
   String _selectedEffectLabel = 'solid';
   String _currentEffectKey = 'solid';
-  Color _selectedColor = const Color(0xCC222222);
+  Color _selectedColor = const Color(0xFF222222);
   bool _darkMode = true;
 
   bool _isWindows11 = false;
@@ -106,9 +117,7 @@ class _SettingsScreenState extends State<SettingsScreen> with WindowListener {
   }
 
   Future<void> _detectWindows11() async {
-    if (!Platform.isWindows) {
-      return;
-    }
+    if (!Platform.isWindows) return;
     try {
       final proc = await Process.start('powershell', [
         '-NoProfile',
@@ -117,38 +126,22 @@ class _SettingsScreenState extends State<SettingsScreen> with WindowListener {
       ]);
       final output = await proc.stdout.transform(const Utf8Decoder()).join();
       final build = int.tryParse(output.trim()) ?? 0;
-      if (mounted) {
-        setState(() {
-          _isWindows11 = build >= 22000;
-        });
-      }
-    } catch (e) {
-      debugPrint('[Windows Detection] Error: $e');
-    }
+      if (mounted) setState(() => _isWindows11 = build >= 22000);
+    } catch (_) {}
   }
 
   Future<void> _loadVisualPrefs() async {
-    await Future.delayed(
-      const Duration(milliseconds: 300),
-    ); // Esperar a que se detecte SO
-
+    await Future.delayed(const Duration(milliseconds: 300));
     final prefs = await SharedPreferences.getInstance();
     if (!mounted) return;
 
     final effectName = prefs.getString(_prefEffectKey) ?? 'solid';
-    final colorValue = prefs.getInt(_prefColorKey) ?? 0xCC222222;
+    final colorValue = prefs.getInt(_prefColorKey) ?? 0xFF222222;
     final dark = prefs.getBool(_prefDarkKey) ?? true;
 
-    // En win10 forzamos solid si no lo es
     String finalEffectLabel = effectName;
-    if (!_isWindows11) {
-      finalEffectLabel = 'solid';
-    }
-
-    // fallback si no existe
-    if (!effects.containsKey(finalEffectLabel)) {
-      finalEffectLabel = 'solid';
-    }
+    if (!_isWindows11) finalEffectLabel = 'solid';
+    if (!effects.containsKey(finalEffectLabel)) finalEffectLabel = 'solid';
 
     if (mounted) {
       setState(() {
@@ -157,10 +150,8 @@ class _SettingsScreenState extends State<SettingsScreen> with WindowListener {
         _selectedColor = Color(colorValue);
         _darkMode = dark;
       });
-      debugPrint('[Settings] Loaded prefs - effect: $finalEffectLabel');
     }
 
-    // Aplicar corrección inicial si estamos en win10 y estaba en otro efecto
     if (!_isWindows11 && effectName != 'solid') {
       if (mounted) await _applyEffect('solid', _selectedColor);
     }
@@ -186,11 +177,16 @@ class _SettingsScreenState extends State<SettingsScreen> with WindowListener {
       final enabled = _prefs!.getBool(_nsfwKey) ?? false;
       final savedLang = _prefs!.getString(_preferredLangKey);
       final discordEnabled = _prefs!.getBool(_discordEnabledKey) ?? false;
+      final blurBg = _prefs!.getBool('use_blur_background') ?? false;
+      final autoUpdate = await AlbumColorCache().getAutoUpdateOnStartup();
+
       if (!mounted) return;
       setState(() {
         _nsfw = enabled;
         _discordEnabled = discordEnabled;
         _discordConnected = DiscordService().isConnected;
+        _useBlurBackground = blurBg;
+        _autoUpdateColors = autoUpdate;
         if (savedLang != null && savedLang.isNotEmpty) {
           _selectedLang = savedLang;
         }
@@ -204,146 +200,9 @@ class _SettingsScreenState extends State<SettingsScreen> with WindowListener {
       _currentEffectKey = label;
       _selectedColor = color;
     });
-    debugPrint(
-      '[Settings] Applied effect: $label, current: $_currentEffectKey',
-    );
 
     final effect = effects[label] ?? acrylic.WindowEffect.solid;
     await widget.onChangeWindowEffect(effect, color, dark: _darkMode);
-  }
-
-  Future<void> _showEffectsMenu(BuildContext context, RenderBox rb) async {
-    _effectMenuOpen = true;
-    setState(() {});
-
-    // Filtrar efectos: Win10 solo solid
-    final availableKeys = _isWindows11 ? effects.keys.toList() : ['solid'];
-
-    final topLeft = rb.localToGlobal(Offset.zero);
-    final items = availableKeys.map((key) {
-      final label = widget.getText('effect_$key', fallback: key.capitalize());
-      return PopupMenuItem<String>(value: key, child: Text(label));
-    }).toList();
-
-    final selected = await showMenu<String>(
-      context: context,
-      position: RelativeRect.fromLTRB(
-        topLeft.dx,
-        topLeft.dy + rb.size.height,
-        topLeft.dx + rb.size.width,
-        topLeft.dy,
-      ),
-      items: items,
-      color: Colors.grey[900],
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-    );
-
-    _effectMenuOpen = false;
-    setState(() {});
-
-    if (selected != null && selected != _selectedEffectLabel) {
-      await _applyEffect(selected, _selectedColor);
-    }
-  }
-
-  Future<void> _pickSolidColor(Color color) async {
-    setState(() {
-      _selectedColor = color;
-      _darkMode =
-          ThemeData.estimateBrightnessForColor(color) == Brightness.dark;
-    });
-    // Si estamos en modo 'solid', reaplicamos para ver el color
-    if (_selectedEffectLabel == 'solid') {
-      await _applyEffect('solid', color);
-    }
-  }
-
-  void _openCustomColorDialog() {
-    showDialog(context: context, builder: (ctx) => _msgDialog(ctx));
-  }
-
-  Widget _msgDialog(BuildContext context) {
-    Color tempColor = _selectedColor;
-    return StatefulBuilder(
-      builder: (context, setSt) {
-        return AlertDialog(
-          backgroundColor: const Color(0xFF222222),
-          title: Text(widget.getText('pick_color', fallback: 'Elige un color')),
-          content: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Container(
-                  width: 50,
-                  height: 50,
-                  decoration: BoxDecoration(
-                    color: tempColor,
-                    shape: BoxShape.circle,
-                    border: Border.all(color: Colors.white24),
-                  ),
-                ),
-                const SizedBox(height: 20),
-                _colorSlider(
-                  widget.getText('red', fallback: 'Rojo'),
-                  tempColor.red,
-                  (v) => setSt(() => tempColor = tempColor.withRed(v.toInt())),
-                ),
-                _colorSlider(
-                  widget.getText('green', fallback: 'Verde'),
-                  tempColor.green,
-                  (v) =>
-                      setSt(() => tempColor = tempColor.withGreen(v.toInt())),
-                ),
-                _colorSlider(
-                  widget.getText('blue', fallback: 'Azul'),
-                  tempColor.blue,
-                  (v) => setSt(() => tempColor = tempColor.withBlue(v.toInt())),
-                ),
-                _colorSlider(
-                  widget.getText('opacity', fallback: 'Opacidad'),
-                  tempColor.alpha,
-                  (v) =>
-                      setSt(() => tempColor = tempColor.withAlpha(v.toInt())),
-                ),
-              ],
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: Text(widget.getText('cancel', fallback: 'Cancelar')),
-            ),
-            ElevatedButton(
-              onPressed: () {
-                Navigator.pop(context);
-                _pickSolidColor(tempColor);
-              },
-              child: Text(widget.getText('accept', fallback: 'Aceptar')),
-            ),
-          ],
-        );
-      },
-    );
-  }
-
-  Widget _colorSlider(String label, int value, ValueChanged<double> onChanged) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          '$label: $value',
-          style: const TextStyle(fontSize: 12, color: Colors.white70),
-        ),
-        Slider(
-          value: value.toDouble(),
-          min: 0,
-          max: 255,
-          activeColor: Colors.white,
-          inactiveColor: Colors.white24,
-          onChanged: onChanged,
-        ),
-      ],
-    );
   }
 
   Future<void> _toggleNsfw(bool value) async {
@@ -361,7 +220,6 @@ class _SettingsScreenState extends State<SettingsScreen> with WindowListener {
       await _prefs!.setBool(_discordEnabledKey, value);
 
       if (value) {
-        // Intentar conectar
         setState(() => _discordConnecting = true);
         final success = await DiscordService().initialize();
         if (!mounted) return;
@@ -370,23 +228,7 @@ class _SettingsScreenState extends State<SettingsScreen> with WindowListener {
           _discordConnected = success;
           _discordConnecting = false;
         });
-
-        if (!success && mounted) {
-          showElegantNotification(
-            context,
-            widget.getText(
-              'discord_connect_error',
-              fallback:
-                  'No se pudo conectar a Discord. Asegúrate de que Discord esté abierto.',
-            ),
-            backgroundColor: const Color(0xFFE53935),
-            textColor: Colors.white,
-            icon: Icons.error_outline,
-            iconColor: Colors.white,
-          );
-        }
       } else {
-        // Desconectar
         await DiscordService().dispose();
         if (!mounted) return;
         setState(() {
@@ -395,58 +237,8 @@ class _SettingsScreenState extends State<SettingsScreen> with WindowListener {
         });
       }
     } catch (e) {
-      if (mounted) {
-        setState(() {
-          _discordConnecting = false;
-          _discordConnected = false;
-        });
-      }
+      if (mounted) setState(() => _discordConnecting = false);
     }
-  }
-
-  Future<void> _reconnectDiscord() async {
-    setState(() => _discordConnecting = true);
-    final success = await DiscordService().reconnect();
-    if (!mounted) return;
-
-    setState(() {
-      _discordConnected = success;
-      _discordConnecting = false;
-    });
-
-    if (success && mounted) {
-      showElegantNotification(
-        context,
-        widget.getText(
-          'discord_reconnected',
-          fallback: 'Reconectado a Discord exitosamente',
-        ),
-        backgroundColor: const Color(0xFF4CAF50),
-        textColor: Colors.white,
-        icon: Icons.check_circle_outline,
-        iconColor: Colors.white,
-      );
-    } else if (mounted) {
-      showElegantNotification(
-        context,
-        widget.getText(
-          'discord_reconnect_error',
-          fallback:
-              'No se pudo reconectar. Asegúrate de que Discord esté abierto.',
-        ),
-        backgroundColor: const Color(0xFFE53935),
-        textColor: Colors.white,
-        icon: Icons.error_outline,
-        iconColor: Colors.white,
-      );
-    }
-  }
-
-  Future<void> _persistPreferredLang(String code) async {
-    try {
-      _prefs ??= await SharedPreferences.getInstance();
-      await _prefs!.setString(_preferredLangKey, code);
-    } catch (_) {}
   }
 
   Future<void> _selectLanguage(String code) async {
@@ -458,19 +250,7 @@ class _SettingsScreenState extends State<SettingsScreen> with WindowListener {
 
     try {
       await widget.onSelectLanguage(code);
-      await _persistPreferredLang(code);
-      if (!mounted) return;
-      Navigator.pop(context, code);
     } catch (e) {
-      if (!mounted) return;
-      showElegantNotification(
-        context,
-        widget.getText('error_saving', fallback: 'Error saving language'),
-        backgroundColor: const Color(0xFFE53935),
-        textColor: Colors.white,
-        icon: Icons.error_outline,
-        iconColor: Colors.white,
-      );
     } finally {
       if (mounted) setState(() => _saving = null);
     }
@@ -492,6 +272,7 @@ class _SettingsScreenState extends State<SettingsScreen> with WindowListener {
   ) async {
     final offset = renderBox.localToGlobal(Offset.zero);
     final size = renderBox.size;
+    const cardBackgroundColor = Color(0xFF1C1C1E);
     setState(() {
       _langMenuOpen = true;
       _langHovered = true;
@@ -508,8 +289,8 @@ class _SettingsScreenState extends State<SettingsScreen> with WindowListener {
       items: languages.entries
           .map((e) => PopupMenuItem<String>(value: e.key, child: Text(e.value)))
           .toList(),
+      color: cardBackgroundColor,
       elevation: 4,
-      color: Colors.grey[900],
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
     );
 
@@ -526,29 +307,26 @@ class _SettingsScreenState extends State<SettingsScreen> with WindowListener {
   @override
   Widget build(BuildContext context) {
     final get = widget.getText;
-    final Color scaffoldBg = Colors.transparent;
-
     final theme = Theme.of(context).copyWith(
       splashFactory: NoSplash.splashFactory,
       highlightColor: Colors.transparent,
       hoverColor: Colors.transparent,
       focusColor: Colors.transparent,
     );
+    final currentTheme = Theme.of(context);
 
-    final borderColorLang = (_langMenuOpen || _langHovered)
-        ? const Color.fromARGB(255, 255, 255, 255)
-        : Colors.white.withOpacity(0.04);
-    final borderColorEffect = (_effectMenuOpen || _effectHovered)
-        ? const Color.fromARGB(255, 255, 255, 255)
-        : Colors.white.withOpacity(0.04);
+    // If using solid effect, we want transparency to be the theme background color
+    // But if using acrylic, we want simple transparency.
+    // We stick to transparent scaffold for maximum compatibility with window effects.
 
-    return Theme(
-      data: theme,
-      child: Scaffold(
-        backgroundColor: scaffoldBg,
-        body: Column(
-          children: [
-            GestureDetector(
+    return Scaffold(
+      backgroundColor: Colors.transparent,
+      body: Column(
+        children: [
+          // HEADER
+          Theme(
+            data: theme,
+            child: GestureDetector(
               behavior: HitTestBehavior.translucent,
               onPanStart: (_) => windowManager.startDragging(),
               child: Container(
@@ -567,7 +345,7 @@ class _SettingsScreenState extends State<SettingsScreen> with WindowListener {
                           alignment: Alignment.center,
                           child: const Icon(
                             Icons.settings,
-                            color: Color.fromARGB(255, 255, 255, 255),
+                            color: Colors.white,
                           ),
                         ),
                       ),
@@ -576,8 +354,7 @@ class _SettingsScreenState extends State<SettingsScreen> with WindowListener {
                     Expanded(
                       child: Text(
                         get('setting_tittle', fallback: 'Settings'),
-                        style: const TextStyle(
-                          fontSize: 14,
+                        style: currentTheme.textTheme.titleSmall?.copyWith(
                           fontWeight: FontWeight.w600,
                         ),
                       ),
@@ -601,369 +378,524 @@ class _SettingsScreenState extends State<SettingsScreen> with WindowListener {
                 ),
               ),
             ),
+          ),
 
-            Expanded(
-              child: SafeArea(
-                child: Padding(
-                  padding: const EdgeInsets.all(16),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        get('lang_select', fallback: 'Select language:'),
-                        style: const TextStyle(fontSize: 16),
-                      ),
-                      const SizedBox(height: 12),
-                      MouseRegion(
-                        onEnter: (_) {
-                          setState(() => _langHovered = true);
-                        },
-                        onExit: (_) {
-                          if (!_langMenuOpen) {
-                            setState(() => _langHovered = false);
-                          }
-                        },
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 12,
-                            vertical: 6,
-                          ),
-                          decoration: BoxDecoration(
-                            color: Theme.of(context).cardTheme.color,
-                            borderRadius: BorderRadius.circular(10),
-                            border: Border.all(color: borderColorLang),
-                          ),
-                          child: Row(
-                            children: [
-                              const Icon(Icons.language),
-                              const SizedBox(width: 12),
-                              Expanded(
-                                child: Builder(
-                                  builder: (rowContext) {
-                                    return GestureDetector(
-                                      behavior: HitTestBehavior.translucent,
-                                      onTap: () {
-                                        final rb =
-                                            rowContext.findRenderObject()
-                                                as RenderBox?;
-                                        if (rb != null) {
-                                          _showLanguageMenu(rowContext, rb);
-                                        }
-                                      },
-                                      child: Row(
-                                        children: [
-                                          Expanded(
-                                            child: Text(
-                                              languages[_selectedLang] ??
-                                                  languages[widget
-                                                      .currentLang]!,
-                                            ),
-                                          ),
-                                          const Icon(Icons.arrow_drop_down),
-                                        ],
-                                      ),
-                                    );
-                                  },
-                                ),
+          // CONTENT
+          Expanded(
+            child: SafeArea(
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.all(24),
+                child: Column(
+                  children: [
+                    // GENERAL
+                    _SettingsSection(
+                      title: get('general', fallback: 'General'),
+                      children: [
+                        Builder(
+                          builder: (ctx) {
+                            return _SettingsTile(
+                              leadingIcon: Icons.language,
+                              leadingColor: Colors.blueAccent,
+                              title: get('language', fallback: 'Language'),
+                              subtitle: get(
+                                'language_subtitle',
+                                fallback: 'Choose your preferred language',
                               ),
-                              const SizedBox(width: 12),
-                              if (_saving != null)
-                                const SizedBox(
-                                  width: 20,
-                                  height: 20,
-                                  child: CircularProgressIndicator(
-                                    strokeWidth: 2,
-                                  ),
-                                )
-                              else if (widget.currentLang ==
-                                  (_selectedLang ?? widget.currentLang))
-                                const Icon(Icons.check, color: Colors.green),
-                            ],
-                          ),
-                        ),
-                      ),
-
-                      const SizedBox(height: 16),
-
-                      Text(
-                        get('window_style', fallback: 'Estilo de ventana'),
-                        style: const TextStyle(fontSize: 16),
-                      ),
-                      const SizedBox(height: 12),
-
-                      MouseRegion(
-                        onEnter: (_) => setState(() => _effectHovered = true),
-                        onExit: (_) {
-                          if (!_effectMenuOpen) {
-                            setState(() => _effectHovered = false);
-                          }
-                        },
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 12,
-                            vertical: 6,
-                          ),
-                          decoration: BoxDecoration(
-                            color: Theme.of(context).cardTheme.color,
-                            borderRadius: BorderRadius.circular(10),
-                            border: Border.all(color: borderColorEffect),
-                          ),
-                          child: Row(
-                            children: [
-                              const Icon(Icons.format_paint),
-                              const SizedBox(width: 12),
-                              Expanded(
-                                child: Builder(
-                                  builder: (rowContext) {
-                                    return GestureDetector(
-                                      behavior: HitTestBehavior.translucent,
-                                      onTap: () {
-                                        final rb =
-                                            rowContext.findRenderObject()
-                                                as RenderBox?;
-                                        if (rb != null) {
-                                          _showEffectsMenu(rowContext, rb);
-                                        }
-                                      },
-                                      child: Row(
-                                        children: [
-                                          Expanded(
-                                            child: Text(
-                                              widget.getText(
-                                                'effect_$_selectedEffectLabel',
-                                                fallback: _selectedEffectLabel
-                                                    .capitalize(),
-                                              ),
-                                            ),
-                                          ),
-                                          const Icon(Icons.arrow_drop_down),
-                                        ],
-                                      ),
-                                    );
-                                  },
-                                ),
-                              ),
-                              const SizedBox(width: 12),
-                              if (_saving != null)
-                                const SizedBox(
-                                  width: 20,
-                                  height: 20,
-                                  child: CircularProgressIndicator(
-                                    strokeWidth: 2,
-                                  ),
-                                )
-                              else if (_selectedEffectLabel ==
-                                  _currentEffectKey)
-                                const Icon(Icons.check, color: Colors.green),
-                            ],
-                          ),
-                        ),
-                      ),
-                      const SizedBox(height: 12),
-
-                      if (_selectedEffectLabel == 'solid') ...[
-                        const SizedBox(height: 12),
-                        Row(
-                          children: [
-                            _colorOption(const Color(0xFFFFFFFF)), // Blanco
-                            const SizedBox(width: 10),
-                            _colorOption(const Color(0xFF222222)), // Default
-                            const SizedBox(width: 10),
-                            _colorOption(const Color(0xFF000000)), // Negro
-                            const SizedBox(width: 10),
-                            _colorOption(
-                              const Color(0xFF4A148C),
-                            ), // Morado opaco
-                            const SizedBox(width: 10),
-                            InkWell(
-                              onTap: _openCustomColorDialog,
-                              borderRadius: BorderRadius.circular(20),
-                              child: Container(
-                                width: 36,
-                                height: 36,
-                                decoration: BoxDecoration(
-                                  shape: BoxShape.circle,
-                                  border: Border.all(color: Colors.white54),
-                                  gradient: const LinearGradient(
-                                    colors: [
-                                      Colors.red,
-                                      Colors.green,
-                                      Colors.blue,
-                                    ],
-                                    begin: Alignment.topLeft,
-                                    end: Alignment.bottomRight,
-                                  ),
-                                ),
-                                child: const Icon(
-                                  Icons.colorize,
-                                  size: 18,
-                                  color: Colors.white,
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ],
-                      const SizedBox(height: 24),
-
-                      SwitchListTile(
-                        title: Text(
-                          get('nsfw_toggle', fallback: 'Activar sección NSFW'),
-                        ),
-                        value: _nsfw,
-                        onChanged: (v) => _toggleNsfw(v),
-                        secondary: Icon(
-                          Icons.warning,
-                          color: Theme.of(context).iconTheme.color,
-                        ),
-                      ),
-                      const SizedBox(height: 24),
-
-                      // Discord Rich Presence Section
-                      Text(
-                        get(
-                          'discord_section',
-                          fallback: 'Discord Rich Presence',
-                        ),
-                        style: const TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                      const SizedBox(height: 12),
-
-                      SwitchListTile(
-                        title: Text(
-                          get(
-                            'discord_toggle',
-                            fallback: 'Mostrar presencia en Discord',
-                          ),
-                        ),
-                        subtitle: _discordConnecting
-                            ? Row(
+                              trailing: Row(
                                 children: [
-                                  const SizedBox(
-                                    width: 12,
-                                    height: 12,
-                                    child: CircularProgressIndicator(
-                                      strokeWidth: 2,
-                                    ),
-                                  ),
-                                  const SizedBox(width: 8),
                                   Text(
-                                    get(
-                                      'connecting',
-                                      fallback: 'Connecting...',
-                                    ),
-                                  ),
-                                ],
-                              )
-                            : Row(
-                                children: [
-                                  Icon(
-                                    _discordConnected
-                                        ? Icons.check_circle
-                                        : Icons.cancel,
-                                    size: 14,
-                                    color: _discordConnected
-                                        ? Colors.green
-                                        : Colors.red,
-                                  ),
-                                  const SizedBox(width: 4),
-                                  Text(
-                                    _discordConnected
-                                        ? get(
-                                            'discord_connected',
-                                            fallback: 'Conectado',
-                                          )
-                                        : get(
-                                            'discord_disconnected',
-                                            fallback: 'Desconectado',
-                                          ),
+                                    languages[_selectedLang] ??
+                                        _selectedLang ??
+                                        'English',
                                     style: TextStyle(
-                                      color: _discordConnected
-                                          ? Colors.green
-                                          : Colors.red,
-                                      fontSize: 12,
+                                      color: currentTheme.hintColor,
                                     ),
+                                  ),
+                                  Icon(
+                                    Icons.arrow_drop_down,
+                                    color: currentTheme.hintColor,
                                   ),
                                 ],
                               ),
-                        value: _discordEnabled,
-                        onChanged: _discordConnecting
-                            ? null
-                            : (v) => _toggleDiscord(v),
-                        secondary: Icon(
-                          Icons.discord,
-                          color: Theme.of(context).iconTheme.color,
+                              onTap: () {
+                                final rb = ctx.findRenderObject() as RenderBox?;
+                                if (rb != null) _showLanguageMenu(ctx, rb);
+                              },
+                            );
+                          },
                         ),
-                      ),
-
-                      if (_discordEnabled &&
-                          !_discordConnected &&
-                          !_discordConnecting) ...[
-                        const SizedBox(height: 8),
-                        Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 16),
-                          child: ElevatedButton.icon(
-                            onPressed: _reconnectDiscord,
-                            icon: const Icon(Icons.refresh, size: 18),
-                            label: Text(
-                              get(
-                                'discord_reconnect',
-                                fallback: 'Intentar reconectar',
-                              ),
+                        Divider(height: 1, color: currentTheme.dividerColor),
+                        _SettingsTile(
+                          leadingIcon: Icons.system_update,
+                          leadingColor: Colors.greenAccent,
+                          title: get(
+                            'check_update',
+                            fallback: 'Check for updates',
+                          ),
+                          subtitle: get(
+                            'click_to_check',
+                            fallback: 'Click to check for new versions',
+                          ),
+                          trailing: IconButton(
+                            icon: Icon(
+                              Icons.chevron_right,
+                              color: currentTheme.hintColor,
                             ),
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: Colors.blueAccent,
-                              foregroundColor: Colors.white,
-                            ),
+                            onPressed: () => checkForUpdate(context, get),
+                          ),
+                        ),
+                        Divider(height: 1, color: currentTheme.dividerColor),
+                        _SettingsTile(
+                          leadingIcon: Icons.explicit,
+                          leadingColor: Colors.redAccent,
+                          title: get('nsfw_toggle', fallback: 'NSFW Content'),
+                          subtitle: get(
+                            'nsfw_desc',
+                            fallback: 'Show adult content',
+                          ),
+                          trailing: Switch(
+                            value: _nsfw,
+                            onChanged: _toggleNsfw,
+                            activeColor: Colors.redAccent,
                           ),
                         ),
                       ],
-                      const SizedBox(height: 24),
+                    ),
 
-                      ElevatedButton.icon(
-                        icon: const Icon(Icons.system_update),
-                        label: Text(
-                          get(
-                            'check_update',
-                            fallback: 'Verificar actualización',
+                    // PERSONALIZATION SECTION REMOVED
+
+                    // MUSIC PLAYER
+                    _SettingsSection(
+                      title: get('music_player', fallback: 'Music Player'),
+                      children: [
+                        _SettingsTile(
+                          leadingIcon: Icons.blur_on,
+                          leadingColor: Colors.tealAccent,
+                          title: get(
+                            'blur_bg_title',
+                            fallback: 'Blurred Background',
+                          ),
+                          subtitle: get(
+                            'blur_bg_sub',
+                            fallback: 'Show blurred album art behind player',
+                          ),
+                          trailing: Switch(
+                            value: _useBlurBackground,
+                            onChanged: _toggleBlurBackground,
+                            activeColor: Colors.purpleAccent,
                           ),
                         ),
-                        onPressed: () => checkForUpdate(context, get),
-                      ),
-                    ],
-                  ),
+                        Divider(height: 1, color: currentTheme.dividerColor),
+                        _SettingsTile(
+                          leadingIcon: Icons.colorize,
+                          leadingColor: Colors.amberAccent,
+                          title: get(
+                            'auto_color_title',
+                            fallback: 'Auto-update Colors',
+                          ),
+                          subtitle: get(
+                            'auto_color_sub',
+                            fallback: 'Extract colors on startup',
+                          ),
+                          trailing: Switch(
+                            value: _autoUpdateColors,
+                            onChanged: _toggleAutoUpdate,
+                            activeColor: Colors.purpleAccent,
+                          ),
+                        ),
+                        Divider(height: 1, color: currentTheme.dividerColor),
+                        _SettingsTile(
+                          leadingIcon: Icons.lyrics,
+                          leadingColor: Colors.pinkAccent,
+                          title: get(
+                            'download_lyrics',
+                            fallback: 'Missing Lyrics',
+                          ),
+                          subtitle: get(
+                            'download_lyrics_sub',
+                            fallback: 'Download for local songs',
+                          ),
+                          trailing: IconButton(
+                            icon: const Icon(Icons.download),
+                            onPressed: _downloadMissingLyrics,
+                          ),
+                        ),
+                      ],
+                    ),
+
+                    // STORAGE
+                    _SettingsSection(
+                      title: get('storage', fallback: 'Storage'),
+                      children: [
+                        _SettingsTile(
+                          leadingIcon: Icons.cleaning_services,
+                          leadingColor: Colors.redAccent,
+                          title: get(
+                            'clear_cache_color',
+                            fallback: 'Clear Color Cache',
+                          ),
+                          subtitle: get(
+                            'clear_cache_color_sub',
+                            fallback: 'Remove saved palette data',
+                          ),
+                          trailing: IconButton(
+                            icon: const Icon(
+                              Icons.delete_outline,
+                              color: Colors.redAccent,
+                            ),
+                            onPressed: () async {
+                              await AlbumColorCache().clearCache();
+                              if (mounted) {
+                                showElegantNotification(
+                                  context,
+                                  get(
+                                    'cache_cleared',
+                                    fallback: 'Color Cache Cleared',
+                                  ),
+                                  backgroundColor: Colors.green,
+                                  textColor: Colors.white,
+                                  icon: Icons.check,
+                                );
+                              }
+                            },
+                          ),
+                        ),
+                        Divider(height: 1, color: currentTheme.dividerColor),
+                        _SettingsTile(
+                          leadingIcon: Icons.storage,
+                          leadingColor: Colors.orangeAccent,
+                          title: get(
+                            'clear_cache_meta',
+                            fallback: 'Clear Metadata Cache',
+                          ),
+                          subtitle: get(
+                            'clear_cache_meta_sub',
+                            fallback: 'Remove Spotify/Server cache',
+                          ),
+                          trailing: IconButton(
+                            icon: const Icon(
+                              Icons.delete_outline,
+                              color: Colors.orangeAccent,
+                            ),
+                            onPressed: () async {
+                              MetadataService().clearCache();
+                              await MetadataService().clearServerCache();
+                              if (mounted) {
+                                showElegantNotification(
+                                  context,
+                                  get(
+                                    'spotify_cache_cleared',
+                                    fallback: 'Metadata Cache Cleared',
+                                  ),
+                                  backgroundColor: Colors.green,
+                                  textColor: Colors.white,
+                                  icon: Icons.check,
+                                );
+                              }
+                            },
+                          ),
+                        ),
+                      ],
+                    ),
+
+                    // INTEGRATION
+                    _SettingsSection(
+                      title: get('integrations', fallback: 'Integrations'),
+                      children: [
+                        _SettingsTile(
+                          leadingIcon: Icons.discord,
+                          leadingColor: const Color(0xFF5865F2),
+                          title: 'Discord RPC',
+                          subtitle: _discordConnected
+                              ? get('discord_on', fallback: 'Connected')
+                              : get('discord_off', fallback: 'Disconnected'),
+                          trailing: Switch(
+                            value: _discordEnabled,
+                            onChanged: (v) => _toggleDiscord(v),
+                            activeColor: const Color(0xFF5865F2),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 48),
+                  ],
                 ),
               ),
             ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }
 
-  Widget _colorOption(Color color) {
-    bool isSelected = _selectedColor.value == color.value;
-    return GestureDetector(
-      onTap: () => _pickSolidColor(color),
-      child: Container(
-        width: 36,
-        height: 36,
-        decoration: BoxDecoration(
-          color: color,
-          shape: BoxShape.circle,
-          border: isSelected
-              ? Border.all(color: Colors.white, width: 2)
-              : Border.all(color: Colors.transparent),
-          boxShadow: isSelected
-              ? [const BoxShadow(color: Colors.black26, blurRadius: 4)]
-              : null,
+  // LOGIC METHODS (COPIED AND PRESERVED)
+  Future<void> _toggleBlurBackground(bool value) async {
+    try {
+      _prefs ??= await SharedPreferences.getInstance();
+      await _prefs!.setBool('use_blur_background', value);
+      GlobalThemeService().blurBackground.value = value;
+      if (!mounted) return;
+      setState(() => _useBlurBackground = value);
+    } catch (_) {}
+  }
+
+  Future<void> _toggleAutoUpdate(bool value) async {
+    await AlbumColorCache().setAutoUpdateOnStartup(value);
+    if (!mounted) return;
+    setState(() => _autoUpdateColors = value);
+  }
+
+  Future<List<File>> _getMusicFiles() async {
+    _prefs ??= await SharedPreferences.getInstance();
+    final folder = _prefs!.getString('download_folder');
+    if (folder == null || folder.isEmpty) return [];
+
+    final dir = Directory(folder);
+    if (!await dir.exists()) return [];
+
+    final validExt = {'.mp3', '.m4a', '.flac', '.wav', '.ogg'};
+    return dir
+        .listSync()
+        .whereType<File>()
+        .where((f) => validExt.contains(p.extension(f.path).toLowerCase()))
+        .toList();
+  }
+
+  Future<void> _downloadMissingLyrics() async {
+    final files = await _getMusicFiles();
+    if (files.isEmpty) {
+      if (mounted) {
+        showElegantNotification(
+          context,
+          widget.getText('no_files', fallback: 'No music files found'),
+          backgroundColor: Colors.orange,
+          textColor: Colors.white,
+          icon: Icons.warning,
+        );
+      }
+      return;
+    }
+
+    if (!mounted) return;
+    _showProgressDialog(
+      title: widget.getText('scanning_lyrics', fallback: 'Scanning lyrics'),
+      items: files,
+      onProcess: (file, counters) async {
+        String title = p.basename(file.path);
+        String artist = 'Unknown Artist';
+        try {
+          final metadata = await readMetadata(file, getImage: false);
+          if (metadata.title?.isNotEmpty == true) title = metadata.title!;
+          if (metadata.artist?.isNotEmpty == true) artist = metadata.artist![0];
+        } catch (_) {}
+
+        final saved = await LyricsService().getStoredLyrics(title, artist);
+        if (saved == null) {
+          final downloaded = await LyricsService().fetchLyrics(title, artist);
+          if (downloaded != null)
+            counters['added'] = (counters['added'] ?? 0) + 1;
+        } else {
+          counters['skipped'] = (counters['skipped'] ?? 0) + 1;
+        }
+      },
+    );
+  }
+
+  Future<void> _preloadColors() async {
+    if (mounted) {
+      showElegantNotification(
+        context,
+        widget.getText(
+          'use_player_preload',
+          fallback: 'Please use the player to preload colors for now.',
         ),
-        child: isSelected
-            ? const Icon(Icons.check, color: Colors.grey, size: 16)
-            : null,
+        icon: Icons.info,
+        backgroundColor: Colors.blue,
+        textColor: Colors.white,
+      );
+    }
+  }
+
+  Future<void> _showProgressDialog({
+    required String title,
+    required List<File> items,
+    required Future<void> Function(File, Map<String, int>) onProcess,
+  }) async {
+    final ValueNotifier<int> processed = ValueNotifier(0);
+    final Map<String, int> counters = {'added': 0, 'skipped': 0};
+    bool cancel = false;
+
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => AlertDialog(
+        backgroundColor: const Color(0xFF1E1E1E),
+        title: Text(title, style: const TextStyle(color: Colors.white)),
+        content: ValueListenableBuilder<int>(
+          valueListenable: processed,
+          builder: (context, value, _) {
+            return Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                LinearProgressIndicator(
+                  value: items.isEmpty ? 0 : value / items.length,
+                  color: Colors.purpleAccent,
+                  backgroundColor: Colors.white10,
+                ),
+                const SizedBox(height: 16),
+                Text(
+                  '$value / ${items.length}',
+                  style: const TextStyle(color: Colors.white),
+                ),
+              ],
+            );
+          },
+        ),
+        actions: [
+          TextButton(
+            onPressed: () {
+              cancel = true;
+              Navigator.pop(context);
+            },
+            child: Text(widget.getText('cancel', fallback: 'Cancel')),
+          ),
+        ],
+      ),
+    );
+
+    for (final file in items) {
+      if (cancel) break;
+      await onProcess(file, counters);
+      processed.value++;
+      if (processed.value % 5 == 0) await Future.delayed(Duration.zero);
+    }
+
+    if (!cancel && mounted && Navigator.canPop(context)) {
+      Navigator.pop(context);
+      showElegantNotification(
+        context,
+        'Done. Added: ${counters['added']}, Skipped: ${counters['skipped']}',
+        icon: Icons.check,
+        backgroundColor: Colors.green,
+        textColor: Colors.white,
+      );
+    }
+  }
+}
+
+class _SettingsSection extends StatelessWidget {
+  final String title;
+  final List<Widget> children;
+
+  const _SettingsSection({required this.title, required this.children});
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final themeService = GlobalThemeService();
+
+    return ValueListenableBuilder<Color?>(
+      valueListenable: themeService.dominantColor,
+      builder: (context, dominantColor, _) {
+        // Use GlobalThemeService color if available, otherwise use theme's card color
+        // Use hardcoded color to match input fields as requested
+        const containerColor = Color(0xFF1C1C1E);
+
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Padding(
+              padding: const EdgeInsets.only(left: 4, bottom: 12, top: 24),
+              child: Text(
+                title.toUpperCase(),
+                style: theme.textTheme.labelMedium?.copyWith(
+                  color: theme.colorScheme.onSurface.withOpacity(0.6),
+                  fontWeight: FontWeight.bold,
+                  letterSpacing: 1.2,
+                ),
+              ),
+            ),
+            Container(
+              decoration: BoxDecoration(
+                color: containerColor,
+                borderRadius: BorderRadius.circular(16),
+              ),
+              child: Column(children: children),
+            ),
+          ],
+        );
+      },
+    );
+  }
+}
+
+class _SettingsTile extends StatelessWidget {
+  final IconData leadingIcon;
+  final Color leadingColor;
+  final String title;
+  final String subtitle;
+  final Widget? trailing;
+  final VoidCallback? onTap;
+
+  const _SettingsTile({
+    super.key,
+    required this.leadingIcon,
+    required this.leadingColor,
+    required this.title,
+    required this.subtitle,
+    this.trailing,
+    this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(16),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+          child: Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: leadingColor.withOpacity(0.1),
+                  shape: BoxShape.circle,
+                ),
+                child: Icon(leadingIcon, color: leadingColor, size: 20),
+              ),
+              const SizedBox(width: 16),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      title,
+                      style: theme.textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.w600,
+                        fontSize: 16,
+                      ),
+                    ),
+                    if (subtitle.isNotEmpty) ...[
+                      const SizedBox(height: 4),
+                      Text(
+                        subtitle,
+                        style: theme.textTheme.bodyMedium?.copyWith(
+                          color: theme.hintColor,
+                          fontSize: 14,
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+              if (trailing != null) ...[const SizedBox(width: 8), trailing!],
+            ],
+          ),
+        ),
       ),
     );
   }
