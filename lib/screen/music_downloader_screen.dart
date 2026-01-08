@@ -1,4 +1,4 @@
-// spotify_screen.dart
+// music_downloader_screen.dart
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
@@ -16,8 +16,8 @@ import 'downloads_screen.dart';
 
 typedef TextGetter = String Function(String key, {String? fallback});
 
-class SpotifyScreen extends StatefulWidget {
-  const SpotifyScreen({
+class MusicDownloaderScreen extends StatefulWidget {
+  const MusicDownloaderScreen({
     super.key,
     required this.getText,
     required this.currentLang,
@@ -31,17 +31,16 @@ class SpotifyScreen extends StatefulWidget {
   final Function(String screenId)? onNavigate;
 
   @override
-  State<SpotifyScreen> createState() => _SpotifyScreenState();
+  State<MusicDownloaderScreen> createState() => _MusicDownloaderScreenState();
 }
 
-class _SpotifyScreenState extends State<SpotifyScreen>
+class _MusicDownloaderScreenState extends State<MusicDownloaderScreen>
     with WindowListener, WidgetsBindingObserver {
   List<Map<String, dynamic>> _canciones = [];
   final TextEditingController _controller = TextEditingController();
   final DownloadManager _dm = DownloadManager();
   late final VoidCallback _dmListener;
   Map<String, DownloadTask> _dmTasksBySource = {};
-  final http.Client _http = http.Client();
   final Map<String, String> _imageCache = {};
   SharedPreferences? _prefs;
   bool _searching = false;
@@ -56,26 +55,28 @@ class _SpotifyScreenState extends State<SpotifyScreen>
     try {
       windowManager.addListener(this);
     } catch (e) {
-      debugPrint('[SpotifyScreen] Error adding window listener: $e');
+      debugPrint('[MusicDownloaderScreen] Error adding window listener: $e');
     }
 
     try {
       _loadPrefs();
     } catch (e) {
-      debugPrint('[SpotifyScreen] Error loading prefs: $e');
+      debugPrint('[MusicDownloaderScreen] Error loading prefs: $e');
     }
 
     try {
       _loadImageCache();
     } catch (e) {
-      debugPrint('[SpotifyScreen] Error loading image cache: $e');
+      debugPrint('[MusicDownloaderScreen] Error loading image cache: $e');
     }
 
     if (widget.onRegisterFolderAction != null) {
       try {
         widget.onRegisterFolderAction!(_selectDownloadFolder);
       } catch (e) {
-        debugPrint('[SpotifyScreen] Error registering folder action: $e');
+        debugPrint(
+          '[MusicDownloaderScreen] Error registering folder action: $e',
+        );
       }
     }
 
@@ -95,16 +96,18 @@ class _SpotifyScreenState extends State<SpotifyScreen>
             setState(() {});
           });
         } catch (e) {
-          debugPrint('[SpotifyScreen] Error in dm listener: $e');
+          debugPrint('[MusicDownloaderScreen] Error in dm listener: $e');
         }
       };
 
       _dm.addListener(_dmListener);
       WidgetsBinding.instance.addObserver(this);
     } catch (e) {
-      debugPrint('[SpotifyScreen] Error setting up download manager: $e');
+      debugPrint(
+        '[MusicDownloaderScreen] Error setting up download manager: $e',
+      );
     }
-    debugPrint('[SpotifyScreen] initState complete');
+    debugPrint('[MusicDownloaderScreen] initState complete');
   }
 
   @override
@@ -112,31 +115,23 @@ class _SpotifyScreenState extends State<SpotifyScreen>
     try {
       _dm.removeListener(_dmListener);
     } catch (e) {
-      debugPrint('[SpotifyScreen] Error removing dm listener: $e');
+      debugPrint('[MusicDownloaderScreen] Error removing dm listener: $e');
     }
     try {
       windowManager.removeListener(this);
     } catch (e) {
-      debugPrint('[SpotifyScreen] Error removing window listener: $e');
+      debugPrint('[MusicDownloaderScreen] Error removing window listener: $e');
     }
     try {
       WidgetsBinding.instance.removeObserver(this);
     } catch (e) {
-      debugPrint('[SpotifyScreen] Error removing observer: $e');
+      debugPrint('[MusicDownloaderScreen] Error removing observer: $e');
     }
     try {
       _controller.dispose();
     } catch (e) {
-      debugPrint('[SpotifyScreen] Error disposing controller: $e');
+      debugPrint('[MusicDownloaderScreen] Error disposing controller: $e');
     }
-    // Don't close HTTP client - let pending requests complete naturally
-    // Closing it forcefully causes "Connection closed" errors in debug mode
-    // The client will be garbage collected when no longer referenced
-    // try {
-    //   _http.close();
-    // } catch (e) {
-    //   debugPrint('[SpotifyScreen] Error closing http: $e');
-    // }
     super.dispose();
   }
 
@@ -147,105 +142,93 @@ class _SpotifyScreenState extends State<SpotifyScreen>
         try {
           _dm.removeListener(_dmListener);
         } catch (e) {
-          debugPrint('[SpotifyScreen] Error pausing dm listener: $e');
+          debugPrint('[MusicDownloaderScreen] Error pausing dm listener: $e');
         }
       } else if (state == AppLifecycleState.resumed) {
         try {
           _dm.addListener(_dmListener);
         } catch (e) {
-          debugPrint('[SpotifyScreen] Error resuming dm listener: $e');
+          debugPrint('[MusicDownloaderScreen] Error resuming dm listener: $e');
         }
       }
     } catch (e) {
-      debugPrint('[SpotifyScreen] Error in didChangeAppLifecycleState: $e');
-    }
-  }
-
-  // -------------------------
-  // Helper: GET seguro
-  // -------------------------
-  Future<http.Response?> _safeGet(
-    Uri uri, {
-    Duration timeout = const Duration(seconds: 10),
-  }) async {
-    try {
-      final res = await _http.get(uri).timeout(timeout);
-      return res;
-    } on TimeoutException catch (e, st) {
-      debugPrint('[SpotifyScreen] Timeout GET $uri: $e\n$st');
-      return null;
-    } on SocketException catch (e, st) {
-      debugPrint('[SpotifyScreen] SocketException GET $uri: $e\n$st');
-      return null;
-    } on HttpException catch (e, st) {
-      // This catches "Connection closed before full header was received"
-      debugPrint('[SpotifyScreen] HttpException GET $uri: $e\n$st');
-      return null;
-    } catch (e, st) {
-      // Catch any other errors including connection closed during dispose
-      if (e.toString().contains('Connection closed') ||
-          e.toString().contains('Socket is closed')) {
-        debugPrint(
-          '[SpotifyScreen] Connection closed (widget likely disposed): $uri',
-        );
-        return null;
-      }
-      debugPrint('[SpotifyScreen] Unknown error GET $uri: $e\n$st');
-      return null;
-    }
-  }
-
-  Future<String?> buscarImagenPinterest(String nombre, String artista) async {
-    final key =
-        '${nombre.toLowerCase().trim()}|${artista.toLowerCase().trim()}';
-    if (_imageCache.containsKey(key)) return _imageCache[key];
-    try {
-      final query = 'portada $nombre $artista';
-      final url = Uri.parse(
-        '${ApiConfig.dorratzBaseUrl}/v2/pinterest?q=${Uri.encodeComponent(query)}',
+      debugPrint(
+        '[MusicDownloaderScreen] Error in didChangeAppLifecycleState: $e',
       );
-      final res = await _safeGet(url, timeout: const Duration(seconds: 8));
-      if (res == null) return null;
-      if (res.statusCode != 200) {
+    }
+  }
+
+  // Helper para formatear texto a Title Case
+  String _toTitleCase(String text) {
+    if (text.isEmpty) return text;
+    if (text.length <= 3)
+      return text.toUpperCase(); // Para siglas como BTS, AC/DC
+
+    return text
+        .split(' ')
+        .map((word) {
+          if (word.isEmpty) return word;
+          return word[0].toUpperCase() + word.substring(1).toLowerCase();
+        })
+        .join(' ');
+  }
+
+  Future<Map<String, dynamic>?> _safeGetJson(
+    Uri uri, {
+    Duration timeout = const Duration(seconds: 15),
+  }) async {
+    debugPrint('[MusicDownloaderScreen] _safeGetJson starting for: $uri');
+
+    try {
+      debugPrint('[MusicDownloaderScreen] Making HTTP GET request...');
+
+      final response = await http
+          .get(uri)
+          .timeout(
+            timeout,
+            onTimeout: () {
+              debugPrint('[MusicDownloaderScreen] Request timed out');
+              throw TimeoutException('Request timeout');
+            },
+          );
+
+      debugPrint(
+        '[MusicDownloaderScreen] Response received: ${response.statusCode}',
+      );
+
+      if (response.statusCode == 200) {
+        debugPrint('[MusicDownloaderScreen] Parsing JSON response...');
+        final data = jsonDecode(response.body) as Map<String, dynamic>;
+        debugPrint('[MusicDownloaderScreen] JSON parsed successfully');
+        return data;
+      } else {
         debugPrint(
-          '[SpotifyScreen] buscarImagenPinterest non-200: ${res.statusCode}',
+          '[MusicDownloaderScreen] Non-200 status code: ${response.statusCode}',
         );
         return null;
       }
-      final parsed = jsonDecode(res.body);
-      String? img;
-      if (parsed is List && parsed.isNotEmpty) {
-        final first = parsed.first;
-        if (first is Map<String, dynamic>) {
-          img =
-              first['image_large_url'] ??
-              first['image_small_url'] ??
-              first['image_medium_url'];
-        }
-      } else if (parsed is Map<String, dynamic>) {
-        img =
-            parsed['image_large_url'] ??
-            parsed['image_small_url'] ??
-            parsed['image_medium_url'];
-      }
-      if (img != null && img.isNotEmpty) {
-        _imageCache[key] = img;
-        _prefs ??= await SharedPreferences.getInstance();
-        try {
-          await _prefs!.setString('image_cache_json', jsonEncode(_imageCache));
-        } catch (e) {
-          debugPrint('[SpotifyScreen] failed saving image cache: $e');
-        }
-        return img;
-      }
+    } on SocketException catch (e, st) {
+      debugPrint(
+        '[MusicDownloaderScreen] Network error (SocketException): $e\n$st',
+      );
+      return null;
+    } on TimeoutException catch (e, st) {
+      debugPrint('[MusicDownloaderScreen] Timeout error: $e\n$st');
+      return null;
+    } on http.ClientException catch (e, st) {
+      debugPrint('[MusicDownloaderScreen] HTTP client error: $e\n$st');
+      return null;
+    } on FormatException catch (e, st) {
+      debugPrint('[MusicDownloaderScreen] JSON parse error: $e\n$st');
+      return null;
     } catch (e, st) {
-      debugPrint('[SpotifyScreen] buscarImagenPinterest error: $e\n$st');
+      debugPrint('[MusicDownloaderScreen] Unexpected error: $e\n$st');
+      return null;
     }
-    return null;
   }
 
   void _uiLog(String s) {
-    debugPrint('[SpotifyScreen UI] $s');
+    debugPrint('[MusicDownloaderScreen UI] $s');
     _uiLogs.add(s);
     if (_uiLogs.length > 200) _uiLogs.removeAt(0);
     if (!mounted) return;
@@ -258,85 +241,112 @@ class _SpotifyScreenState extends State<SpotifyScreen>
   Future<void> _loadPrefs() async {
     try {
       _prefs ??= await SharedPreferences.getInstance();
-      debugPrint('[SpotifyScreen] loaded prefs');
+      debugPrint('[MusicDownloaderScreen] loaded prefs');
       final last = _prefs!.getString('last_search_query');
       if (last != null && last.isNotEmpty) {
         _lastSearchQuery = last;
-        _fetchRecommendations(last);
+        // Disabled automatic recommendation loading to prevent crashes
+        // User can manually search to load recommendations
+        debugPrint(
+          '[MusicDownloaderScreen] Last search query: $last (auto-load disabled)',
+        );
       }
-    } catch (e) {
-      debugPrint('[SpotifyScreen] loadPrefs error: $e');
+    } catch (e, st) {
+      debugPrint('[MusicDownloaderScreen] loadPrefs error: $e\n$st');
     }
   }
 
   Future<void> _fetchRecommendations(String query) async {
     if (_loadingRecommendations) return;
+    if (!mounted) return;
+
     setState(() => _loadingRecommendations = true);
 
     try {
       final uri = Uri.parse(
-        '${ApiConfig.dorratzBaseUrl}/spotifysearch?query=${Uri.encodeComponent(query)}',
-      );
-      final res = await _safeGet(uri, timeout: const Duration(seconds: 10));
-      if (res == null) {
+        '${ApiConfig.foranlyBackendPrimary}/youtube/search',
+      ).replace(queryParameters: {'q': query, 'limit': '5'});
+      final response = await http.get(uri).timeout(const Duration(seconds: 10));
+
+      if (!mounted) {
+        setState(() => _loadingRecommendations = false);
+        return;
+      }
+
+      Map<String, dynamic>? data;
+      if (response.statusCode == 200) {
+        data = jsonDecode(response.body) as Map<String, dynamic>;
+      } else {
         debugPrint(
-          '[SpotifyScreen] recommendation fetch returned null for $query',
+          '[MusicDownloaderScreen] Reco fetch failed: ${response.statusCode}',
+        );
+        data = null;
+      }
+
+      if (data == null) {
+        debugPrint(
+          '[MusicDownloaderScreen] Failed to fetch recommendations: null response',
         );
         if (mounted) setState(() => _loadingRecommendations = false);
         return;
       }
-      if (res.statusCode != 200) {
-        debugPrint(
-          '[SpotifyScreen] recommendation fetch non-200 ${res.statusCode}',
-        );
-        if (mounted) setState(() => _loadingRecommendations = false);
-        return;
-      }
 
-      final data = jsonDecode(res.body) as Map<String, dynamic>;
-      final cancelRaw = data['data'] as List<dynamic>? ?? [];
-      final all = cancelRaw.whereType<Map<String, dynamic>>().toList();
+      final resultsRaw = data['results'] as List<dynamic>? ?? [];
 
-      all.sort((a, b) {
-        int getPop(dynamic p) {
-          if (p is int) return p;
-          if (p is String) {
-            final cleaned = p.replaceAll('%', '').trim();
-            return int.tryParse(cleaned) ?? 0;
-          }
-          return 0;
-        }
+      final mapped = resultsRaw
+          .map((item) {
+            if (item is! Map<String, dynamic>) return <String, dynamic>{};
+            final r = item;
+            final String rawTitle = r['title'] ?? '';
+            final String parsedSong = r['parsedSong'] ?? '';
+            final String parsedArtist = r['parsedArtist'] ?? '';
 
-        final popA = getPop(a['popularity']);
-        final popB = getPop(b['popularity']);
-        return popB.compareTo(popA);
-      });
+            // Intentar obtener autor de varios campos posibles
+            String author = '';
+            if (r['author'] != null && r['author'] is String) {
+              author = r['author'];
+            } else if (r['channel'] != null) {
+              if (r['channel'] is String) {
+                author = r['channel'];
+              } else if (r['channel'] is Map) {
+                author = r['channel']['name'] ?? '';
+              }
+            } else if (r['uploader'] != null) {
+              if (r['uploader'] is String) {
+                author = r['uploader'];
+              } else if (r['uploader'] is Map) {
+                author = r['uploader']['name'] ?? '';
+              }
+            }
 
-      final limited = all.take(5).toList();
-      final mapped = List<Map<String, dynamic>>.from(limited);
+            final title = parsedSong.isNotEmpty ? parsedSong : rawTitle;
+            // Preferir parsedArtist, luego author, luego 'Unknown artist'
+            final artist = parsedArtist.isNotEmpty
+                ? parsedArtist
+                : (author.isNotEmpty ? author : 'Unknown artist');
 
-      for (var m in mapped) {
-        if ((m['url'] == null ||
-            (m['url'] is String && (m['url'] as String).isEmpty))) {
-          if (m.containsKey('uri')) {
-            m['url'] = m['uri'];
-          } else if (m.containsKey('link')) {
-            m['url'] = m['link'];
-          }
-        }
-      }
+            return {
+              'title': title,
+              'artist': artist,
+              'album': 'YouTube',
+              'image': r['thumbnail'] ?? '',
+              'url': r['url'] ?? '',
+              'popularity': '100',
+              'duration_ms': (r['duration'] is int)
+                  ? (r['duration'] as int) * 1000
+                  : 0,
+            };
+          })
+          .where((m) => m.isNotEmpty)
+          .toList();
 
       if (mounted) {
         setState(() {
           _recommendations = mapped;
         });
-        Future.microtask(() async {
-          await _assignImagesChunked(mapped, chunkSize: 4);
-          if (mounted) setState(() {});
-        });
       }
     } catch (e, st) {
-      debugPrint('[SpotifyScreen] recommendation fetch error: $e\n$st');
+      debugPrint('[MusicDownloaderScreen] recommendation fetch error: $e\n$st');
     } finally {
       if (mounted) setState(() => _loadingRecommendations = false);
     }
@@ -351,97 +361,172 @@ class _SpotifyScreenState extends State<SpotifyScreen>
         decoded.forEach((k, v) {
           if (v is String && v.isNotEmpty) _imageCache[k] = v;
         });
-        debugPrint(
-          '[SpotifyScreen] image cache loaded ${_imageCache.length} entries',
-        );
       }
     } catch (e) {
-      debugPrint('[SpotifyScreen] loadImageCache error: $e');
+      debugPrint('[MusicDownloaderScreen] loadImageCache error: $e');
     }
   }
 
   Future<void> _buscarCanciones() async {
     final query = _controller.text.trim();
     if (query.isEmpty) return;
-    _prefs ??= await SharedPreferences.getInstance();
+
+    if (!mounted) return;
+
+    try {
+      _prefs ??= await SharedPreferences.getInstance();
+    } catch (e, st) {
+      debugPrint('[MusicDownloaderScreen] Error loading prefs: $e\n$st');
+    }
+
+    if (!mounted) return;
 
     setState(() {
       _searching = true;
       _canciones = [];
       _recommendations = [];
     });
-    debugPrint('[SpotifyScreen] buscarCanciones: query="$query"');
-    _uiLog('Buscar: $query');
+
+    debugPrint('[MusicDownloaderScreen] buscarCanciones: query="$query"');
 
     try {
       final uri = Uri.parse(
-        '${ApiConfig.dorratzBaseUrl}/spotifysearch?query=${Uri.encodeComponent(query)}',
+        '${ApiConfig.foranlyBackendPrimary}/youtube/search',
+      ).replace(queryParameters: {'q': query, 'limit': '20'});
+
+      debugPrint('[MusicDownloaderScreen] Fetching from URI: $uri');
+
+      final response = await http.get(uri).timeout(const Duration(seconds: 15));
+      debugPrint(
+        '[MusicDownloaderScreen] Response received: ${response.statusCode}',
       );
-      final res = await _safeGet(uri, timeout: const Duration(seconds: 10));
-      if (res == null) {
-        debugPrint(
-          '[SpotifyScreen] buscarCanciones: request failed for $query',
-        );
-        if (mounted) setState(() => _searching = false);
-        return;
+
+      Map<String, dynamic>? data;
+      if (response.statusCode == 200) {
+        data = jsonDecode(response.body) as Map<String, dynamic>;
+      } else {
+        data = null;
       }
-      if (res.statusCode != 200) {
-        debugPrint(
-          '[SpotifyScreen] buscarCanciones: non-200 ${res.statusCode}',
-        );
-        if (mounted) setState(() => _searching = false);
+
+      if (!mounted) {
+        debugPrint('[MusicDownloaderScreen] Widget unmounted after fetch');
         return;
       }
 
-      final data = jsonDecode(res.body) as Map<String, dynamic>;
-      final cancionesRaw = data['data'] as List<dynamic>? ?? [];
-      final canciones = cancionesRaw.whereType<Map<String, dynamic>>().toList();
-      debugPrint(
-        '[SpotifyScreen] spotifysearch returned ${canciones.length} items',
-      );
+      if (data == null) {
+        debugPrint('[MusicDownloaderScreen] Response is null - network error');
+        if (mounted) {
+          setState(() => _searching = false);
+          showElegantNotification(
+            context,
+            widget.getText(
+              'network_error',
+              fallback: 'Error de red. Verifica tu conexión.',
+            ),
+            backgroundColor: const Color(0xFFE53935),
+            textColor: Colors.white,
+            icon: Icons.wifi_off,
+            iconColor: Colors.white,
+          );
+        }
+        return;
+      }
+
+      debugPrint('[MusicDownloaderScreen] Response received, parsing data...');
+
+      final resultsRaw = data['results'] as List<dynamic>? ?? [];
+
+      debugPrint('[MusicDownloaderScreen] Found ${resultsRaw.length} results');
+
+      final canciones = resultsRaw
+          .map((item) {
+            try {
+              if (item is! Map<String, dynamic>) return <String, dynamic>{};
+              final r = item;
+              final String rawTitle = r['title'] ?? '';
+              final String parsedSong = r['parsedSong'] ?? '';
+              final String parsedArtist = r['parsedArtist'] ?? '';
+
+              // DEBUG: Ver qué campos están disponibles
+              debugPrint(
+                '[MusicDownloaderScreen] Item keys: ${r.keys.toList()}',
+              );
+              debugPrint(
+                '[MusicDownloaderScreen] parsedArtist: "$parsedArtist"',
+              );
+              debugPrint(
+                '[MusicDownloaderScreen] author field: ${r['author']}',
+              );
+
+              // Intentar obtener autor de varios campos posibles
+              String author = '';
+              if (r['author'] != null && r['author'] is String) {
+                author = r['author'];
+              } else if (r['channel'] != null) {
+                if (r['channel'] is String) {
+                  author = r['channel'];
+                } else if (r['channel'] is Map) {
+                  author = r['channel']['name'] ?? '';
+                }
+              } else if (r['uploader'] != null) {
+                if (r['uploader'] is String) {
+                  author = r['uploader'];
+                } else if (r['uploader'] is Map) {
+                  author = r['uploader']['name'] ?? '';
+                }
+              }
+
+              final title = parsedSong.isNotEmpty
+                  ? _toTitleCase(parsedSong)
+                  : rawTitle;
+              // Preferir parsedArtist, luego author, luego 'Unknown artist'
+              String artist = parsedArtist.isNotEmpty
+                  ? parsedArtist
+                  : (author.isNotEmpty ? author : 'Unknown artist');
+              artist = _toTitleCase(artist);
+
+              return {
+                'title': title,
+                'artist': artist,
+                'album': 'YouTube',
+                'image': r['thumbnail'] ?? '',
+                'url': r['url'] ?? '',
+                'popularity': '100',
+                'duration_ms': (r['duration'] is int)
+                    ? (r['duration'] as int) * 1000
+                    : 0,
+              };
+            } catch (e, st) {
+              debugPrint('[MusicDownloaderScreen] Error parsing item: $e\n$st');
+              return <String, dynamic>{};
+            }
+          })
+          .where((m) => m.isNotEmpty)
+          .toList();
 
       final mapped = List<Map<String, dynamic>>.from(canciones);
 
-      mapped.sort((a, b) {
-        int getPop(dynamic p) {
-          if (p is int) return p;
-          if (p is String) {
-            final cleaned = p.replaceAll('%', '').trim();
-            return int.tryParse(cleaned) ?? 0;
-          }
-          return 0;
-        }
-
-        final popA = getPop(a['popularity']);
-        final popB = getPop(b['popularity']);
-        return popB.compareTo(popA);
-      });
+      debugPrint('[MusicDownloaderScreen] Mapped ${mapped.length} songs');
 
       if (mapped.isNotEmpty) {
-        final top = mapped.first;
-        final artist = top['artist'];
-        if (artist != null && artist is String && artist.isNotEmpty) {
-          await _prefs!.setString('last_search_query', artist);
+        try {
+          final top = mapped.first;
+          final artist = top['artist'];
+          if (artist != null && artist is String && artist.isNotEmpty) {
+            await _prefs!.setString('last_search_query', artist);
+          } else {
+            await _prefs!.setString('last_search_query', query);
+          }
+        } catch (e, st) {
           debugPrint(
-            '[SpotifyScreen] Updated recommendation seed to artist: $artist',
+            '[MusicDownloaderScreen] Error saving last query: $e\n$st',
           );
-        } else {
-          await _prefs!.setString('last_search_query', query);
         }
       } else {
-        await _prefs!.setString('last_search_query', query);
-      }
-
-      for (var m in mapped) {
-        if ((m['url'] == null ||
-            (m['url'] is String && (m['url'] as String).isEmpty))) {
-          if (m.containsKey('uri')) {
-            m['url'] = m['uri'];
-            debugPrint('[SpotifyScreen] normalized uri -> url for item');
-          } else if (m.containsKey('link')) {
-            m['url'] = m['link'];
-            debugPrint('[SpotifyScreen] normalized link -> url for item');
-          }
+        try {
+          await _prefs!.setString('last_search_query', query);
+        } catch (e, st) {
+          debugPrint('[MusicDownloaderScreen] Error saving query: $e\n$st');
         }
       }
 
@@ -449,32 +534,14 @@ class _SpotifyScreenState extends State<SpotifyScreen>
         setState(() {
           _canciones = mapped;
         });
-      }
-
-      Future.microtask(() async {
-        await _assignImagesChunked(mapped, chunkSize: 4);
-        if (mounted) setState(() {});
-      });
-
-      final missingUrlCount = _canciones
-          .where((c) => c['url'] == null || (c['url'] as String).isEmpty)
-          .length;
-      _uiLog('Resultados: ${_canciones.length}, sin url: $missingUrlCount');
-      if (missingUrlCount > 0) {
-        showElegantNotification(
-          context,
-          widget.getText(
-            'warning_missing_url',
-            fallback: 'Algunas canciones no tienen URL',
-          ),
-          backgroundColor: const Color(0xFFFFA500),
-          textColor: Colors.white,
-          icon: Icons.warning_amber,
-          iconColor: Colors.white,
+        debugPrint(
+          '[MusicDownloaderScreen] UI updated with ${mapped.length} songs',
         );
       }
     } catch (e, st) {
-      debugPrint('[SpotifyScreen] buscarCanciones error: $e\n$st');
+      debugPrint(
+        '[MusicDownloaderScreen] buscarCanciones CRITICAL error: $e\n$st',
+      );
       if (mounted) {
         showElegantNotification(
           context,
@@ -486,64 +553,19 @@ class _SpotifyScreenState extends State<SpotifyScreen>
         );
       }
     } finally {
-      if (mounted) setState(() => _searching = false);
-    }
-  }
-
-  Future<void> _assignImagesChunked(
-    List<Map<String, dynamic>> mapped, {
-    int chunkSize = 4,
-  }) async {
-    for (int i = 0; i < mapped.length; i += chunkSize) {
-      if (!mounted) return;
-      final end = (i + chunkSize).clamp(0, mapped.length);
-      final chunk = mapped.sublist(i, end);
-      final futures = <Future<void>>[];
-      for (int j = 0; j < chunk.length; j++) {
-        final idx = i + j;
-        final c = mapped[idx];
-        futures.add(() async {
-          if (!mounted) return;
-          try {
-            final title = (c['title'] ?? '').toString();
-            String artista = widget.getText('artist_label', fallback: 'Artist');
-            String nombre = title;
-            if (title.contains(' - ')) {
-              final partes = title.split(' - ').map((s) => s.trim()).toList();
-              artista = partes.isNotEmpty
-                  ? partes[0]
-                  : widget.getText('artist_label', fallback: 'Artist');
-              nombre = partes.length > 1
-                  ? partes[1]
-                  : (partes.isNotEmpty ? partes[0] : title);
-            }
-            final img = await buscarImagenPinterest(nombre, artista);
-            c['image'] = img ?? '';
-          } catch (e, st) {
-            debugPrint(
-              '[SpotifyScreen] _assignImagesChunked image fetch error: $e\n$st',
-            );
-            c['image'] = '';
-          }
-        }());
+      if (mounted) {
+        setState(() => _searching = false);
+        debugPrint('[MusicDownloaderScreen] Search completed');
       }
-      await Future.wait(futures);
-      if (!mounted) return;
-      await Future.delayed(const Duration(milliseconds: 120));
     }
   }
 
   Future<void> _selectDownloadFolder() async {
-    debugPrint('[SpotifyScreen] _selectDownloadFolder called');
     final carpeta = await FilePicker.platform.getDirectoryPath();
-    if (carpeta == null) {
-      _uiLog('Seleccionar carpeta cancelada por usuario');
-      return;
-    }
+    if (carpeta == null) return;
     final prefs = await SharedPreferences.getInstance();
     final norm = p.normalize(carpeta);
     await prefs.setString('download_folder', norm);
-    _uiLog('Carpeta guardada: $norm');
     if (mounted) setState(() {});
     showElegantNotification(
       context,
@@ -556,19 +578,15 @@ class _SpotifyScreenState extends State<SpotifyScreen>
       icon: Icons.folder_open,
       iconColor: Colors.blue,
     );
-    debugPrint('[SpotifyScreen] download_folder saved: $norm');
   }
 
   Future<void> _queueDownload(Map<String, dynamic> c) async {
-    debugPrint('[SpotifyScreen] queueDownload for item: ${c.toString()}');
     final prefs = await SharedPreferences.getInstance();
     String? downloadFolder = prefs.getString('download_folder');
 
     if (downloadFolder == null || downloadFolder.isEmpty) {
-      debugPrint('[SpotifyScreen] no download folder pref, asking user');
       final carpeta = await FilePicker.platform.getDirectoryPath();
       if (carpeta == null) {
-        _uiLog('Descarga cancelada por usuario (no hay carpeta)');
         showElegantNotification(
           context,
           widget.getText('download_cancelled', fallback: 'Descarga cancelada'),
@@ -581,31 +599,12 @@ class _SpotifyScreenState extends State<SpotifyScreen>
       }
       downloadFolder = p.normalize(carpeta);
       await prefs.setString('download_folder', downloadFolder);
-      debugPrint(
-        '[SpotifyScreen] user selected download folder: $downloadFolder',
-      );
-      showElegantNotification(
-        context,
-        widget.getText(
-          'download_folder_set',
-          fallback: 'Carpeta de descargas establecida',
-        ),
-        backgroundColor: const Color(0xFF2C2C2C),
-        textColor: Colors.white,
-        icon: Icons.folder_open,
-        iconColor: Colors.blue,
-      );
     }
 
     try {
       final dir = Directory(downloadFolder);
       if (!dir.existsSync()) dir.createSync(recursive: true);
-      final testFile = File(p.join(downloadFolder, '.forawn_write_test'));
-      testFile.writeAsStringSync('ok');
-      testFile.deleteSync();
-      debugPrint('[SpotifyScreen] folder writable test OK');
     } catch (e) {
-      debugPrint('[SpotifyScreen] download folder writable test failed: $e');
       showElegantNotification(
         context,
         widget.getText(
@@ -634,18 +633,19 @@ class _SpotifyScreenState extends State<SpotifyScreen>
     final url = c['url']?.toString() ?? nombre;
     final id = DateTime.now().millisecondsSinceEpoch.toString();
 
+    // Use bypassSpotifyApi = true to enforce direct yt-dlp handling as we are providing YouTube URL/Search
     final task = DownloadTask(
       id: id,
       title: nombre,
       artist: artista,
       image: imageUrl,
       sourceUrl: url,
+      bypassSpotifyApi: true,
     );
 
     debugPrint(
-      '[SpotifyScreen] enqueuing task ${task.id} title="${task.title}" url="${task.sourceUrl}" image="${task.image}"',
+      '[MusicDownloaderScreen] enqueuing task ${task.id} title="${task.title}"',
     );
-    _uiLog('Encolada: ${task.title}');
     DownloadManager().addTask(task);
     showElegantNotification(
       context,
@@ -657,109 +657,9 @@ class _SpotifyScreenState extends State<SpotifyScreen>
     );
   }
 
-  /// Descarga directa desde YouTube (bypass Spotify API)
-  Future<void> _queueDirectDownload(Map<String, dynamic> c) async {
-    debugPrint('[SpotifyScreen] queueDirectDownload for item: ${c.toString()}');
-    final prefs = await SharedPreferences.getInstance();
-    String? downloadFolder = prefs.getString('download_folder');
-
-    if (downloadFolder == null || downloadFolder.isEmpty) {
-      debugPrint('[SpotifyScreen] no download folder pref, asking user');
-      final carpeta = await FilePicker.platform.getDirectoryPath();
-      if (carpeta == null) {
-        _uiLog('Descarga cancelada por usuario (no hay carpeta)');
-        showElegantNotification(
-          context,
-          widget.getText('download_cancelled', fallback: 'Descarga cancelada'),
-          backgroundColor: const Color(0xFFE53935),
-          textColor: Colors.white,
-          icon: Icons.cancel,
-          iconColor: Colors.white,
-        );
-        return;
-      }
-      downloadFolder = p.normalize(carpeta);
-      await prefs.setString('download_folder', downloadFolder);
-      showElegantNotification(
-        context,
-        widget.getText(
-          'download_folder_set',
-          fallback: 'Carpeta de descargas establecida',
-        ),
-        backgroundColor: const Color(0xFF2C2C2C),
-        textColor: Colors.white,
-        icon: Icons.folder_open,
-        iconColor: Colors.blue,
-      );
-    }
-
-    try {
-      final dir = Directory(downloadFolder);
-      if (!dir.existsSync()) dir.createSync(recursive: true);
-      final testFile = File(p.join(downloadFolder, '.forawn_write_test'));
-      testFile.writeAsStringSync('ok');
-      testFile.deleteSync();
-    } catch (e) {
-      debugPrint('[SpotifyScreen] download folder writable test failed: $e');
-      showElegantNotification(
-        context,
-        widget.getText(
-          'download_folder_invalid',
-          fallback: 'Carpeta inválida o sin permisos',
-        ),
-        backgroundColor: const Color(0xFFE53935),
-        textColor: Colors.white,
-        icon: Icons.error_outline,
-        iconColor: Colors.white,
-      );
-      return;
-    }
-
-    final title = (c['title'] ?? 'Unknown').toString();
-    String artista = widget.getText(
-      'unknown_artist',
-      fallback: 'Unknown artist',
-    );
-    if (title.contains(' - ')) {
-      final partes = title.split(' - ');
-      artista = partes.isNotEmpty ? partes[0] : artista;
-    }
-    final nombre = title;
-    final imageUrl = (c['image'] ?? '').toString();
-    final url = c['url']?.toString() ?? nombre;
-    final id = DateTime.now().millisecondsSinceEpoch.toString();
-
-    final task = DownloadTask(
-      id: id,
-      title: nombre,
-      artist: artista,
-      image: imageUrl,
-      sourceUrl: url,
-      bypassSpotifyApi: true, // Activar bypass para descarga directa
-    );
-
-    debugPrint(
-      '[SpotifyScreen] enqueuing DIRECT task ${task.id} title="${task.title}" url="${task.sourceUrl}" bypass=true',
-    );
-    _uiLog('Encolada (YouTube directo): ${task.title}');
-    DownloadManager().addTask(task);
-    showElegantNotification(
-      context,
-      widget.getText(
-        'download_direct_queued',
-        fallback: 'Direct download queued',
-      ),
-      backgroundColor: const Color(0xFF2C2C2C),
-      textColor: Colors.white,
-      icon: Icons.flash_on,
-      iconColor: Colors.orangeAccent,
-    );
-  }
-
   void _openDownloadsScreen() {
     if (!mounted) return;
     try {
-      // Verificar que el contexto es válido
       if (mounted && context.mounted) {
         Navigator.of(context)
             .push(
@@ -771,37 +671,11 @@ class _SpotifyScreenState extends State<SpotifyScreen>
               ),
             )
             .catchError((e, st) {
-              debugPrint('[SpotifyScreen] Navigation error: $e\n$st');
-              if (mounted) {
-                showElegantNotification(
-                  context,
-                  widget.getText(
-                    'error_opening_downloads',
-                    fallback: 'No se pudo abrir Descargas',
-                  ),
-                  backgroundColor: const Color(0xFFE53935),
-                  textColor: Colors.white,
-                  icon: Icons.error_outline,
-                  iconColor: Colors.white,
-                );
-              }
+              debugPrint('[MusicDownloaderScreen] Navigation error: $e\n$st');
             });
       }
     } catch (e, st) {
-      debugPrint('[SpotifyScreen] openDownloads error: $e\n$st');
-      if (mounted) {
-        showElegantNotification(
-          context,
-          widget.getText(
-            'error_opening_downloads',
-            fallback: 'No se pudo abrir Descargas',
-          ),
-          backgroundColor: const Color(0xFFE53935),
-          textColor: Colors.white,
-          icon: Icons.error_outline,
-          iconColor: Colors.white,
-        );
-      }
+      debugPrint('[MusicDownloaderScreen] openDownloads error: $e\n$st');
     }
   }
 
@@ -949,7 +823,6 @@ class _SpotifyScreenState extends State<SpotifyScreen>
 
                       const SizedBox(height: 12),
 
-                      // Lista protegida con LayoutBuilder y Image.network seguro
                       Expanded(
                         child: ListView.builder(
                           itemCount: listToShow.length,
@@ -962,14 +835,13 @@ class _SpotifyScreenState extends State<SpotifyScreen>
                                         get('untitled', fallback: 'Sin título'))
                                     .toString();
                             final imageUrl = (c['image'] ?? '').toString();
-                            String artista = get(
-                              'unknown_artist',
-                              fallback: 'Artista desconocido',
-                            );
-                            if (title.contains(' - ')) {
-                              final partes = title.split(' - ');
-                              artista = partes.isNotEmpty ? partes[0] : artista;
-                            }
+                            final artista =
+                                (c['artist'] ??
+                                        get(
+                                          'unknown_artist',
+                                          fallback: 'Artista desconocido',
+                                        ))
+                                    .toString();
 
                             DownloadTask? task;
                             final src = (c['url'] ?? '').toString();
@@ -1071,7 +943,6 @@ class _SpotifyScreenState extends State<SpotifyScreen>
 
                             return LayoutBuilder(
                               builder: (context, constraints) {
-                                // Si el ancho disponible es demasiado pequeño, evita construir el ListTile
                                 if (constraints.maxWidth < 80) {
                                   return const SizedBox(height: 56);
                                 }
@@ -1103,21 +974,6 @@ class _SpotifyScreenState extends State<SpotifyScreen>
                                                         .color
                                                         ?.withOpacity(0.54),
                                                   ),
-                                              loadingBuilder:
-                                                  (ctx, child, progress) {
-                                                    if (progress == null)
-                                                      return child;
-                                                    return const SizedBox(
-                                                      width: 48,
-                                                      height: 48,
-                                                      child: Center(
-                                                        child:
-                                                            CircularProgressIndicator(
-                                                              strokeWidth: 2,
-                                                            ),
-                                                      ),
-                                                    );
-                                                  },
                                             ),
                                           )
                                         : Icon(
@@ -1158,27 +1014,12 @@ class _SpotifyScreenState extends State<SpotifyScreen>
                                     children: [
                                       statusChip(),
                                       const SizedBox(width: 8),
-                                      // Botón de descarga normal (Spotify API)
                                       IconButton(
                                         icon: const Icon(Icons.download),
                                         onPressed: () => _queueDownload(c),
                                         tooltip: widget.getText(
                                           'download',
                                           fallback: 'Download',
-                                        ),
-                                      ),
-                                      // Botón de descarga directa (YouTube)
-                                      IconButton(
-                                        icon: const Icon(
-                                          Icons.flash_on,
-                                          size: 20,
-                                        ),
-                                        color: Colors.orangeAccent,
-                                        onPressed: () =>
-                                            _queueDirectDownload(c),
-                                        tooltip: widget.getText(
-                                          'download_direct',
-                                          fallback: 'Direct YouTube Download',
                                         ),
                                       ),
                                     ],

@@ -3,13 +3,12 @@ import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
 import 'package:flutter/foundation.dart';
-import 'package:http/http.dart' as http;
 import 'package:path/path.dart' as p;
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/download_task.dart';
-import '../config/api_config.dart';
+
 import 'lyrics_service.dart';
-import 'spotify_metadata_service.dart';
+import 'metadata_service.dart';
 
 class DownloadManager extends ChangeNotifier {
   static final DownloadManager _instance = DownloadManager._internal();
@@ -322,42 +321,9 @@ class DownloadManager extends ChangeNotifier {
         return;
       }
 
-      // Verificar si se debe saltar la API de Spotify
-      if (!t.bypassSpotifyApi) {
-        // Prueba descarga directa con spotify direct API
-        debugPrint('[DownloadManager] trying spotify direct for task ${t.id}');
-        final spotifyDirect = await _trySpotifyDirectDownload(
-          t,
-          downloadFolder,
-          safeBase,
-        );
-        if (spotifyDirect) {
-          final path = p.join(downloadFolder, '$safeBase.mp3');
-          await _updateTask(
-            t,
-            localPath: path,
-            progress: 1.0,
-            status: DownloadStatus.completed,
-            finishedAt: DateTime.now(),
-          );
-          debugPrint(
-            '[DownloadManager] spotify direct success ${t.id} -> ${t.localPath}',
-          );
-
-          // Descargar lyrics en segundo plano
-          _downloadLyricsInBackground(t.title, t.artist);
-
-          Future.microtask(() => _scheduleQueue());
-          return;
-        }
-        debugPrint(
-          '[DownloadManager] spotify direct did not return file for ${t.id}',
-        );
-      } else {
-        debugPrint(
-          '[DownloadManager] bypassing spotify direct API for task ${t.id} (bypass flag set)',
-        );
-      }
+      // DIRECT DOWNLOAD IS DISABLED - ALWAYS USE YT-DLP
+      // The direct download mechanism relied on Spotify APIs which are being removed.
+      debugPrint('[DownloadManager] Using yt-dlp for task ${t.id}');
 
       // Fallback a yt-dlp
       // Construir plantilla de salida
@@ -373,24 +339,23 @@ class DownloadManager extends ChangeNotifier {
 
       // construir query o url
       String ytQueryOrUrl = '';
-      final lowerSrc = (t.sourceUrl ?? '').toLowerCase();
+      final lowerSrc = t.sourceUrl.toLowerCase();
       if (lowerSrc.contains('open.spotify.com') ||
           lowerSrc.contains('spotify:track')) {
         final cleanTitle = t.title
             .replaceAll(RegExp(r'\(.*?\)|\[.*?\]'), '')
             .trim();
-        final cleanArtist = (t.artist ?? '')
-            .toString()
+        final cleanArtist = t.artist
             .replaceAll(RegExp(r'\(.*?\)|\[.*?\]'), '')
             .trim();
         final search = '$cleanTitle $cleanArtist'.trim();
         final safeSearch = search.replaceAll(RegExp(r'\s+'), ' ').trim();
-        ytQueryOrUrl = safeSearch.isNotEmpty ? safeSearch : (t.sourceUrl ?? '');
+        ytQueryOrUrl = safeSearch.isNotEmpty ? safeSearch : t.sourceUrl;
         debugPrint(
           '[DownloadManager] converted Spotify URL to search string: $ytQueryOrUrl',
         );
       } else {
-        ytQueryOrUrl = t.sourceUrl ?? '';
+        ytQueryOrUrl = t.sourceUrl;
       }
 
       debugPrint(
@@ -474,7 +439,7 @@ class DownloadManager extends ChangeNotifier {
           debugPrint('[DownloadManager] Searching Spotify for: $searchTitle');
 
           // Buscar solo con el título de la canción
-          final spotifyMetadata = await SpotifyMetadataService().searchMetadata(
+          final spotifyMetadata = await MetadataService().searchMetadata(
             searchTitle,
             null, // No pasar artista para búsqueda más amplia
           );
@@ -523,7 +488,7 @@ class DownloadManager extends ChangeNotifier {
                 if (spotifyMetadata.albumArtUrl != null) {
                   try {
                     debugPrint('[DownloadManager] Downloading album art');
-                    final artworkBytes = await SpotifyMetadataService()
+                    final artworkBytes = await MetadataService()
                         .downloadAlbumArt(spotifyMetadata.albumArtUrl);
 
                     if (artworkBytes != null) {
@@ -696,55 +661,6 @@ class DownloadManager extends ChangeNotifier {
         _scheduleQueue();
         refreshStatus();
       });
-    }
-  }
-
-  // spotify descarga directa
-  Future<bool> _trySpotifyDirectDownload(
-    DownloadTask t,
-    String downloadFolder,
-    String safeBase,
-  ) async {
-    try {
-      final encodedUrl = Uri.encodeComponent(t.sourceUrl ?? '');
-      final apiUrl = '${ApiConfig.dorratzBaseUrl}/spotifydl?url=$encodedUrl';
-      debugPrint('[DownloadManager] spotifydl request: $apiUrl');
-      final res = await http
-          .get(Uri.parse(apiUrl))
-          .timeout(const Duration(seconds: 12));
-      debugPrint('[DownloadManager] spotifydl status: ${res.statusCode}');
-      if (res.statusCode != 200) {
-        debugPrint('[DownloadManager] spotifydl non-200 body: ${res.body}');
-        return false;
-      }
-      final Map<String, dynamic> info = jsonDecode(res.body);
-      debugPrint(
-        '[DownloadManager] spotifydl response keys: ${info.keys.toList()}',
-      );
-      final downloadUrl = info['download_url'] as String?;
-      if (downloadUrl == null || downloadUrl.isEmpty) {
-        debugPrint('[DownloadManager] spotifydl missing download_url');
-        return false;
-      }
-
-      debugPrint('[DownloadManager] fetching download_url: $downloadUrl');
-      final audioRes = await http.get(Uri.parse(downloadUrl));
-      debugPrint(
-        '[DownloadManager] download_url status: ${audioRes.statusCode}',
-      );
-      if (audioRes.statusCode != 200) {
-        debugPrint('[DownloadManager] download_url fetch failed');
-        return false;
-      }
-
-      final outPath = p.join(downloadFolder, '$safeBase.mp3');
-      final f = File(outPath);
-      await f.writeAsBytes(audioRes.bodyBytes, flush: true);
-      debugPrint('[DownloadManager] spotify direct saved file: $outPath');
-      return true;
-    } catch (e, st) {
-      debugPrint('[DownloadManager] spotify direct error: $e\n$st');
-      return false;
     }
   }
 

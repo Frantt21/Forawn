@@ -10,7 +10,7 @@ import 'package:forawn/screen/qrcode_generator.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:window_manager/window_manager.dart';
 import 'package:hotkey_manager/hotkey_manager.dart';
-import 'screen/spotify_screen.dart';
+import 'screen/music_downloader_screen.dart';
 import 'screen/music_player_screen.dart';
 import 'settings.dart';
 import 'imgia_screen.dart';
@@ -543,7 +543,7 @@ class _HomeScreenState extends State<HomeScreen> with WindowListener {
           onNavigate: _handleNavigation,
         );
       case 'music':
-        return SpotifyScreen(
+        return MusicDownloaderScreen(
           getText: widget.getText,
           currentLang: widget.currentLangCode,
           onRegisterFolderAction: _registerFolderAction,

@@ -373,5 +373,7 @@
     "discord_connected": "已连接",
     "discord_disconnected": "已断开",
     "discord_reconnect": "尝试重新连接",
-    "music_player_title": "音乐播放器"
+    "music_player_title": "音乐播放器",
+    "no_song": "当前没有歌曲",
+    "no_lyrics": "未找到歌词"
 }

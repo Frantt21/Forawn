@@ -373,5 +373,7 @@
     "discord_connected": "Połączono",
     "discord_disconnected": "Rozłączono",
     "discord_reconnect": "Spróbuj ponownie połączyć",
-    "music_player_title": "Odtwarzacz muzyczny"
+    "music_player_title": "Odtwarzacz muzyczny",
+    "no_song": "Obecnie nie odtwarza się żadnych utworów.",
+    "no_lyrics": "Nie znaleziono tekstów utworu"
 }

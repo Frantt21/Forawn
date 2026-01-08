@@ -373,5 +373,7 @@
     "discord_connected": "연결됨",
     "discord_disconnected": "연결 끊김",
     "discord_reconnect": "다시 연결 시도",
-    "music_player_title": "음악 플레이어"
+    "music_player_title": "음악 플레이어",
+    "no_song": "현재 노래가 없습니다",
+    "no_lyrics": "가사가 없습니다"
 }

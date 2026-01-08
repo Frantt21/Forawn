@@ -4,8 +4,9 @@ import 'dart:async';
 import 'dart:typed_data';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
+import '../config/api_config.dart';
 
-class SpotifyMetadata {
+class TrackMetadata {
   final String title;
   final String artist;
   final String album;
@@ -13,11 +14,12 @@ class SpotifyMetadata {
   final int? trackNumber;
   final String? albumArtUrl;
   final String? isrc;
-  final String? spotifyUrl;
+  final String?
+  spotifyUrl; // Kept for backend compatibility in model if needed, or rename
   final int? duration;
   final bool hasAlbumArt;
 
-  SpotifyMetadata({
+  TrackMetadata({
     required this.title,
     required this.artist,
     required this.album,
@@ -30,8 +32,8 @@ class SpotifyMetadata {
     this.hasAlbumArt = false,
   });
 
-  factory SpotifyMetadata.fromJson(Map<String, dynamic> json) {
-    return SpotifyMetadata(
+  factory TrackMetadata.fromJson(Map<String, dynamic> json) {
+    return TrackMetadata(
       title: json['title'] ?? '',
       artist: json['artist'] ?? '',
       album: json['album'] ?? '',
@@ -46,41 +48,41 @@ class SpotifyMetadata {
   }
 }
 
-class SpotifyMetadataService {
-  static final SpotifyMetadataService _instance =
-      SpotifyMetadataService._internal();
-  factory SpotifyMetadataService() => _instance;
-  SpotifyMetadataService._internal();
+class MetadataService {
+  static final MetadataService _instance = MetadataService._internal();
+  factory MetadataService() => _instance;
+  MetadataService._internal();
 
-  // URL del backend
-  static const String _baseUrl = 'http://api.foranly.space:24725';
+  // URL del backend - Using ApiConfig is better if possible, but kept hardcoded in original
+  // Wait, I should use ApiConfig.foranlyBackendPrimary if available.
+  // Original was: static const String _baseUrl = 'http://api.foranly.space:24725';
+  // ApiConfig.foranlyBackendPrimary is the same string.
 
   // Cache en memoria
-  final Map<String, SpotifyMetadata> _cache = {};
+  final Map<String, TrackMetadata> _cache = {};
 
-  /// Busca metadatos en Spotify
-  Future<SpotifyMetadata?> searchMetadata(
-    String title, [
-    String? artist,
-  ]) async {
+  /// Busca metadatos (YouTube based backend)
+  Future<TrackMetadata?> searchMetadata(String title, [String? artist]) async {
     try {
       final cacheKey = '${title.toLowerCase()}_${artist?.toLowerCase() ?? ''}';
 
       // Verificar caché local
       if (_cache.containsKey(cacheKey)) {
-        debugPrint('[SpotifyMetadata] Using local cache for: $title');
+        debugPrint('[MetadataService] Using local cache for: $title');
         return _cache[cacheKey];
       }
 
       // Construir URL
-      final uri = Uri.parse('$_baseUrl/metadata').replace(
-        queryParameters: {
-          'title': title,
-          if (artist != null && artist.isNotEmpty) 'artist': artist,
-        },
-      );
+      // Use ApiConfig.foranlyBackendPrimary
+      final uri = Uri.parse('${ApiConfig.foranlyBackendPrimary}/metadata')
+          .replace(
+            queryParameters: {
+              'title': title,
+              if (artist != null && artist.isNotEmpty) 'artist': artist,
+            },
+          );
 
-      debugPrint('[SpotifyMetadata] Fetching metadata for: $title - $artist');
+      debugPrint('[MetadataService] Fetching metadata for: $title - $artist');
 
       final response = await http
           .get(uri)
@@ -93,37 +95,37 @@ class SpotifyMetadataService {
 
       if (response.statusCode == 200) {
         final data = json.decode(response.body);
-        final metadata = SpotifyMetadata.fromJson(data);
+        final metadata = TrackMetadata.fromJson(data);
 
         // Guardar en caché
         _cache[cacheKey] = metadata;
 
         debugPrint(
-          '[SpotifyMetadata] Found: ${metadata.title} by ${metadata.artist}',
+          '[MetadataService] Found: ${metadata.title} by ${metadata.artist}',
         );
         return metadata;
       } else if (response.statusCode == 404) {
-        debugPrint('[SpotifyMetadata] No metadata found for: $title');
+        debugPrint('[MetadataService] No metadata found for: $title');
         return null;
       } else {
-        debugPrint('[SpotifyMetadata] Error: ${response.statusCode}');
+        debugPrint('[MetadataService] Error: ${response.statusCode}');
         return null;
       }
     } on SocketException catch (e) {
-      debugPrint('[SpotifyMetadata] Network error (SocketException): $e');
+      debugPrint('[MetadataService] Network error (SocketException): $e');
       return null;
     } on TimeoutException catch (e) {
-      debugPrint('[SpotifyMetadata] Timeout error: $e');
+      debugPrint('[MetadataService] Timeout error: $e');
       return null;
     } on http.ClientException catch (e) {
-      debugPrint('[SpotifyMetadata] HTTP client error: $e');
+      debugPrint('[MetadataService] HTTP client error: $e');
       return null;
     } on FormatException catch (e) {
-      debugPrint('[SpotifyMetadata] JSON parse error: $e');
+      debugPrint('[MetadataService] JSON parse error: $e');
       return null;
     } catch (e, stackTrace) {
-      debugPrint('[SpotifyMetadata] Unexpected error: $e');
-      debugPrint('[SpotifyMetadata] Stack trace: $stackTrace');
+      debugPrint('[MetadataService] Unexpected error: $e');
+      debugPrint('[MetadataService] Stack trace: $stackTrace');
       return null;
     }
   }
@@ -135,7 +137,7 @@ class SpotifyMetadataService {
     }
 
     try {
-      debugPrint('[SpotifyMetadata] Downloading album art from: $albumArtUrl');
+      debugPrint('[MetadataService] Downloading album art from: $albumArtUrl');
 
       final response = await http
           .get(Uri.parse(albumArtUrl))
@@ -148,17 +150,17 @@ class SpotifyMetadataService {
 
       if (response.statusCode == 200) {
         debugPrint(
-          '[SpotifyMetadata] Album art downloaded: ${response.bodyBytes.length} bytes',
+          '[MetadataService] Album art downloaded: ${response.bodyBytes.length} bytes',
         );
         return response.bodyBytes;
       } else {
         debugPrint(
-          '[SpotifyMetadata] Failed to download album art: ${response.statusCode}',
+          '[MetadataService] Failed to download album art: ${response.statusCode}',
         );
         return null;
       }
     } catch (e) {
-      debugPrint('[SpotifyMetadata] Error downloading album art: $e');
+      debugPrint('[MetadataService] Error downloading album art: $e');
       return null;
     }
   }
@@ -166,24 +168,24 @@ class SpotifyMetadataService {
   /// Limpia el caché local
   void clearCache() {
     _cache.clear();
-    debugPrint('[SpotifyMetadata] Local cache cleared');
+    debugPrint('[MetadataService] Local cache cleared');
   }
 
   /// Limpia el caché del servidor
   Future<void> clearServerCache() async {
     try {
       final response = await http
-          .post(Uri.parse('$_baseUrl/clear-cache'))
+          .post(Uri.parse('${ApiConfig.foranlyBackendPrimary}/clear-cache'))
           .timeout(const Duration(seconds: 5));
 
       if (response.statusCode == 200) {
         final data = json.decode(response.body);
         debugPrint(
-          '[SpotifyMetadata] Server cache cleared: ${data['cleared']} entries',
+          '[MetadataService] Server cache cleared: ${data['cleared']} entries',
         );
       }
     } catch (e) {
-      debugPrint('[SpotifyMetadata] Error clearing server cache: $e');
+      debugPrint('[MetadataService] Error clearing server cache: $e');
     }
   }
 }

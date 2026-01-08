@@ -373,5 +373,7 @@
     "discord_connected": "Подключено",
     "discord_disconnected": "Отключено",
     "discord_reconnect": "Попробовать переподключиться",
-    "music_player_title": "Плеер музыки"
+    "music_player_title": "Плеер музыки",
+    "no_song": "Нет песен",
+    "no_lyrics": "Нет текста песен"
 }

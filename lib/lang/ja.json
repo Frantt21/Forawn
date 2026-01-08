@@ -373,5 +373,7 @@
     "discord_connected": "接続済み",
     "discord_disconnected": "切断",
     "discord_reconnect": "再接続を試みる",
-    "music_player_title": "音楽プレーヤー"
+    "music_player_title": "音楽プレーヤー",
+    "no_song": "曲が選択されていません",
+    "no_lyrics": "Lyricsが見つかりません"
 }

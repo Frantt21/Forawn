@@ -66,7 +66,15 @@ class DiscordService {
 
     try {
       _client = Client(clientId: ApiConfig.discordApplicationId);
-      await _client!.connect();
+
+      // Intentar conectar con timeout para evitar bloqueos
+      await _client!.connect().timeout(
+        const Duration(seconds: 5),
+        onTimeout: () {
+          throw TimeoutException('Discord connection timeout');
+        },
+      );
+
       _isInitialized = true;
       _isConnected = true;
       _log.info('Discord RPC inicializado correctamente');
@@ -74,10 +82,18 @@ class DiscordService {
       // Actualizar presencia inicial
       await updatePresence(screen: 'Inicio');
       return true;
-    } catch (e) {
-      _log.warning('Error al inicializar Discord RPC: $e');
+    } on TimeoutException catch (e) {
+      _log.warning('Timeout al conectar con Discord: $e');
       _isInitialized = false;
       _isConnected = false;
+      _client = null;
+      return false;
+    } catch (e) {
+      // Manejar cualquier error (incluyendo PathNotFoundException)
+      _log.warning('Discord no está disponible o no se pudo conectar: $e');
+      _isInitialized = false;
+      _isConnected = false;
+      _client = null;
       return false;
     }
   }

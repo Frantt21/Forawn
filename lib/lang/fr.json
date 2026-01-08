@@ -373,5 +373,7 @@
     "discord_connected": "Connecté",
     "discord_disconnected": "Déconnecté",
     "discord_reconnect": "Essayer de reconnecter",
-    "music_player_title": "Reproducteur de musique"
+    "music_player_title": "Reproducteur de musique",
+    "no_song": "Aucune chanson en cours de lecture",
+    "no_lyrics": "Aucune paroles trouvées"
 }

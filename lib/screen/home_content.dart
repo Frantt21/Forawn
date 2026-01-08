@@ -107,7 +107,7 @@ class _HomeContentState extends State<HomeContent> {
       case 'foraai':
         return widget.getText('foraai_title', fallback: 'ForaAI');
       case 'player':
-        return widget.getText('player_reproducer', fallback: 'Reproductor');
+        return widget.getText('music_player_title', fallback: 'Reproductor');
       case 'r34':
         return widget.getText('r34_title', fallback: 'R34 Buscador');
       default:
