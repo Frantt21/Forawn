@@ -293,79 +293,13 @@ class _MusicDownloaderScreenState extends State<MusicDownloaderScreen>
 
       final resultsRaw = data['results'] as List<dynamic>? ?? [];
 
-      final mapped = resultsRaw
-          .map((item) {
-            if (item is! Map<String, dynamic>) return <String, dynamic>{};
-            final r = item;
-            final String rawTitle = r['title'] ?? '';
-            String parsedSong = r['parsedSong'] ?? '';
-            String parsedArtist = r['parsedArtist'] ?? '';
+      debugPrint('[MusicDownloaderScreen] Found ${resultsRaw.length} results');
 
-            // DETECCIÓN DE INVERSIÓN
-            String finalParsedSong = parsedSong;
-            String finalParsedArtist = parsedArtist;
-
-            final artistHasMultiple =
-                parsedArtist.contains(',') ||
-                parsedArtist.contains('&') ||
-                parsedArtist.toLowerCase().contains('ft.');
-            final songHasMultiple =
-                parsedSong.contains(',') ||
-                parsedSong.contains('&') ||
-                parsedSong.toLowerCase().contains('ft.');
-
-            if (artistHasMultiple &&
-                !songHasMultiple &&
-                parsedSong.isNotEmpty) {
-              finalParsedArtist = parsedSong;
-              finalParsedSong = parsedArtist;
-            }
-
-            // Intentar obtener autor de varios campos posibles
-            String author = '';
-            if (r['author'] != null && r['author'] is String) {
-              author = r['author'];
-            } else if (r['channel'] != null) {
-              if (r['channel'] is String) {
-                author = r['channel'];
-              } else if (r['channel'] is Map) {
-                author = r['channel']['name'] ?? '';
-              }
-            } else if (r['uploader'] != null) {
-              if (r['uploader'] is String) {
-                author = r['uploader'];
-              } else if (r['uploader'] is Map) {
-                author = r['uploader']['name'] ?? '';
-              }
-            }
-
-            final title = finalParsedSong.isNotEmpty
-                ? _toTitleCase(finalParsedSong)
-                : rawTitle;
-            // Preferir parsedArtist, luego author, luego 'Unknown artist'
-            String artist = finalParsedArtist.isNotEmpty
-                ? finalParsedArtist
-                : (author.isNotEmpty ? author : 'Unknown artist');
-            artist = _toTitleCase(artist);
-
-            return {
-              'title': title,
-              'artist': artist,
-              'album': 'YouTube',
-              'image': r['thumbnail'] ?? '',
-              'url': r['url'] ?? '',
-              'popularity': '100',
-              'duration_ms': (r['duration'] is int)
-                  ? (r['duration'] as int) * 1000
-                  : 0,
-            };
-          })
-          .where((m) => m.isNotEmpty)
-          .toList();
+      final canciones = _processSearchResults(resultsRaw);
 
       if (mounted) {
         setState(() {
-          _recommendations = mapped;
+          _recommendations = canciones;
         });
       }
     } catch (e, st) {
@@ -481,96 +415,7 @@ class _MusicDownloaderScreenState extends State<MusicDownloaderScreen>
 
       debugPrint('[MusicDownloaderScreen] Found ${resultsRaw.length} results');
 
-      final canciones = resultsRaw
-          .map((item) {
-            try {
-              if (item is! Map<String, dynamic>) return <String, dynamic>{};
-              final r = item;
-              final String rawTitle = r['title'] ?? '';
-              final String parsedSong = r['parsedSong'] ?? '';
-              final String parsedArtist = r['parsedArtist'] ?? '';
-
-              // DEBUG: Ver qué campos están disponibles
-              debugPrint(
-                '[MusicDownloaderScreen] Item keys: ${r.keys.toList()}',
-              );
-              debugPrint(
-                '[MusicDownloaderScreen] parsedArtist: "$parsedArtist"',
-              );
-              debugPrint(
-                '[MusicDownloaderScreen] author field: ${r['author']}',
-              );
-
-              // DETECCIÓN DE INVERSIÓN: Si parsedArtist contiene comas/& y parsedSong no,
-              // probablemente están invertidos
-              String finalParsedSong = parsedSong;
-              String finalParsedArtist = parsedArtist;
-
-              final artistHasMultiple =
-                  parsedArtist.contains(',') ||
-                  parsedArtist.contains('&') ||
-                  parsedArtist.toLowerCase().contains('ft.');
-              final songHasMultiple =
-                  parsedSong.contains(',') ||
-                  parsedSong.contains('&') ||
-                  parsedSong.toLowerCase().contains('ft.');
-
-              // Si el "artista" tiene múltiples nombres pero la "canción" no, están invertidos
-              if (artistHasMultiple &&
-                  !songHasMultiple &&
-                  parsedSong.isNotEmpty) {
-                debugPrint(
-                  '[MusicDownloaderScreen] ⚠️ Detected inverted fields, swapping...',
-                );
-                finalParsedArtist = parsedSong;
-                finalParsedSong = parsedArtist;
-              }
-
-              // Intentar obtener autor de varios campos posibles
-              String author = '';
-              if (r['author'] != null && r['author'] is String) {
-                author = r['author'];
-              } else if (r['channel'] != null) {
-                if (r['channel'] is String) {
-                  author = r['channel'];
-                } else if (r['channel'] is Map) {
-                  author = r['channel']['name'] ?? '';
-                }
-              } else if (r['uploader'] != null) {
-                if (r['uploader'] is String) {
-                  author = r['uploader'];
-                } else if (r['uploader'] is Map) {
-                  author = r['uploader']['name'] ?? '';
-                }
-              }
-
-              final title = finalParsedSong.isNotEmpty
-                  ? _toTitleCase(finalParsedSong)
-                  : rawTitle;
-              // Preferir parsedArtist, luego author, luego 'Unknown artist'
-              String artist = finalParsedArtist.isNotEmpty
-                  ? finalParsedArtist
-                  : (author.isNotEmpty ? author : 'Unknown artist');
-              artist = _toTitleCase(artist);
-
-              return {
-                'title': title,
-                'artist': artist,
-                'album': 'YouTube',
-                'image': r['thumbnail'] ?? '',
-                'url': r['url'] ?? '',
-                'popularity': '100',
-                'duration_ms': (r['duration'] is int)
-                    ? (r['duration'] as int) * 1000
-                    : 0,
-              };
-            } catch (e, st) {
-              debugPrint('[MusicDownloaderScreen] Error parsing item: $e\n$st');
-              return <String, dynamic>{};
-            }
-          })
-          .where((m) => m.isNotEmpty)
-          .toList();
+      final canciones = _processSearchResults(resultsRaw);
 
       final mapped = List<Map<String, dynamic>>.from(canciones);
 
@@ -1138,5 +983,112 @@ class _MusicDownloaderScreenState extends State<MusicDownloaderScreen>
       ),
       floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
     );
+  }
+
+  // Función auxiliar para detectar inversión con validación cruzada
+  List<Map<String, dynamic>> _processSearchResults(List<dynamic> resultsRaw) {
+    // Primer paso: mapear todos los resultados con datos crudos
+    final rawMapped = resultsRaw
+        .map((item) {
+          try {
+            if (item is! Map<String, dynamic>) return null;
+            final r = item;
+            return {
+              'rawTitle': r['title'] ?? '',
+              'parsedSong': r['parsedSong'] ?? '',
+              'parsedArtist': r['parsedArtist'] ?? '',
+              'author': r['author'] ?? '',
+              'thumbnail': r['thumbnail'] ?? '',
+              'url': r['url'] ?? '',
+              'duration': r['duration'] ?? 0,
+            };
+          } catch (e) {
+            return null;
+          }
+        })
+        .where((m) => m != null)
+        .cast<Map<String, dynamic>>()
+        .toList();
+
+    // Segundo paso: detectar inversiones usando validación cruzada
+    final canciones = rawMapped
+        .map((item) {
+          try {
+            final String rawTitle = item['rawTitle'];
+            String parsedSong = item['parsedSong'];
+            String parsedArtist = item['parsedArtist'];
+            final String author = item['author'];
+
+            // DETECCIÓN DE INVERSIÓN CON VALIDACIÓN CRUZADA
+            String finalParsedSong = parsedSong;
+            String finalParsedArtist = parsedArtist;
+
+            // Método 1: Si la canción tiene múltiples artistas pero el artista no
+            final artistHasMultiple =
+                parsedArtist.contains(',') ||
+                parsedArtist.contains('&') ||
+                parsedArtist.toLowerCase().contains('ft.');
+            final songHasMultiple =
+                parsedSong.contains(',') ||
+                parsedSong.contains('&') ||
+                parsedSong.toLowerCase().contains('ft.');
+
+            if (songHasMultiple &&
+                !artistHasMultiple &&
+                parsedArtist.isNotEmpty) {
+              debugPrint(
+                '[MusicDownloaderScreen] ⚠️ Detected inverted fields (multiple artists), swapping...',
+              );
+              finalParsedArtist = parsedSong;
+              finalParsedSong = parsedArtist;
+            }
+            // Método 2: Validación cruzada con otras canciones
+            else {
+              // Contar cuántas otras canciones tienen el mismo parsedArtist
+              int matchingArtists = rawMapped.where((other) {
+                return other != item &&
+                    other['parsedArtist'].toString().toLowerCase() ==
+                        parsedSong.toLowerCase();
+              }).length;
+
+              // Si al menos 2 otras canciones tienen como artista lo que esta tiene como canción,
+              // probablemente están invertidos
+              if (matchingArtists >= 2 && parsedArtist.isNotEmpty) {
+                debugPrint(
+                  '[MusicDownloaderScreen] ⚠️ Detected inverted fields (cross-validation: $matchingArtists matches), swapping...',
+                );
+                finalParsedArtist = parsedSong;
+                finalParsedSong = parsedArtist;
+              }
+            }
+
+            final title = finalParsedSong.isNotEmpty
+                ? _toTitleCase(finalParsedSong)
+                : rawTitle;
+            String artist = finalParsedArtist.isNotEmpty
+                ? finalParsedArtist
+                : (author.isNotEmpty ? author : 'Unknown artist');
+            artist = _toTitleCase(artist);
+
+            return {
+              'title': title,
+              'artist': artist,
+              'album': 'YouTube',
+              'image': item['thumbnail'],
+              'url': item['url'],
+              'popularity': '100',
+              'duration_ms': (item['duration'] is int)
+                  ? (item['duration'] as int) * 1000
+                  : 0,
+            };
+          } catch (e, st) {
+            debugPrint('[MusicDownloaderScreen] Error parsing item: $e\n$st');
+            return <String, dynamic>{};
+          }
+        })
+        .where((m) => m.isNotEmpty)
+        .toList();
+
+    return List<Map<String, dynamic>>.from(canciones);
   }
 }
