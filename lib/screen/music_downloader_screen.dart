@@ -298,8 +298,28 @@ class _MusicDownloaderScreenState extends State<MusicDownloaderScreen>
             if (item is! Map<String, dynamic>) return <String, dynamic>{};
             final r = item;
             final String rawTitle = r['title'] ?? '';
-            final String parsedSong = r['parsedSong'] ?? '';
-            final String parsedArtist = r['parsedArtist'] ?? '';
+            String parsedSong = r['parsedSong'] ?? '';
+            String parsedArtist = r['parsedArtist'] ?? '';
+
+            // DETECCIÓN DE INVERSIÓN
+            String finalParsedSong = parsedSong;
+            String finalParsedArtist = parsedArtist;
+
+            final artistHasMultiple =
+                parsedArtist.contains(',') ||
+                parsedArtist.contains('&') ||
+                parsedArtist.toLowerCase().contains('ft.');
+            final songHasMultiple =
+                parsedSong.contains(',') ||
+                parsedSong.contains('&') ||
+                parsedSong.toLowerCase().contains('ft.');
+
+            if (artistHasMultiple &&
+                !songHasMultiple &&
+                parsedSong.isNotEmpty) {
+              finalParsedArtist = parsedSong;
+              finalParsedSong = parsedArtist;
+            }
 
             // Intentar obtener autor de varios campos posibles
             String author = '';
@@ -319,11 +339,14 @@ class _MusicDownloaderScreenState extends State<MusicDownloaderScreen>
               }
             }
 
-            final title = parsedSong.isNotEmpty ? parsedSong : rawTitle;
+            final title = finalParsedSong.isNotEmpty
+                ? _toTitleCase(finalParsedSong)
+                : rawTitle;
             // Preferir parsedArtist, luego author, luego 'Unknown artist'
-            final artist = parsedArtist.isNotEmpty
-                ? parsedArtist
+            String artist = finalParsedArtist.isNotEmpty
+                ? finalParsedArtist
                 : (author.isNotEmpty ? author : 'Unknown artist');
+            artist = _toTitleCase(artist);
 
             return {
               'title': title,
@@ -404,6 +427,26 @@ class _MusicDownloaderScreenState extends State<MusicDownloaderScreen>
       Map<String, dynamic>? data;
       if (response.statusCode == 200) {
         data = jsonDecode(response.body) as Map<String, dynamic>;
+
+        // Verificar si el backend devolvió un error
+        if (data.containsKey('error')) {
+          debugPrint('[MusicDownloaderScreen] Backend error: ${data['error']}');
+          if (mounted) {
+            setState(() => _searching = false);
+            showElegantNotification(
+              context,
+              widget.getText(
+                'backend_error',
+                fallback: 'Error del servidor: ${data['error']}',
+              ),
+              backgroundColor: const Color(0xFFE53935),
+              textColor: Colors.white,
+              icon: Icons.error_outline,
+              iconColor: Colors.white,
+            );
+          }
+          return;
+        }
       } else {
         data = null;
       }
@@ -458,6 +501,31 @@ class _MusicDownloaderScreenState extends State<MusicDownloaderScreen>
                 '[MusicDownloaderScreen] author field: ${r['author']}',
               );
 
+              // DETECCIÓN DE INVERSIÓN: Si parsedArtist contiene comas/& y parsedSong no,
+              // probablemente están invertidos
+              String finalParsedSong = parsedSong;
+              String finalParsedArtist = parsedArtist;
+
+              final artistHasMultiple =
+                  parsedArtist.contains(',') ||
+                  parsedArtist.contains('&') ||
+                  parsedArtist.toLowerCase().contains('ft.');
+              final songHasMultiple =
+                  parsedSong.contains(',') ||
+                  parsedSong.contains('&') ||
+                  parsedSong.toLowerCase().contains('ft.');
+
+              // Si el "artista" tiene múltiples nombres pero la "canción" no, están invertidos
+              if (artistHasMultiple &&
+                  !songHasMultiple &&
+                  parsedSong.isNotEmpty) {
+                debugPrint(
+                  '[MusicDownloaderScreen] ⚠️ Detected inverted fields, swapping...',
+                );
+                finalParsedArtist = parsedSong;
+                finalParsedSong = parsedArtist;
+              }
+
               // Intentar obtener autor de varios campos posibles
               String author = '';
               if (r['author'] != null && r['author'] is String) {
@@ -476,12 +544,12 @@ class _MusicDownloaderScreenState extends State<MusicDownloaderScreen>
                 }
               }
 
-              final title = parsedSong.isNotEmpty
-                  ? _toTitleCase(parsedSong)
+              final title = finalParsedSong.isNotEmpty
+                  ? _toTitleCase(finalParsedSong)
                   : rawTitle;
               // Preferir parsedArtist, luego author, luego 'Unknown artist'
-              String artist = parsedArtist.isNotEmpty
-                  ? parsedArtist
+              String artist = finalParsedArtist.isNotEmpty
+                  ? finalParsedArtist
                   : (author.isNotEmpty ? author : 'Unknown artist');
               artist = _toTitleCase(artist);
 
