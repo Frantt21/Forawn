@@ -30,6 +30,7 @@ import 'widgets/mini_music_player.dart';
 import 'screen/home_content.dart';
 import 'screen/foraai_screen.dart';
 import 'services/discord_service.dart';
+import 'services/global_music_player.dart';
 
 const String kDefaultLangCode = 'en';
 const _prefEffectKey = 'window_effect';
@@ -268,6 +269,21 @@ class _ForawnAppRootState extends State<ForawnAppRoot> {
 
     // Inicializar servicio de teclado global
     GlobalKeyboardService().initialize(_globalFocusNode, null);
+
+    // Cargar librería de música globalmente al inicio de la app
+    _loadMusicLibrary();
+  }
+
+  /// Cargar librería de música al inicio de la app
+  Future<void> _loadMusicLibrary() async {
+    try {
+      // Importar GlobalMusicPlayer
+      final player = GlobalMusicPlayer();
+      await player.loadLibraryIfNeeded();
+      debugPrint('[App] Music library loaded at startup');
+    } catch (e) {
+      debugPrint('[App] Error loading music library: $e');
+    }
   }
 
   Future<void> _loadBackgroundBrightness() async {
@@ -432,6 +448,7 @@ class _HomeScreenState extends State<HomeScreen> with WindowListener {
     windowManager.addListener(this);
     _loadNsfwPref();
     _loadRecentScreens();
+    _initializeScreens(); // Inicializar screens cacheados
     WidgetsBinding.instance.addPostFrameCallback((_) {
       // checkForUpdate(context, widget.getText);
     });
@@ -451,7 +468,11 @@ class _HomeScreenState extends State<HomeScreen> with WindowListener {
       final prefs = await SharedPreferences.getInstance();
       final recents = prefs.getStringList('recent_screens') ?? [];
       if (!mounted) return;
-      setState(() => _recentScreens = recents);
+      setState(() {
+        _recentScreens = recents;
+        // Actualizar HomeContent en el caché cuando cambian los recientes
+        _updateHomeContent();
+      });
     } catch (_) {}
   }
 
@@ -459,6 +480,8 @@ class _HomeScreenState extends State<HomeScreen> with WindowListener {
     try {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setStringList('recent_screens', _recentScreens);
+      // Actualizar HomeContent en el caché
+      _updateHomeContent();
     } catch (_) {}
   }
 
@@ -535,81 +558,102 @@ class _HomeScreenState extends State<HomeScreen> with WindowListener {
     super.dispose();
   }
 
-  Widget _getContentWidget() {
-    switch (_currentScreen) {
-      case 'home':
-        return HomeContent(
-          getText: widget.getText,
-          recentScreens: _recentScreens,
-          onNavigate: _handleNavigation,
-        );
-      case 'music':
-        return MusicDownloaderScreen(
-          getText: widget.getText,
-          currentLang: widget.currentLangCode,
-          onRegisterFolderAction: _registerFolderAction,
-          onNavigate: _handleNavigation,
-        );
-      case 'video':
-        return VideoDownloaderScreen(
-          getText: widget.getText,
-          currentLang: widget.currentLangCode,
-          onRegisterFolderAction: _registerFolderAction,
-        );
-      case 'player':
-        return MusicPlayerScreen(
-          getText: widget.getText,
-          onRegisterFolderAction: _registerFolderAction,
-        );
-      case 'images':
-        return AiImageScreen(
-          getText: widget.getText,
-          currentLang: widget.currentLangCode,
-          onRegisterFolderAction: _registerFolderAction,
-        );
-      case 'notes':
-        return NotesScreen(
-          getText: widget.getText,
-          currentLang: widget.currentLangCode,
-        );
-      case 'translate':
-        return TranslateScreen(
-          getText: widget.getText,
-          currentLang: widget.currentLangCode,
-          onRegisterFolderAction: _registerFolderAction,
-        );
-      case 'qr':
-        return QrGeneratorScreen(
-          getText: widget.getText,
-          currentLang: widget.currentLangCode,
-          onRegisterFolderAction: _registerFolderAction,
-        );
-      case 'foraai':
-        return ForaaiScreen(
-          getText: widget.getText,
-          currentLang: widget.currentLangCode,
-        );
-      case 'r34':
-        if (_nsfwEnabled) {
-          return R34Screen(
-            getText: widget.getText,
-            currentLang: widget.currentLangCode,
-            onRegisterFolderAction: _registerFolderAction,
-            onNavigate: _handleNavigation,
-          );
-        }
-        return HomeContent(
-          getText: widget.getText,
-          recentScreens: _recentScreens,
-          onNavigate: _handleNavigation,
-        );
-      default:
-        return HomeContent(
-          getText: widget.getText,
-          recentScreens: _recentScreens,
-          onNavigate: _handleNavigation,
-        );
+  // Cachear widgets de pantallas para evitar recreación
+  late final Map<String, Widget> _cachedScreens;
+  late final List<String> _screenKeys;
+
+  // Método para actualizar HomeContent cuando cambian los recientes
+  void _updateHomeContent() {
+    if (_cachedScreens.containsKey('home')) {
+      _cachedScreens['home'] = HomeContent(
+        getText: widget.getText,
+        recentScreens: _recentScreens,
+        onNavigate: _handleNavigation,
+      );
     }
+  }
+
+  void _initializeScreens() {
+    _screenKeys = [
+      'home',
+      'music',
+      'video',
+      'player',
+      'images',
+      'notes',
+      'translate',
+      'qr',
+      'foraai',
+      'r34',
+    ];
+
+    _cachedScreens = {
+      'home': HomeContent(
+        getText: widget.getText,
+        recentScreens: _recentScreens,
+        onNavigate: _handleNavigation,
+      ),
+      'music': MusicDownloaderScreen(
+        getText: widget.getText,
+        currentLang: widget.currentLangCode,
+        onRegisterFolderAction: _registerFolderAction,
+        onNavigate: _handleNavigation,
+      ),
+      'video': VideoDownloaderScreen(
+        getText: widget.getText,
+        currentLang: widget.currentLangCode,
+        onRegisterFolderAction: _registerFolderAction,
+      ),
+      'player': MusicPlayerScreen(
+        getText: widget.getText,
+        onRegisterFolderAction: _registerFolderAction,
+      ),
+      'images': AiImageScreen(
+        getText: widget.getText,
+        currentLang: widget.currentLangCode,
+        onRegisterFolderAction: _registerFolderAction,
+      ),
+      'notes': NotesScreen(
+        getText: widget.getText,
+        currentLang: widget.currentLangCode,
+      ),
+      'translate': TranslateScreen(
+        getText: widget.getText,
+        currentLang: widget.currentLangCode,
+        onRegisterFolderAction: _registerFolderAction,
+      ),
+      'qr': QrGeneratorScreen(
+        getText: widget.getText,
+        currentLang: widget.currentLangCode,
+        onRegisterFolderAction: _registerFolderAction,
+      ),
+      'foraai': ForaaiScreen(
+        getText: widget.getText,
+        currentLang: widget.currentLangCode,
+      ),
+      'r34': _nsfwEnabled
+          ? R34Screen(
+              getText: widget.getText,
+              currentLang: widget.currentLangCode,
+              onRegisterFolderAction: _registerFolderAction,
+              onNavigate: _handleNavigation,
+            )
+          : HomeContent(
+              getText: widget.getText,
+              recentScreens: _recentScreens,
+              onNavigate: _handleNavigation,
+            ),
+    };
+  }
+
+  Widget _getContentWidget() {
+    // Usar IndexedStack para mantener todos los screens vivos
+    final currentIndex = _screenKeys.indexOf(_currentScreen);
+
+    return IndexedStack(
+      index: currentIndex >= 0 ? currentIndex : 0,
+      children: _screenKeys.map((key) => _cachedScreens[key]!).toList(),
+    );
   }
 
   Widget _windowButtons() {

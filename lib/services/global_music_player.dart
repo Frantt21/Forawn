@@ -4,8 +4,10 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:io';
 import 'dart:typed_data';
 import 'dart:async';
+import 'package:path/path.dart' as p;
 import '../services/lyrics_service.dart';
 import '../models/synced_lyrics.dart';
+import '../models/song_model.dart';
 
 enum LoopMode { off, all, one }
 
@@ -28,6 +30,9 @@ class GlobalMusicPlayer {
   // Callback para cuando termina una canción
   Function(int? currentIndex, LoopMode loopMode, bool isShuffle)?
   onSongComplete;
+
+  // Callback para cargar metadatos cuando se reproduce desde playlist
+  Function(String filePath)? onMetadataNeeded;
 
   void _initGlobalListeners() {
     // Estos listeners NUNCA se cancelan - son globales y persisten
@@ -128,6 +133,120 @@ class GlobalMusicPlayer {
 
   // Lista de archivos
   final ValueNotifier<List<FileSystemEntity>> filesList = ValueNotifier([]);
+
+  // Lista de Song objects con metadatos
+  final ValueNotifier<List<Song>> songsList = ValueNotifier([]);
+
+  // Flag para saber si la librería ya fue cargada
+  bool _libraryLoaded = false;
+
+  /// Cargar librería de música desde carpeta guardada
+  Future<void> loadLibraryIfNeeded() async {
+    if (_libraryLoaded && filesList.value.isNotEmpty) {
+      debugPrint(
+        '[GlobalMusicPlayer] Library already loaded (${filesList.value.length} files)',
+      );
+      return;
+    }
+
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final folder = prefs.getString('download_folder');
+
+      if (folder == null || folder.isEmpty) {
+        debugPrint('[GlobalMusicPlayer] No folder configured');
+        return;
+      }
+
+      await loadLibraryFromFolder(folder);
+    } catch (e) {
+      debugPrint('[GlobalMusicPlayer] Error loading library: $e');
+    }
+  }
+
+  /// Cargar librería desde una carpeta específica
+  Future<void> loadLibraryFromFolder(String folderPath) async {
+    debugPrint('[GlobalMusicPlayer] Loading library from: $folderPath');
+
+    try {
+      final dir = Directory(folderPath);
+      if (!await dir.exists()) {
+        debugPrint('[GlobalMusicPlayer] Folder does not exist');
+        return;
+      }
+
+      // Obtener todos los archivos MP3
+      final allFiles = await dir.list(recursive: true).toList();
+      final musicFiles = allFiles
+          .where(
+            (entity) =>
+                entity is File &&
+                (p.extension(entity.path).toLowerCase() == '.mp3' ||
+                    p.extension(entity.path).toLowerCase() == '.m4a' ||
+                    p.extension(entity.path).toLowerCase() == '.flac'),
+          )
+          .toList();
+
+      debugPrint('[GlobalMusicPlayer] Found ${musicFiles.length} music files');
+
+      // Actualizar lista de archivos
+      filesList.value = musicFiles;
+
+      // Convertir a Song objects (sin cargar metadatos pesados aún)
+      final List<Song> songs = [];
+      for (final file in musicFiles) {
+        final song = await Song.fromFile(file as File);
+        if (song != null) {
+          songs.add(song);
+        }
+      }
+
+      songsList.value = songs;
+      _libraryLoaded = true;
+
+      debugPrint('[GlobalMusicPlayer] Library loaded: ${songs.length} songs');
+    } catch (e) {
+      debugPrint('[GlobalMusicPlayer] Error loading from folder: $e');
+    }
+  }
+
+  /// Refrescar librería (forzar recarga)
+  Future<void> refreshLibrary() async {
+    _libraryLoaded = false;
+    await loadLibraryIfNeeded();
+  }
+
+  // Play a playlist
+  Future<void> playPlaylist(List<File> files, int initialIndex) async {
+    // Stop current playback
+    await player.stop();
+
+    // Update global list
+    filesList.value = files;
+
+    // Play selected song
+    if (initialIndex >= 0 && initialIndex < files.length) {
+      await _playFileAtIndex(initialIndex);
+    }
+  }
+
+  Future<void> _playFileAtIndex(int index) async {
+    final file = filesList.value[index] as File;
+    currentIndex.value = index;
+    currentFilePath.value = file.path;
+
+    // Trigger metadata loading callback if registered
+    if (onMetadataNeeded != null) {
+      onMetadataNeeded!(file.path);
+    } else {
+      // Fallback: set basic filename as title
+      currentTitle.value = file.uri.pathSegments.last;
+    }
+
+    await player.play(DeviceFileSource(file.path));
+    isPlaying.value = true;
+    showMiniPlayer.value = true;
+  }
 
   // --- Lyrics Globales ---
   final ValueNotifier<SyncedLyrics?> currentLyrics = ValueNotifier(null);
