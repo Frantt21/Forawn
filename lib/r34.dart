@@ -29,10 +29,10 @@ class R34Screen extends StatefulWidget {
   });
 
   @override
-  State<R34Screen> createState() => _R34ScreenState();
+  State<R34Screen> createState() => R34ScreenState();
 }
 
-class _R34ScreenState extends State<R34Screen> with WindowListener {
+class R34ScreenState extends State<R34Screen> with WindowListener {
   final TextEditingController _queryController = TextEditingController();
   bool _loading = false;
   String _status = '';
@@ -51,7 +51,6 @@ class _R34ScreenState extends State<R34Screen> with WindowListener {
     super.initState();
     windowManager.addListener(this);
     _loadFolderPref();
-    WidgetsBinding.instance.addPostFrameCallback((_) => _maybeShowWarning());
     if (widget.onRegisterFolderAction != null) {
       widget.onRegisterFolderAction!(_selectFolder);
     }
@@ -90,7 +89,7 @@ class _R34ScreenState extends State<R34Screen> with WindowListener {
     });
   }
 
-  Future<void> _maybeShowWarning() async {
+  Future<void> checkWarning() async {
     if (_acceptedAdultWarning) return;
     final accept = await showDialog<bool>(
       context: context,

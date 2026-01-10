@@ -444,6 +444,7 @@ class _HomeScreenState extends State<HomeScreen> with WindowListener {
   VoidCallback? _onFolderAction;
   List<String> _screenKeys = [];
   Map<String, Widget> _cachedScreens = {};
+  final GlobalKey<R34ScreenState> _r34Key = GlobalKey();
 
   @override
   void initState() {
@@ -461,6 +462,12 @@ class _HomeScreenState extends State<HomeScreen> with WindowListener {
       final prefs = await SharedPreferences.getInstance();
       final enabled = prefs.getBool('nsfw_enabled') ?? false;
       if (!mounted) return;
+
+      if (!enabled && _recentScreens.contains('r34')) {
+        _recentScreens.remove('r34');
+        _saveRecentScreens(); // Async save
+      }
+
       setState(() {
         _nsfwEnabled = enabled;
         // Reinitialize screens with correct NSFW setting
@@ -473,6 +480,12 @@ class _HomeScreenState extends State<HomeScreen> with WindowListener {
     try {
       final prefs = await SharedPreferences.getInstance();
       final recents = prefs.getStringList('recent_screens') ?? [];
+      // Clean up recents if NSFW is disabled
+      final enabled = prefs.getBool('nsfw_enabled') ?? false;
+      if (!enabled) {
+        recents.remove('r34');
+      }
+
       if (!mounted) return;
       setState(() {
         _recentScreens = recents;
@@ -496,8 +509,8 @@ class _HomeScreenState extends State<HomeScreen> with WindowListener {
     if (screenId != 'home') {
       _recentScreens.remove(screenId);
       _recentScreens.insert(0, screenId);
-      if (_recentScreens.length > 6) {
-        _recentScreens = _recentScreens.sublist(0, 6);
+      if (_recentScreens.length > 5) {
+        _recentScreens = _recentScreens.sublist(0, 5);
       }
       _saveRecentScreens();
     }
@@ -514,6 +527,15 @@ class _HomeScreenState extends State<HomeScreen> with WindowListener {
     // Actualizar Discord Rich Presence si está conectado
     if (DiscordService().isConnected) {
       DiscordService().updateScreenPresence(screenId);
+    }
+
+    if (screenId == 'r34') {
+      // Trigger check slightly after navigation to ensure view is ready
+      Future.delayed(const Duration(milliseconds: 300), () {
+        if (mounted && _currentScreen == 'r34') {
+          _r34Key.currentState?.checkWarning();
+        }
+      });
     }
   }
 
@@ -590,6 +612,17 @@ class _HomeScreenState extends State<HomeScreen> with WindowListener {
 
       // If NSFW setting changed, reinitialize screens
       if (_nsfwEnabled != newNsfwEnabled) {
+        // Remove R34 from recents if NSFW is disabled
+        if (!newNsfwEnabled) {
+          _recentScreens.remove('r34');
+          await _saveRecentScreens();
+
+          // If currently on R34, navigate to home
+          if (_currentScreen == 'r34') {
+            _currentScreen = 'home';
+          }
+        }
+
         setState(() {
           _nsfwEnabled = newNsfwEnabled;
           _initializeScreens(); // Reinitialize with new NSFW setting
@@ -672,6 +705,7 @@ class _HomeScreenState extends State<HomeScreen> with WindowListener {
       ),
       'r34': _nsfwEnabled
           ? R34Screen(
+              key: _r34Key,
               getText: widget.getText,
               currentLang: widget.currentLangCode,
               onRegisterFolderAction: (action) =>
