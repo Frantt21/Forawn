@@ -8,6 +8,7 @@ import 'package:path/path.dart' as p;
 import '../services/lyrics_service.dart';
 import '../models/synced_lyrics.dart';
 import '../models/song_model.dart';
+import '../services/music_metadata_cache.dart';
 
 enum LoopMode { off, all, one }
 
@@ -34,10 +35,23 @@ class GlobalMusicPlayer {
   // Callback para cargar metadatos cuando se reproduce desde playlist
   Function(String filePath)? onMetadataNeeded;
 
+  // Para throttling del guardado de posición
+  DateTime? _lastSaveTime;
+
   void _initGlobalListeners() {
     // Estos listeners NUNCA se cancelan - son globales y persisten
     player.onPositionChanged.listen((pos) {
       position.value = pos;
+
+      // Guardar estado cada segundo durante reproducción (throttled)
+      if (isPlaying.value && currentFilePath.value.isNotEmpty) {
+        final now = DateTime.now();
+        if (_lastSaveTime == null ||
+            now.difference(_lastSaveTime!).inSeconds >= 1) {
+          _lastSaveTime = now;
+          savePlayerState();
+        }
+      }
     });
 
     player.onDurationChanged.listen((dur) {
@@ -45,7 +59,15 @@ class GlobalMusicPlayer {
     });
 
     player.onPlayerStateChanged.listen((state) {
+      final wasPlaying = isPlaying.value;
       isPlaying.value = state == PlayerState.playing;
+
+      // Guardar estado cuando se pausa o detiene
+      if (wasPlaying && !isPlaying.value && currentFilePath.value.isNotEmpty) {
+        savePlayerState();
+        debugPrint('[GlobalMusicPlayer] State saved on pause/stop');
+      }
+
       // Cuando la canción termina, llamar al callback
       if (state == PlayerState.completed) {
         onSongComplete?.call(
@@ -214,6 +236,92 @@ class GlobalMusicPlayer {
   Future<void> refreshLibrary() async {
     _libraryLoaded = false;
     await loadLibraryIfNeeded();
+  }
+
+  /// Guardar estado actual del reproductor
+  Future<void> savePlayerState() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+
+      // Obtener posición actual directamente del reproductor
+      final currentPosition = position.value;
+
+      await prefs.setInt('player_current_index', currentIndex.value ?? -1);
+      await prefs.setString('player_current_path', currentFilePath.value);
+      await prefs.setString('player_current_title', currentTitle.value);
+      await prefs.setString('player_current_artist', currentArtist.value);
+      await prefs.setInt('player_position_seconds', currentPosition.inSeconds);
+      await prefs.setInt('player_duration_seconds', duration.value.inSeconds);
+
+      debugPrint(
+        '[GlobalMusicPlayer] Player state saved (position: ${currentPosition.inSeconds}s)',
+      );
+    } catch (e) {
+      debugPrint('[GlobalMusicPlayer] Error saving player state: $e');
+    }
+  }
+
+  /// Cargar estado guardado del reproductor
+  Future<void> loadPlayerState() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+
+      final savedIndex = prefs.getInt('player_current_index') ?? -1;
+      final savedPath = prefs.getString('player_current_path') ?? '';
+      final savedTitle = prefs.getString('player_current_title') ?? '';
+      final savedArtist = prefs.getString('player_current_artist') ?? '';
+      final savedPosition = prefs.getInt('player_position_seconds') ?? 0;
+      final savedDuration = prefs.getInt('player_duration_seconds') ?? 0;
+
+      if (savedIndex >= 0 && savedPath.isNotEmpty) {
+        debugPrint('[GlobalMusicPlayer] Restoring player state: $savedTitle');
+
+        // Verificar que el archivo existe
+        final file = File(savedPath);
+        if (!await file.exists()) {
+          debugPrint('[GlobalMusicPlayer] Saved file no longer exists');
+          return;
+        }
+
+        // Restaurar estado sin auto-reproducir
+        currentIndex.value = savedIndex;
+        currentFilePath.value = savedPath;
+        currentTitle.value = savedTitle;
+        currentArtist.value = savedArtist;
+        position.value = Duration(seconds: savedPosition);
+        duration.value = Duration(seconds: savedDuration);
+        isPlaying.value = false; // Siempre pausado al restaurar
+
+        // Cargar el archivo en el reproductor (pausado)
+        try {
+          await player.setSource(DeviceFileSource(savedPath));
+          await player.pause(); // Asegurar que está pausado
+
+          // Buscar a la posición guardada
+          if (savedPosition > 0) {
+            await player.seek(Duration(seconds: savedPosition));
+            debugPrint(
+              '[GlobalMusicPlayer] Seeked to position: ${Duration(seconds: savedPosition)}',
+            );
+          }
+        } catch (e) {
+          debugPrint('[GlobalMusicPlayer] Error loading audio source: $e');
+        }
+
+        // Intentar cargar artwork desde caché
+        final cached = await MusicMetadataCache.get(savedPath);
+        if (cached != null && cached.artwork != null) {
+          currentArt.value = cached.artwork;
+          debugPrint('[GlobalMusicPlayer] Artwork restored from cache');
+        }
+
+        debugPrint('[GlobalMusicPlayer] Player state restored successfully');
+      } else {
+        debugPrint('[GlobalMusicPlayer] No saved player state found');
+      }
+    } catch (e) {
+      debugPrint('[GlobalMusicPlayer] Error loading player state: $e');
+    }
   }
 
   // Play a playlist

@@ -280,7 +280,8 @@ class _ForawnAppRootState extends State<ForawnAppRoot> {
       // Importar GlobalMusicPlayer
       final player = GlobalMusicPlayer();
       await player.loadLibraryIfNeeded();
-      debugPrint('[App] Music library loaded at startup');
+      await player.loadPlayerState(); // Cargar estado guardado
+      debugPrint('[App] Music library and player state loaded');
     } catch (e) {
       debugPrint('[App] Error loading music library: $e');
     }

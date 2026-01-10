@@ -501,11 +501,158 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen>
   }
 
   Future<void> _selectFolder() async {
-    final folder = await FilePicker.platform.getDirectoryPath();
-    if (folder != null) {
+    try {
+      final result = await FilePicker.platform.getDirectoryPath();
+
+      if (result == null) return;
+
       final prefs = await SharedPreferences.getInstance();
-      await prefs.setString('download_folder', folder);
-      await _loadFiles(folder);
+      await prefs.setString('download_folder', result);
+
+      if (!mounted) return;
+      await _showLoadingDialog(result);
+    } catch (e) {
+      debugPrint('[MusicPlayer] Error selecting folder: $e');
+    }
+  }
+
+  Future<void> _showLoadingDialog(String folderPath) async {
+    final ValueNotifier<int> processedFiles = ValueNotifier(0);
+    final ValueNotifier<int> totalFiles = ValueNotifier(0);
+    bool cancelled = false;
+
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => WillPopScope(
+        onWillPop: () async => false,
+        child: Dialog(
+          backgroundColor: const Color(0xFF1C1C1E),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(20),
+          ),
+          child: Padding(
+            padding: const EdgeInsets.all(32),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Text(
+                  'Cargando librería',
+                  style: TextStyle(
+                    fontSize: 20,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.white,
+                  ),
+                ),
+                const SizedBox(height: 32),
+                ValueListenableBuilder<int>(
+                  valueListenable: processedFiles,
+                  builder: (context, processed, _) {
+                    return ValueListenableBuilder<int>(
+                      valueListenable: totalFiles,
+                      builder: (context, total, _) {
+                        final progress = total > 0 ? processed / total : 0.0;
+                        final percentage = (progress * 100).toInt();
+
+                        return SizedBox(
+                          width: 120,
+                          height: 120,
+                          child: Stack(
+                            alignment: Alignment.center,
+                            children: [
+                              SizedBox(
+                                width: 120,
+                                height: 120,
+                                child: CircularProgressIndicator(
+                                  value: progress,
+                                  strokeWidth: 8,
+                                  backgroundColor: Colors.white10,
+                                  valueColor:
+                                      const AlwaysStoppedAnimation<Color>(
+                                        Color(0xFFBB86FC),
+                                      ),
+                                ),
+                              ),
+                              Text(
+                                '$percentage%',
+                                style: const TextStyle(
+                                  fontSize: 28,
+                                  fontWeight: FontWeight.bold,
+                                  color: Colors.white,
+                                ),
+                              ),
+                            ],
+                          ),
+                        );
+                      },
+                    );
+                  },
+                ),
+                const SizedBox(height: 24),
+                ValueListenableBuilder<int>(
+                  valueListenable: processedFiles,
+                  builder: (context, processed, _) {
+                    return ValueListenableBuilder<int>(
+                      valueListenable: totalFiles,
+                      builder: (context, total, _) {
+                        return Text(
+                          'Procesando metadatos ($processed/$total)...',
+                          style: const TextStyle(
+                            color: Colors.white70,
+                            fontSize: 14,
+                          ),
+                          textAlign: TextAlign.center,
+                        );
+                      },
+                    );
+                  },
+                ),
+                const SizedBox(height: 24),
+                TextButton(
+                  onPressed: () {
+                    cancelled = true;
+                    Navigator.of(context).pop();
+                  },
+                  child: const Text(
+                    'Cancelar',
+                    style: TextStyle(color: Color(0xFFBB86FC)),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+
+    try {
+      final dir = Directory(folderPath);
+      final files = dir.listSync(recursive: true).whereType<File>().where((f) {
+        final ext = p.extension(f.path).toLowerCase();
+        return ext == '.mp3' || ext == '.m4a' || ext == '.flac';
+      }).toList();
+
+      totalFiles.value = files.length;
+
+      for (int i = 0; i < files.length && !cancelled; i++) {
+        await Song.fromFile(files[i]);
+        processedFiles.value = i + 1;
+        await Future.delayed(const Duration(milliseconds: 10));
+      }
+
+      if (!cancelled) {
+        await _musicPlayer.loadLibraryFromFolder(folderPath);
+        _files = List<FileSystemEntity>.from(_musicPlayer.filesList.value);
+        _filteredFiles = _files;
+
+        if (mounted) {
+          setState(() {});
+          Navigator.of(context).pop();
+        }
+      }
+    } catch (e) {
+      debugPrint('[MusicPlayer] Error loading library: $e');
+      if (mounted) Navigator.of(context).pop();
     }
   }
 
@@ -1915,9 +2062,9 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen>
   }
 
   Widget _buildMiniPlayer() {
-    // Only show if we have a song or are playing
-    if (_currentTitle.isEmpty && _currentArt == null)
+    if (_currentTitle.isEmpty && _currentArt == null) {
       return const SizedBox.shrink();
+    }
 
     return GestureDetector(
       onTap: () {
@@ -1930,15 +2077,19 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen>
           if (mounted) setState(() {});
         });
       },
-      child: Container(
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 600),
+        curve: Curves.easeInOut,
         height: 64,
         padding: const EdgeInsets.symmetric(horizontal: 12),
         decoration: BoxDecoration(
-          color: const Color(0xFF1C1C1E), // Match user preference
+          color: _dominantColor != null
+              ? _dominantColor!.withOpacity(0.15)
+              : const Color(0xFF1C1C1E),
           borderRadius: BorderRadius.circular(16),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withOpacity(0.3),
+              color: (_dominantColor ?? Colors.black).withOpacity(0.3),
               blurRadius: 10,
               offset: const Offset(0, 5),
             ),
@@ -1946,23 +2097,30 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen>
         ),
         child: Row(
           children: [
-            // Artwork
-            Container(
-              width: 42,
-              height: 42,
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(8),
-                color: Colors.grey[800],
-                image: _currentArt != null
-                    ? DecorationImage(
-                        image: MemoryImage(_currentArt!),
-                        fit: BoxFit.cover,
-                      )
+            // Artwork with fade transition
+            AnimatedSwitcher(
+              duration: const Duration(milliseconds: 400),
+              transitionBuilder: (child, animation) {
+                return FadeTransition(opacity: animation, child: child);
+              },
+              child: Container(
+                key: ValueKey(_currentTitle),
+                width: 42,
+                height: 42,
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(8),
+                  color: Colors.grey[800],
+                  image: _currentArt != null
+                      ? DecorationImage(
+                          image: MemoryImage(_currentArt!),
+                          fit: BoxFit.cover,
+                        )
+                      : null,
+                ),
+                child: _currentArt == null
+                    ? const Icon(Icons.music_note, color: Colors.white54)
                     : null,
               ),
-              child: _currentArt == null
-                  ? const Icon(Icons.music_note, color: Colors.white54)
-                  : null,
             ),
             const SizedBox(width: 12),
             Expanded(
@@ -1988,7 +2146,6 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen>
                 ],
               ),
             ),
-            // Controls
             IconButton(
               icon: Icon(
                 _isPlaying ? Icons.pause_rounded : Icons.play_arrow_rounded,

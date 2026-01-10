@@ -282,7 +282,10 @@ class _PlayerScreenState extends State<PlayerScreen> {
         if (mounted) setState(() => _dominantColor = null);
       }
 
-      // 5. Fetch Lyrics
+      // 5. Save player state
+      _musicPlayer.savePlayerState();
+
+      // 6. Fetch Lyrics
       _musicPlayer.currentLyrics.value = null;
       LyricsService().fetchLyrics(title, artist).then((lyrics) {
         if (mounted) {
@@ -394,9 +397,11 @@ class _PlayerScreenState extends State<PlayerScreen> {
                           ),
                         ),
 
-                      // Dynamic color background if blur is off
+                      // Dynamic color background if blur is off (with fade transition)
                       if (!_useBlurBackground)
-                        Container(
+                        AnimatedContainer(
+                          duration: const Duration(milliseconds: 600),
+                          curve: Curves.easeInOut,
                           color: _dominantColor != null
                               ? _dominantColor!.withOpacity(0.1)
                               : Colors.black,
@@ -453,46 +458,74 @@ class _PlayerScreenState extends State<PlayerScreen> {
                                                           children: [
                                                             AspectRatio(
                                                               aspectRatio: 1,
-                                                              child: Container(
-                                                                decoration: BoxDecoration(
-                                                                  borderRadius:
-                                                                      BorderRadius.circular(
-                                                                        20,
-                                                                      ),
-                                                                  boxShadow: [
-                                                                    BoxShadow(
-                                                                      color: Colors
-                                                                          .black45,
-                                                                      blurRadius:
-                                                                          20,
+                                                              child: AnimatedSwitcher(
+                                                                duration:
+                                                                    const Duration(
+                                                                      milliseconds:
+                                                                          400,
                                                                     ),
-                                                                  ],
-                                                                  image:
-                                                                      _currentArt !=
+                                                                switchInCurve:
+                                                                    Curves
+                                                                        .easeIn,
+                                                                switchOutCurve:
+                                                                    Curves
+                                                                        .easeOut,
+                                                                transitionBuilder:
+                                                                    (
+                                                                      child,
+                                                                      animation,
+                                                                    ) {
+                                                                      return FadeTransition(
+                                                                        opacity:
+                                                                            animation,
+                                                                        child:
+                                                                            child,
+                                                                      );
+                                                                    },
+                                                                child: Container(
+                                                                  key: ValueKey(
+                                                                    _currentTitle,
+                                                                  ),
+                                                                  decoration: BoxDecoration(
+                                                                    borderRadius:
+                                                                        BorderRadius.circular(
+                                                                          20,
+                                                                        ),
+                                                                    boxShadow: [
+                                                                      BoxShadow(
+                                                                        color: Colors
+                                                                            .black45,
+                                                                        blurRadius:
+                                                                            20,
+                                                                      ),
+                                                                    ],
+                                                                    image:
+                                                                        _currentArt !=
+                                                                            null
+                                                                        ? DecorationImage(
+                                                                            image: MemoryImage(
+                                                                              _currentArt!,
+                                                                            ),
+                                                                            fit:
+                                                                                BoxFit.cover,
+                                                                          )
+                                                                        : null,
+                                                                    color: Colors
+                                                                        .white12,
+                                                                  ),
+                                                                  child:
+                                                                      _currentArt ==
                                                                           null
-                                                                      ? DecorationImage(
-                                                                          image: MemoryImage(
-                                                                            _currentArt!,
-                                                                          ),
-                                                                          fit: BoxFit
-                                                                              .cover,
+                                                                      ? const Icon(
+                                                                          Icons
+                                                                              .music_note,
+                                                                          size:
+                                                                              80,
+                                                                          color:
+                                                                              Colors.white12,
                                                                         )
                                                                       : null,
-                                                                  color: Colors
-                                                                      .white12,
                                                                 ),
-                                                                child:
-                                                                    _currentArt ==
-                                                                        null
-                                                                    ? const Icon(
-                                                                        Icons
-                                                                            .music_note,
-                                                                        size:
-                                                                            80,
-                                                                        color: Colors
-                                                                            .white12,
-                                                                      )
-                                                                    : null,
                                                               ),
                                                             ),
                                                             const SizedBox(
@@ -584,47 +617,68 @@ class _PlayerScreenState extends State<PlayerScreen> {
                                                 flex: 12,
                                                 child: AspectRatio(
                                                   aspectRatio: 1,
-                                                  child: Container(
-                                                    decoration: BoxDecoration(
-                                                      borderRadius:
-                                                          BorderRadius.circular(
-                                                            20,
-                                                          ),
-                                                      boxShadow: [
-                                                        if (_dominantColor !=
-                                                            null)
-                                                          BoxShadow(
+                                                  child: AnimatedSwitcher(
+                                                    duration: const Duration(
+                                                      milliseconds: 400,
+                                                    ),
+                                                    switchInCurve:
+                                                        Curves.easeIn,
+                                                    switchOutCurve:
+                                                        Curves.easeOut,
+                                                    transitionBuilder:
+                                                        (child, animation) {
+                                                          return FadeTransition(
+                                                            opacity: animation,
+                                                            child: child,
+                                                          );
+                                                        },
+                                                    child: Container(
+                                                      key: ValueKey(
+                                                        _currentTitle,
+                                                      ),
+                                                      decoration: BoxDecoration(
+                                                        borderRadius:
+                                                            BorderRadius.circular(
+                                                              20,
+                                                            ),
+                                                        boxShadow: [
+                                                          if (_dominantColor !=
+                                                              null)
+                                                            BoxShadow(
+                                                              color: _dominantColor!
+                                                                  .withOpacity(
+                                                                    0.5,
+                                                                  ),
+                                                              blurRadius: 40,
+                                                              spreadRadius: 5,
+                                                            ),
+                                                          const BoxShadow(
                                                             color:
-                                                                _dominantColor!
-                                                                    .withOpacity(
-                                                                      0.5,
-                                                                    ),
-                                                            blurRadius: 40,
-                                                            spreadRadius: 5,
+                                                                Colors.black45,
+                                                            blurRadius: 20,
                                                           ),
-                                                        const BoxShadow(
-                                                          color: Colors.black45,
-                                                          blurRadius: 20,
-                                                        ),
-                                                      ],
-                                                      image: _currentArt != null
-                                                          ? DecorationImage(
-                                                              image: MemoryImage(
-                                                                _currentArt!,
-                                                              ),
-                                                              fit: BoxFit.cover,
+                                                        ],
+                                                        image:
+                                                            _currentArt != null
+                                                            ? DecorationImage(
+                                                                image: MemoryImage(
+                                                                  _currentArt!,
+                                                                ),
+                                                                fit: BoxFit
+                                                                    .cover,
+                                                              )
+                                                            : null,
+                                                        color: Colors.white12,
+                                                      ),
+                                                      child: _currentArt == null
+                                                          ? const Icon(
+                                                              Icons.music_note,
+                                                              size: 120,
+                                                              color: Colors
+                                                                  .white12,
                                                             )
                                                           : null,
-                                                      color: Colors.white12,
                                                     ),
-                                                    child: _currentArt == null
-                                                        ? const Icon(
-                                                            Icons.music_note,
-                                                            size: 120,
-                                                            color:
-                                                                Colors.white12,
-                                                          )
-                                                        : null,
                                                   ),
                                                 ),
                                               ),
@@ -838,11 +892,9 @@ class _PlayerScreenState extends State<PlayerScreen> {
                                 const SizedBox(height: 24),
 
                                 // Progress Bar
-                                StreamBuilder<Duration>(
-                                  stream: _player.onPositionChanged,
-                                  builder: (context, snapshot) {
-                                    final position =
-                                        snapshot.data ?? Duration.zero;
+                                ValueListenableBuilder<Duration>(
+                                  valueListenable: _musicPlayer.position,
+                                  builder: (context, position, _) {
                                     final duration =
                                         _musicPlayer.duration.value;
                                     return Column(
