@@ -23,7 +23,7 @@ import 'services/global_keyboard_service.dart';
 import 'services/global_theme_service.dart';
 import 'version.dart';
 import 'package:url_launcher/url_launcher.dart';
-import 'widgets/fade_transition_screen.dart';
+
 import 'screen/video_downloader.dart';
 import 'widgets/sidebar_navigation.dart';
 import 'widgets/mini_music_player.dart';
@@ -995,38 +995,24 @@ class _HomeScreenState extends State<HomeScreen> with WindowListener {
                                                   barrierColor:
                                                       Colors.transparent,
                                                   transitionDuration:
-                                                      const Duration(
-                                                        milliseconds: 400,
-                                                      ),
+                                                      Duration.zero,
+                                                  reverseTransitionDuration:
+                                                      Duration.zero,
                                                   pageBuilder: (_, __, ___) =>
-                                                      FadeTransitionScreen(
-                                                        child: SettingsScreen(
-                                                          currentLang: widget
-                                                              .currentLangCode,
-                                                          getText:
-                                                              widget.getText,
-                                                          onSelectLanguage:
-                                                              (code) async =>
-                                                                  await widget
-                                                                      .onRequestLanguageChange(
-                                                                        code,
-                                                                      ),
-                                                          onChangeWindowEffect:
-                                                              _applyWindowEffect,
-                                                        ),
+                                                      SettingsScreen(
+                                                        currentLang: widget
+                                                            .currentLangCode,
+                                                        getText: widget.getText,
+                                                        onSelectLanguage:
+                                                            (
+                                                              code,
+                                                            ) async => await widget
+                                                                .onRequestLanguageChange(
+                                                                  code,
+                                                                ),
+                                                        onChangeWindowEffect:
+                                                            _applyWindowEffect,
                                                       ),
-                                                  transitionsBuilder:
-                                                      (
-                                                        _,
-                                                        animation,
-                                                        __,
-                                                        child,
-                                                      ) {
-                                                        return FadeTransition(
-                                                          opacity: animation,
-                                                          child: child,
-                                                        );
-                                                      },
                                                 ),
                                               );
                                           backgroundOpacity.value = 1.0;
