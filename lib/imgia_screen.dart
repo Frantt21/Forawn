@@ -153,7 +153,10 @@ class _AiImageScreenState extends State<AiImageScreen> with WindowListener {
     _loadMessages();
 
     if (widget.onRegisterFolderAction != null) {
+      debugPrint('[AiImageScreen] Registering folder action');
       widget.onRegisterFolderAction!(_selectFolder);
+    } else {
+      debugPrint('[AiImageScreen] onRegisterFolderAction is null!');
     }
 
     // Scroll al último mensaje después de que el widget se construya
@@ -225,10 +228,15 @@ class _AiImageScreenState extends State<AiImageScreen> with WindowListener {
   }
 
   Future<void> _selectFolder() async {
+    debugPrint('[AiImageScreen] _selectFolder called');
     final dir = await FilePicker.platform.getDirectoryPath();
-    if (dir == null) return;
+    if (dir == null) {
+      debugPrint('[AiImageScreen] Folder selection cancelled');
+      return;
+    }
     _saveFolder = p.normalize(dir);
     await _saveFolderPref();
+    debugPrint('[AiImageScreen] Folder selected: $_saveFolder');
     if (!mounted) return;
     showElegantNotification(
       context,

@@ -442,14 +442,15 @@ class _HomeScreenState extends State<HomeScreen> with WindowListener {
   bool _nsfwEnabled = false;
   List<String> _recentScreens = [];
   VoidCallback? _onFolderAction;
+  List<String> _screenKeys = [];
+  Map<String, Widget> _cachedScreens = {};
 
   @override
   void initState() {
     super.initState();
     windowManager.addListener(this);
-    _loadNsfwPref();
+    _loadNsfwPref(); // This will call _initializeScreens after loading
     _loadRecentScreens();
-    _initializeScreens(); // Inicializar screens cacheados
     WidgetsBinding.instance.addPostFrameCallback((_) {
       // checkForUpdate(context, widget.getText);
     });
@@ -460,7 +461,11 @@ class _HomeScreenState extends State<HomeScreen> with WindowListener {
       final prefs = await SharedPreferences.getInstance();
       final enabled = prefs.getBool('nsfw_enabled') ?? false;
       if (!mounted) return;
-      setState(() => _nsfwEnabled = enabled);
+      setState(() {
+        _nsfwEnabled = enabled;
+        // Reinitialize screens with correct NSFW setting
+        _initializeScreens();
+      });
     } catch (_) {}
   }
 
@@ -487,21 +492,23 @@ class _HomeScreenState extends State<HomeScreen> with WindowListener {
   }
 
   void _handleNavigation(String screenId) {
-    // Add to recents
-    if (screenId != 'home' && screenId != 'settings') {
-      setState(() {
-        _recentScreens.remove(screenId);
-        _recentScreens.insert(0, screenId);
-        if (_recentScreens.length > 5) {
-          _recentScreens = _recentScreens.sublist(0, 5);
-        }
-      });
+    // Save to recent screens
+    if (screenId != 'home') {
+      _recentScreens.remove(screenId);
+      _recentScreens.insert(0, screenId);
+      if (_recentScreens.length > 6) {
+        _recentScreens = _recentScreens.sublist(0, 6);
+      }
       _saveRecentScreens();
     }
 
     setState(() {
       _currentScreen = screenId;
-      _onFolderAction = null;
+      // Switch to the folder action for this screen (if it has one)
+      _onFolderAction = _folderActions[screenId];
+      debugPrint(
+        '[Main] Navigated to $screenId, folder action: ${_onFolderAction != null}',
+      );
     });
 
     // Actualizar Discord Rich Presence si está conectado
@@ -510,11 +517,24 @@ class _HomeScreenState extends State<HomeScreen> with WindowListener {
     }
   }
 
-  void _registerFolderAction(VoidCallback action) {
+  // Store folder actions per screen
+  final Map<String, VoidCallback> _folderActions = {};
+
+  void _registerFolderAction(VoidCallback action, [String? screenName]) {
+    final targetScreen = screenName ?? _currentScreen;
+    debugPrint(
+      '[Main] Registering folder action for screen: $targetScreen (current: $_currentScreen)',
+    );
     Future.microtask(() {
       if (mounted) {
         setState(() {
-          _onFolderAction = action;
+          // Store the action for the target screen
+          _folderActions[targetScreen] = action;
+          // If we're registering for the currently visible screen, activate it
+          if (targetScreen == _currentScreen) {
+            _onFolderAction = action;
+          }
+          debugPrint('[Main] Folder action registered for: $targetScreen');
         });
       }
     });
@@ -560,18 +580,31 @@ class _HomeScreenState extends State<HomeScreen> with WindowListener {
   }
 
   // Cachear widgets de pantallas para evitar recreación
-  late final Map<String, Widget> _cachedScreens;
-  late final List<String> _screenKeys;
-
   // Método para actualizar HomeContent cuando cambian los recientes
-  void _updateHomeContent() {
-    if (_cachedScreens.containsKey('home')) {
-      _cachedScreens['home'] = HomeContent(
-        getText: widget.getText,
-        recentScreens: _recentScreens,
-        onNavigate: _handleNavigation,
-      );
-    }
+  Future<void> _updateHomeContent() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final newNsfwEnabled = prefs.getBool('nsfw_enabled') ?? false;
+
+      if (!mounted) return;
+
+      // If NSFW setting changed, reinitialize screens
+      if (_nsfwEnabled != newNsfwEnabled) {
+        setState(() {
+          _nsfwEnabled = newNsfwEnabled;
+          _initializeScreens(); // Reinitialize with new NSFW setting
+        });
+      } else if (_cachedScreens.containsKey('home')) {
+        // Just update home content
+        setState(() {
+          _cachedScreens['home'] = HomeContent(
+            getText: widget.getText,
+            recentScreens: _recentScreens,
+            onNavigate: _handleNavigation,
+          );
+        });
+      }
+    } catch (_) {}
   }
 
   void _initializeScreens() {
@@ -597,22 +630,26 @@ class _HomeScreenState extends State<HomeScreen> with WindowListener {
       'music': MusicDownloaderScreen(
         getText: widget.getText,
         currentLang: widget.currentLangCode,
-        onRegisterFolderAction: _registerFolderAction,
+        onRegisterFolderAction: (action) =>
+            _registerFolderAction(action, 'music'),
         onNavigate: _handleNavigation,
       ),
       'video': VideoDownloaderScreen(
         getText: widget.getText,
         currentLang: widget.currentLangCode,
-        onRegisterFolderAction: _registerFolderAction,
+        onRegisterFolderAction: (action) =>
+            _registerFolderAction(action, 'video'),
       ),
       'player': MusicPlayerScreen(
         getText: widget.getText,
-        onRegisterFolderAction: _registerFolderAction,
+        onRegisterFolderAction: (action) =>
+            _registerFolderAction(action, 'player'),
       ),
       'images': AiImageScreen(
         getText: widget.getText,
         currentLang: widget.currentLangCode,
-        onRegisterFolderAction: _registerFolderAction,
+        onRegisterFolderAction: (action) =>
+            _registerFolderAction(action, 'images'),
       ),
       'notes': NotesScreen(
         getText: widget.getText,
@@ -621,12 +658,13 @@ class _HomeScreenState extends State<HomeScreen> with WindowListener {
       'translate': TranslateScreen(
         getText: widget.getText,
         currentLang: widget.currentLangCode,
-        onRegisterFolderAction: _registerFolderAction,
+        onRegisterFolderAction: (action) =>
+            _registerFolderAction(action, 'translate'),
       ),
       'qr': QrGeneratorScreen(
         getText: widget.getText,
         currentLang: widget.currentLangCode,
-        onRegisterFolderAction: _registerFolderAction,
+        onRegisterFolderAction: (action) => _registerFolderAction(action, 'qr'),
       ),
       'foraai': ForaaiScreen(
         getText: widget.getText,
@@ -636,7 +674,8 @@ class _HomeScreenState extends State<HomeScreen> with WindowListener {
           ? R34Screen(
               getText: widget.getText,
               currentLang: widget.currentLangCode,
-              onRegisterFolderAction: _registerFolderAction,
+              onRegisterFolderAction: (action) =>
+                  _registerFolderAction(action, 'r34'),
               onNavigate: _handleNavigation,
             )
           : HomeContent(
@@ -790,7 +829,8 @@ class _HomeScreenState extends State<HomeScreen> with WindowListener {
                                         ),
                                       ),
                                       const Spacer(),
-                                      if (_onFolderAction != null)
+                                      // Screen-specific folder buttons
+                                      if (_currentScreen == 'music')
                                         IconButton(
                                           tooltip: widget.getText(
                                             'folder_button',
@@ -800,7 +840,105 @@ class _HomeScreenState extends State<HomeScreen> with WindowListener {
                                             Icons.folder_open,
                                             size: 20,
                                           ),
-                                          onPressed: _onFolderAction,
+                                          onPressed: () {
+                                            debugPrint(
+                                              '[Main] Music folder button pressed',
+                                            );
+                                            debugPrint(
+                                              '[Main] _onFolderAction is null: ${_onFolderAction == null}',
+                                            );
+                                            final screen =
+                                                _cachedScreens['music'];
+                                            if (screen
+                                                is MusicDownloaderScreen) {
+                                              // Trigger folder selection for music screen
+                                              _onFolderAction?.call();
+                                            }
+                                          },
+                                        ),
+                                      if (_currentScreen == 'video')
+                                        IconButton(
+                                          tooltip: widget.getText(
+                                            'folder_button',
+                                            fallback: 'Folder',
+                                          ),
+                                          icon: const Icon(
+                                            Icons.folder_open,
+                                            size: 20,
+                                          ),
+                                          onPressed: () {
+                                            _onFolderAction?.call();
+                                          },
+                                        ),
+                                      if (_currentScreen == 'player')
+                                        IconButton(
+                                          tooltip: widget.getText(
+                                            'folder_button',
+                                            fallback: 'Folder',
+                                          ),
+                                          icon: const Icon(
+                                            Icons.folder_open,
+                                            size: 20,
+                                          ),
+                                          onPressed: () {
+                                            _onFolderAction?.call();
+                                          },
+                                        ),
+                                      if (_currentScreen == 'images')
+                                        IconButton(
+                                          tooltip: widget.getText(
+                                            'folder_button',
+                                            fallback: 'Folder',
+                                          ),
+                                          icon: const Icon(
+                                            Icons.folder_open,
+                                            size: 20,
+                                          ),
+                                          onPressed: () {
+                                            _onFolderAction?.call();
+                                          },
+                                        ),
+                                      if (_currentScreen == 'translate')
+                                        IconButton(
+                                          tooltip: widget.getText(
+                                            'folder_button',
+                                            fallback: 'Folder',
+                                          ),
+                                          icon: const Icon(
+                                            Icons.folder_open,
+                                            size: 20,
+                                          ),
+                                          onPressed: () {
+                                            _onFolderAction?.call();
+                                          },
+                                        ),
+                                      if (_currentScreen == 'qr')
+                                        IconButton(
+                                          tooltip: widget.getText(
+                                            'folder_button',
+                                            fallback: 'Folder',
+                                          ),
+                                          icon: const Icon(
+                                            Icons.folder_open,
+                                            size: 20,
+                                          ),
+                                          onPressed: () {
+                                            _onFolderAction?.call();
+                                          },
+                                        ),
+                                      if (_currentScreen == 'r34')
+                                        IconButton(
+                                          tooltip: widget.getText(
+                                            'folder_button',
+                                            fallback: 'Folder',
+                                          ),
+                                          icon: const Icon(
+                                            Icons.folder_open,
+                                            size: 20,
+                                          ),
+                                          onPressed: () {
+                                            _onFolderAction?.call();
+                                          },
                                         ),
                                       IconButton(
                                         tooltip: widget.getText(

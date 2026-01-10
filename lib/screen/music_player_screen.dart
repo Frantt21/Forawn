@@ -641,12 +641,17 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen>
       }
 
       if (!cancelled) {
+        // Reload library from GlobalMusicPlayer
         await _musicPlayer.loadLibraryFromFolder(folderPath);
-        _files = List<FileSystemEntity>.from(_musicPlayer.filesList.value);
-        _filteredFiles = _files;
 
+        // Sync local state with global
         if (mounted) {
-          setState(() {});
+          setState(() {
+            _files = List<FileSystemEntity>.from(_musicPlayer.filesList.value);
+            _filteredFiles = _files;
+          });
+
+          debugPrint('[MusicPlayer] Library reloaded: ${_files.length} files');
           Navigator.of(context).pop();
         }
       }
