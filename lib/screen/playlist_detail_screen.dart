@@ -257,39 +257,46 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
 
               // Song List
               SliverList(
-                delegate: SliverChildBuilderDelegate((context, index) {
-                  final song = songs[index];
-                  return ListTile(
-                    leading: _buildSongArt(song),
-                    title: Text(
-                      song.title,
-                      style: const TextStyle(color: Colors.white),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                    subtitle: Text(
-                      song.artist,
-                      style: const TextStyle(color: Colors.grey),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                    trailing: IconButton(
-                      icon: const Icon(
-                        Icons.remove_circle_outline,
-                        color: Colors.redAccent,
+                delegate: SliverChildBuilderDelegate(
+                  (context, index) {
+                    final song = songs[index];
+                    return ListTile(
+                      key: ValueKey(song.id), // Prevent rebuilds on scroll
+                      leading: _buildSongArt(song),
+                      title: Text(
+                        song.title,
+                        style: const TextStyle(color: Colors.white),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
                       ),
-                      onPressed: () => PlaylistService().removeSongFromPlaylist(
-                        playlist.id,
-                        song.id,
+                      subtitle: Text(
+                        song.artist,
+                        style: const TextStyle(color: Colors.grey),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
                       ),
-                    ),
-                    onTap: () {
-                      // Play Logic
-                      final files = songs.map((s) => File(s.filePath)).toList();
-                      GlobalMusicPlayer().playPlaylist(files, index);
-                    },
-                  );
-                }, childCount: songs.length),
+                      trailing: IconButton(
+                        icon: const Icon(
+                          Icons.remove_circle_outline,
+                          color: Colors.redAccent,
+                        ),
+                        onPressed: () => PlaylistService()
+                            .removeSongFromPlaylist(playlist.id, song.id),
+                      ),
+                      onTap: () {
+                        // Play Logic
+                        final files = songs
+                            .map((s) => File(s.filePath))
+                            .toList();
+                        GlobalMusicPlayer().playPlaylist(files, index);
+                      },
+                    );
+                  },
+                  childCount: songs.length,
+                  addRepaintBoundaries:
+                      true, // Evita repintar widgets fuera de vista
+                  addAutomaticKeepAlives: true, // Mantiene widgets en memoria
+                ),
               ),
               const SliverToBoxAdapter(child: SizedBox(height: 100)),
             ],
@@ -323,42 +330,8 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
   }
 
   Widget _buildSongArt(Song song) {
-    // Si Song tiene artwork embebido, usarlo directamente
-    if (song.artworkData != null) {
-      return ClipRRect(
-        borderRadius: BorderRadius.circular(4),
-        child: Image.memory(
-          song.artworkData!,
-          width: 48,
-          height: 48,
-          fit: BoxFit.cover,
-        ),
-      );
-    }
-
-    // Si no, cargar desde servicio global
-    return FutureBuilder(
-      future: GlobalMetadataService().get(song.filePath),
-      builder: (context, snapshot) {
-        final art = snapshot.data?.artwork;
-        if (art != null) {
-          return ClipRRect(
-            borderRadius: BorderRadius.circular(4),
-            child: Image.memory(art, width: 48, height: 48, fit: BoxFit.cover),
-          );
-        }
-
-        return Container(
-          width: 48,
-          height: 48,
-          decoration: BoxDecoration(
-            color: Colors.grey[800],
-            borderRadius: BorderRadius.circular(4),
-          ),
-          child: const Icon(Icons.music_note, color: Colors.grey),
-        );
-      },
-    );
+    // Usar un widget stateful que cachee el artwork
+    return _CachedSongArtwork(key: ValueKey(song.id), song: song);
   }
 
   Future<void> _showEditPlaylistDialog(
@@ -577,6 +550,64 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
               ],
             );
           },
+        );
+      },
+    );
+  }
+}
+
+/// Widget stateful que cachea el artwork para evitar reconstrucciones
+class _CachedSongArtwork extends StatefulWidget {
+  final Song song;
+
+  const _CachedSongArtwork({super.key, required this.song});
+
+  @override
+  State<_CachedSongArtwork> createState() => _CachedSongArtworkState();
+}
+
+class _CachedSongArtworkState extends State<_CachedSongArtwork>
+    with AutomaticKeepAliveClientMixin {
+  @override
+  bool get wantKeepAlive => true; // Mantener el estado vivo
+
+  @override
+  Widget build(BuildContext context) {
+    super.build(context); // Requerido por AutomaticKeepAliveClientMixin
+
+    // Si Song tiene artwork embebido, usarlo directamente
+    if (widget.song.artworkData != null) {
+      return ClipRRect(
+        borderRadius: BorderRadius.circular(4),
+        child: Image.memory(
+          widget.song.artworkData!,
+          width: 48,
+          height: 48,
+          fit: BoxFit.cover,
+        ),
+      );
+    }
+
+    // Si no, cargar desde servicio global UNA SOLA VEZ
+    return FutureBuilder(
+      future: GlobalMetadataService().get(widget.song.filePath),
+      builder: (context, snapshot) {
+        final art = snapshot.data?.artwork;
+        if (art != null) {
+          return ClipRRect(
+            borderRadius: BorderRadius.circular(4),
+            child: Image.memory(art, width: 48, height: 48, fit: BoxFit.cover),
+          );
+        }
+
+        return Container(
+          width: 48,
+          height: 48,
+          decoration: BoxDecoration(
+            color: Colors.grey[800],
+            borderRadius: BorderRadius.circular(4),
+          ),
+          child: const Icon(Icons.music_note, color: Colors.grey),
         );
       },
     );

@@ -9,6 +9,8 @@ import '../services/lyrics_service.dart';
 import '../models/synced_lyrics.dart';
 import '../models/song_model.dart';
 import '../services/music_metadata_cache.dart';
+import 'package:palette_generator/palette_generator.dart';
+import 'package:audio_metadata_reader/audio_metadata_reader.dart';
 
 enum LoopMode { off, all, one }
 
@@ -226,7 +228,12 @@ class GlobalMusicPlayer {
       songsList.value = songs;
       _libraryLoaded = true;
 
+      _libraryLoaded = true;
+
       debugPrint('[GlobalMusicPlayer] Library loaded: ${songs.length} songs');
+
+      // Start background color extraction
+      _processLibraryColors(musicFiles);
     } catch (e) {
       debugPrint('[GlobalMusicPlayer] Error loading from folder: $e');
     }
@@ -474,5 +481,63 @@ class GlobalMusicPlayer {
     currentLyricIndex.dispose();
     showLyrics.dispose();
     _lyricsTimer?.cancel();
+  }
+
+  Future<void> _processLibraryColors(List<FileSystemEntity> files) async {
+    // Run in microtask or delayed to not block UI
+    Future.delayed(Duration.zero, () async {
+      debugPrint('[GlobalMusicPlayer] Starting background color extraction...');
+      int processed = 0;
+
+      for (final file in files) {
+        if (file is! File) continue;
+
+        try {
+          // Check if already cached with color
+          final cached = await MusicMetadataCache.get(file.path);
+          if (cached != null && cached.dominantColor != null) {
+            continue; // Already has color
+          }
+
+          // Need to extract
+          final metadata = await readMetadata(file, getImage: true);
+          if (metadata.pictures.isNotEmpty) {
+            final artwork = metadata.pictures.first.bytes;
+
+            // Extract color
+            final palette = await PaletteGenerator.fromImageProvider(
+              MemoryImage(artwork),
+              size: const Size(50, 50),
+            );
+            final color =
+                palette.dominantColor?.color ?? palette.vibrantColor?.color;
+
+            if (color != null) {
+              // Update Cache
+              await MusicMetadataCache.saveFromMetadata(
+                key: file.path,
+                title: metadata.title,
+                artist: metadata.artist,
+                album: metadata.album,
+                durationMs: metadata.duration?.inMilliseconds,
+                artworkData: artwork,
+                dominantColor: color.value,
+              );
+              processed++;
+            }
+          }
+        } catch (e) {
+          // Ignore errors for individual files
+        }
+
+        // Yield to event loop every few files
+        if (processed % 5 == 0) {
+          await Future.delayed(const Duration(milliseconds: 10));
+        }
+      }
+      debugPrint(
+        '[GlobalMusicPlayer] Background color extraction complete. Processed $processed new colors.',
+      );
+    });
   }
 }

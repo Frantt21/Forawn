@@ -831,11 +831,7 @@ class _HomeScreenState extends State<HomeScreen> with WindowListener {
                                     horizontal: 10,
                                   ),
                                   decoration: BoxDecoration(
-                                    color:
-                                        (dominantColor != null &&
-                                            _currentScreen == 'player')
-                                        ? dominantColor.withOpacity(0.12)
-                                        : Colors.transparent,
+                                    color: Colors.transparent,
                                   ),
                                   child: Row(
                                     children: [

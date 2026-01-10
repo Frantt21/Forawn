@@ -1,8 +1,8 @@
 import 'dart:async';
 import 'dart:io';
 import 'dart:math';
+import 'dart:ui'; // Needed for PointerDeviceKind
 import 'dart:typed_data';
-import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:file_picker/file_picker.dart';
@@ -150,10 +150,62 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen>
 
   void _onMetadataChanged() {
     if (mounted) {
+      final newArt = _musicPlayer.currentArt.value;
+      // If the art changed, we might need to update the color
+      if (newArt != _currentArt) {
+        final path = _musicPlayer.currentFilePath.value;
+        if (path.isNotEmpty) {
+          _updateGlobalColor(path, newArt);
+        }
+      }
+
       setState(() {
         _currentTitle = _musicPlayer.currentTitle.value;
         _currentArtist = _musicPlayer.currentArtist.value;
-        _currentArt = _musicPlayer.currentArt.value;
+        _currentArt = newArt;
+      });
+    }
+  }
+
+  Future<void> _updateGlobalColor(String filePath, Uint8List? artwork) async {
+    if (filePath.isEmpty) return;
+
+    // 1. Try cache
+    Color? color = AlbumColorCache().getColor(filePath);
+
+    // 2. Extract if not in cache
+    if (color == null && artwork != null) {
+      try {
+        final paletteGenerator = await PaletteGenerator.fromImageProvider(
+          MemoryImage(artwork),
+          size: const Size(50, 50),
+        );
+        color =
+            paletteGenerator.dominantColor?.color ??
+            paletteGenerator.vibrantColor?.color;
+
+        if (color != null) {
+          await AlbumColorCache().setColor(filePath, color);
+        }
+      } catch (e) {
+        debugPrint(
+          '[MusicPlayer] Error extracting color in background sync: $e',
+        );
+      }
+    }
+
+    // 3. Update Global Service (ALWAYS, even if unmounted)
+    if (color != null) {
+      GlobalThemeService().updateDominantColor(color);
+    } else if (artwork == null) {
+      // Only reset if no artwork
+      GlobalThemeService().updateDominantColor(null);
+    }
+
+    // 4. Update Local State (Only if mounted)
+    if (mounted) {
+      setState(() {
+        _dominantColor = color;
       });
     }
   }
@@ -848,33 +900,39 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen>
           _currentArtist = artist;
           _currentArt = artwork;
           _dominantColor = dominantColor;
-          // GlobalThemeService().updateDominantColor(dominantColor); // DISABLED to stop AppBar color change
+          // Update global theme color
+          if (dominantColor != null) {
+            GlobalThemeService().updateDominantColor(dominantColor);
+          }
         });
       }
 
-      _musicPlayer.currentTitle.value = title;
-      _musicPlayer.currentArtist.value = artist;
-      if (artwork != null) {
-        _musicPlayer.currentArt.value = artwork;
-      }
+      _musicPlayer.currentTitle.value = parsed['title']!;
+      _musicPlayer.currentArtist.value = parsed['artist']!;
+
+      // Now update art (triggers listeners)
+      _musicPlayer.currentArt.value = artwork; // Actualizar portada!
+
+      // Explicitly update global color since we might be unmounted and listeners might not effectively update UI,
+      // but we still want the global theme to change.
+      _updateGlobalColor(filePath, artwork);
 
       // Buscar thumbnail de YouTube para Discord (en background)
-      ThumbnailSearchService().searchThumbnail(title, artist).then((
-        thumbnailUrl,
-      ) {
-        if (thumbnailUrl != null) {
-          MusicStateService().updateMusicState(thumbnailUrl: thumbnailUrl);
-          // Actualizar Discord con el nuevo thumbnail
-          if (DiscordService().isConnected) {
-            DiscordService().updateMusicPresence();
-          }
-        }
-      });
+      ThumbnailSearchService()
+          .searchThumbnail(parsed['title']!, parsed['artist']!)
+          .then((thumbnailUrl) {
+            if (thumbnailUrl != null) {
+              MusicStateService().updateMusicState(thumbnailUrl: thumbnailUrl);
+              if (DiscordService().isConnected) {
+                DiscordService().updateMusicPresence();
+              }
+            }
+          });
 
       // Actualizar servicio de estado de música para Discord
       MusicStateService().updateMusicState(
-        title: title,
-        artist: artist,
+        title: parsed['title']!,
+        artist: parsed['artist']!,
         artwork: artwork,
         isPlaying: _isPlaying,
         duration: _musicPlayer.duration.value,
@@ -1377,8 +1435,8 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen>
   }
 
   Widget _buildHomeTab() {
-    final historyPaths = MusicHistory().getHistory().take(6).toList();
-    final playlists = PlaylistService().playlists.take(6).toList();
+    final historyPaths = MusicHistory().getHistory().take(10).toList();
+    final playlists = PlaylistService().playlists.take(10).toList();
 
     return SingleChildScrollView(
       padding: const EdgeInsets.symmetric(horizontal: 16),
@@ -1398,14 +1456,25 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen>
             )
           else
             SizedBox(
-              height: 200,
-              child: ListView.separated(
-                scrollDirection: Axis.horizontal,
-                itemCount: historyPaths.length,
-                separatorBuilder: (_, __) => const SizedBox(width: 12),
-                itemBuilder: (context, index) {
-                  return _buildHistoryCard(historyPaths[index]);
-                },
+              height: 160,
+              child: ScrollConfiguration(
+                behavior: const ScrollBehavior().copyWith(
+                  scrollbars: false,
+                  dragDevices: {
+                    PointerDeviceKind.touch,
+                    PointerDeviceKind.mouse, // Enable mouse drag
+                  },
+                ),
+                child: ListView.separated(
+                  scrollDirection: Axis.horizontal,
+                  physics:
+                      const AlwaysScrollableScrollPhysics(), // Ensure scrolling always works
+                  itemCount: historyPaths.length,
+                  separatorBuilder: (_, __) => const SizedBox(width: 12),
+                  itemBuilder: (context, index) {
+                    return _buildHistoryCard(historyPaths[index]);
+                  },
+                ),
               ),
             ),
 
@@ -1431,14 +1500,24 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen>
             )
           else
             SizedBox(
-              height: 180,
-              child: ListView.separated(
-                scrollDirection: Axis.horizontal,
-                itemCount: playlists.length,
-                separatorBuilder: (_, __) => const SizedBox(width: 12),
-                itemBuilder: (context, index) {
-                  return _buildPlaylistCard(playlists[index]);
-                },
+              height: 160,
+              child: ScrollConfiguration(
+                behavior: const ScrollBehavior().copyWith(
+                  scrollbars: false,
+                  dragDevices: {
+                    PointerDeviceKind.touch,
+                    PointerDeviceKind.mouse, // Enable mouse drag
+                  },
+                ),
+                child: ListView.separated(
+                  scrollDirection: Axis.horizontal,
+                  physics: const AlwaysScrollableScrollPhysics(),
+                  itemCount: playlists.length,
+                  separatorBuilder: (_, __) => const SizedBox(width: 12),
+                  itemBuilder: (context, index) {
+                    return _buildPlaylistCard(playlists[index]);
+                  },
+                ),
               ),
             ),
 
@@ -1509,85 +1588,114 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen>
               builder: (context) => PlayerScreen(getText: widget.getText),
             ),
           ).then((_) {
-            if (mounted) setState(() {});
+            if (mounted) {
+              // Refresh metadata and color from global state
+              setState(() {
+                // Trigger global color update from current song
+                final song = GlobalMusicPlayer().songsList.value.firstWhere(
+                  (s) => s.filePath == filePath,
+                  orElse: () =>
+                      Song(id: '', title: '', artist: '', filePath: ''),
+                );
+                if (song.filePath.isNotEmpty) {
+                  // Fix: Get color from cache instead of passing raw bytes
+                  final color = AlbumColorCache().getColor(song.filePath);
+                  GlobalThemeService().updateDominantColor(color);
+                }
+              });
+            }
           });
         }
       },
       child: Container(
-        width: 140,
+        width: 160,
+        height: 160,
         margin: const EdgeInsets.only(bottom: 8),
         decoration: BoxDecoration(
           color: const Color(0xFF1C1C1E),
           borderRadius: BorderRadius.circular(12),
           border: Border.all(color: Colors.white.withOpacity(0.1)),
         ),
-        child: FutureBuilder<SongMetadata?>(
-          future: _cacheAwareReadMetadata(file),
-          builder: (context, snapshot) {
-            final data = snapshot.data;
-            final art = data?.artwork;
-            final title = data?.title ?? fileName;
-            final artist = data?.artist ?? "Unknown Artist";
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(12),
+          child: FutureBuilder<SongMetadata?>(
+            future: _cacheAwareReadMetadata(file),
+            builder: (context, snapshot) {
+              final data = snapshot.data;
+              final art = data?.artwork;
+              final title = data?.title ?? fileName;
+              final artist = data?.artist ?? "Unknown Artist";
 
-            return Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Expanded(
-                  child: Container(
+              return Stack(
+                fit: StackFit.expand,
+                children: [
+                  // Background Image or Placeholder
+                  art != null
+                      ? Image.memory(art, fit: BoxFit.cover)
+                      : Container(
+                          color: Colors.grey[900],
+                          child: const Icon(
+                            Icons.music_note,
+                            size: 50,
+                            color: Colors.grey,
+                          ),
+                        ),
+
+                  // Gradient Overlay
+                  Container(
                     decoration: BoxDecoration(
-                      borderRadius: const BorderRadius.vertical(
-                        top: Radius.circular(12),
+                      gradient: LinearGradient(
+                        begin: Alignment.topCenter,
+                        end: Alignment.bottomCenter,
+                        colors: [
+                          Colors.transparent,
+                          Colors.black.withOpacity(0.8),
+                        ],
+                        stops: const [0.5, 1.0],
                       ),
-                      color: Colors.grey[900],
-                      image: art != null
-                          ? DecorationImage(
-                              image: MemoryImage(art),
-                              fit: BoxFit.cover,
-                            )
-                          : null,
                     ),
-                    child: art == null
-                        ? const Center(
-                            child: Icon(
-                              Icons.music_note,
-                              size: 50,
-                              color: Colors.grey,
-                            ),
-                          )
-                        : null,
                   ),
-                ),
-                Padding(
-                  padding: const EdgeInsets.all(10.0),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        title,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
-                          fontWeight: FontWeight.bold,
-                          fontSize: 13,
-                          color: Colors.white,
+
+                  // Text Content
+                  Padding(
+                    padding: const EdgeInsets.all(12.0),
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.end,
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          title,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            fontWeight: FontWeight.bold,
+                            fontSize: 13,
+                            color: Colors.white,
+                            shadows: [
+                              Shadow(blurRadius: 2, color: Colors.black),
+                            ],
+                          ),
                         ),
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        artist,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
-                          color: Colors.grey,
-                          fontSize: 11,
+                        const SizedBox(height: 2),
+                        Text(
+                          artist,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            color: Colors.white70,
+                            fontSize: 11,
+                            shadows: [
+                              Shadow(blurRadius: 2, color: Colors.black),
+                            ],
+                          ),
                         ),
-                      ),
-                    ],
+                      ],
+                    ),
                   ),
-                ),
-              ],
-            );
-          },
+                ],
+              );
+            },
+          ),
         ),
       ),
     );
@@ -1627,66 +1735,76 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen>
         );
       },
       child: Container(
-        width: 140,
+        width: 160,
+        height: 160,
         decoration: BoxDecoration(
           color: const Color(0xFF1C1C1E),
           borderRadius: BorderRadius.circular(12),
           border: Border.all(color: Colors.white.withOpacity(0.1)),
         ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Expanded(
-              child: Container(
-                decoration: BoxDecoration(
-                  borderRadius: const BorderRadius.vertical(
-                    top: Radius.circular(12),
-                  ),
-                  color: Colors.grey[800],
-                  image: playlist.imagePath != null
-                      ? DecorationImage(
-                          image: FileImage(File(playlist.imagePath!)),
-                          fit: BoxFit.cover,
-                        )
-                      : null,
-                ),
-                child: playlist.imagePath == null
-                    ? const Center(
-                        child: Icon(
-                          Icons.queue_music,
-                          size: 40,
-                          color: Colors.white54,
-                        ),
-                      )
-                    : null,
-              ),
-            ),
-            Padding(
-              padding: const EdgeInsets.all(10.0),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    playlist.name,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      fontWeight: FontWeight.bold,
-                      fontSize: 13,
-                      color: Colors.white,
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(12),
+          child: Stack(
+            fit: StackFit.expand,
+            children: [
+              // Background Image
+              playlist.imagePath != null
+                  ? Image.file(File(playlist.imagePath!), fit: BoxFit.cover)
+                  : Container(
+                      color: Colors.grey[800],
+                      child: const Icon(
+                        Icons.queue_music,
+                        size: 40,
+                        color: Colors.white54,
+                      ),
                     ),
+
+              // Gradient Overlay
+              Container(
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    colors: [Colors.transparent, Colors.black.withOpacity(0.8)],
+                    stops: const [0.5, 1.0],
                   ),
-                  const SizedBox(height: 4),
-                  Text(
-                    "${playlist.songs.length} songs",
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(color: Colors.grey, fontSize: 11),
-                  ),
-                ],
+                ),
               ),
-            ),
-          ],
+
+              // Text Content
+              Padding(
+                padding: const EdgeInsets.all(12.0),
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.end,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      playlist.name,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        fontWeight: FontWeight.bold,
+                        fontSize: 13,
+                        color: Colors.white,
+                        shadows: [Shadow(blurRadius: 2, color: Colors.black)],
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      "${playlist.songs.length} songs",
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        color: Colors.white70,
+                        fontSize: 11,
+                        shadows: [Shadow(blurRadius: 2, color: Colors.black)],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -1736,12 +1854,14 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen>
             final artist = data?.artist ?? "Unknown Artist";
 
             return ListTile(
+              key: ValueKey(file.path), // Prevent rebuilds on scroll
               leading: Container(
                 width: 48,
-                height: 48,
                 decoration: BoxDecoration(
-                  color: Colors.grey[900],
-                  borderRadius: BorderRadius.circular(8),
+                  // Ensure explicit transparency here
+                  color: Colors.transparent,
+                  // Remove any shadow or border that might imply a container
+                  borderRadius: BorderRadius.circular(12),
                   image: art != null
                       ? DecorationImage(
                           image: MemoryImage(art),
@@ -2067,6 +2187,7 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen>
   }
 
   Widget _buildMiniPlayer() {
+    // Hide if no song is loaded
     if (_currentTitle.isEmpty && _currentArt == null) {
       return const SizedBox.shrink();
     }
@@ -2085,110 +2206,120 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen>
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 600),
         curve: Curves.easeInOut,
-        height: 64,
-        padding: const EdgeInsets.symmetric(horizontal: 12),
+        height: 80, // Slightly taller for floating effect
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        margin: const EdgeInsets.only(
+          bottom: 16,
+          left: 16,
+          right: 16,
+        ), // Floating margin
         decoration: BoxDecoration(
-          color: _dominantColor != null
-              ? _dominantColor!.withOpacity(0.15)
-              : const Color(0xFF1C1C1E),
+          color: Colors.transparent, // Explicit transparency for glass effect
           borderRadius: BorderRadius.circular(16),
-          boxShadow: [
-            BoxShadow(
-              color: (_dominantColor ?? Colors.black).withOpacity(0.3),
-              blurRadius: 10,
-              offset: const Offset(0, 5),
-            ),
-          ],
         ),
-        child: Row(
-          children: [
-            // Artwork with fade transition
-            AnimatedSwitcher(
-              duration: const Duration(milliseconds: 400),
-              transitionBuilder: (child, animation) {
-                return FadeTransition(opacity: animation, child: child);
-              },
-              child: Container(
-                key: ValueKey(_currentTitle),
-                width: 42,
-                height: 42,
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(8),
-                  color: Colors.grey[800],
-                  image: _currentArt != null
-                      ? DecorationImage(
-                          image: MemoryImage(_currentArt!),
-                          fit: BoxFit.cover,
-                        )
-                      : null,
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(16),
+          child: BackdropFilter(
+            filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              decoration: BoxDecoration(
+                color: (_dominantColor ?? const Color(0xFF1C1C1E)).withOpacity(
+                  0.60,
                 ),
-                child: _currentArt == null
-                    ? const Icon(Icons.music_note, color: Colors.white54)
-                    : null,
+                borderRadius: BorderRadius.circular(16),
+                // No shadow for glass feel
               ),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                crossAxisAlignment: CrossAxisAlignment.start,
+              child: Row(
                 children: [
-                  Text(
-                    _currentTitle.isEmpty ? "No song" : _currentTitle,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      fontWeight: FontWeight.bold,
-                      fontSize: 14,
+                  // Artwork
+                  AnimatedSwitcher(
+                    duration: const Duration(milliseconds: 400),
+                    transitionBuilder: (child, animation) {
+                      return FadeTransition(opacity: animation, child: child);
+                    },
+                    child: Container(
+                      key: ValueKey(_currentTitle),
+                      width: 48,
+                      height: 48,
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(8),
+                        color: Colors.grey[800],
+                        image: _currentArt != null
+                            ? DecorationImage(
+                                image: MemoryImage(_currentArt!),
+                                fit: BoxFit.cover,
+                              )
+                            : null,
+                      ),
+                      child: _currentArt == null
+                          ? const Icon(Icons.music_note, color: Colors.white54)
+                          : null,
                     ),
                   ),
-                  Text(
-                    _currentArtist,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(color: Colors.grey, fontSize: 12),
+                  const SizedBox(width: 16),
+                  // Title & Artist
+                  Expanded(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          _currentTitle.isEmpty ? "No song" : _currentTitle,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            fontWeight: FontWeight.bold,
+                            fontSize: 14,
+                            color: Colors.white,
+                          ),
+                        ),
+                        Text(
+                          _currentArtist,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            color: Colors.white70,
+                            fontSize: 12,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  // Controls
+                  ValueListenableBuilder<bool>(
+                    valueListenable: _musicPlayer.isPlaying,
+                    builder: (context, isPlaying, _) {
+                      return IconButton(
+                        iconSize: 32,
+                        icon: Icon(
+                          isPlaying
+                              ? Icons.pause_rounded
+                              : Icons.play_arrow_rounded,
+                          color: Colors.white,
+                        ),
+                        // Remove debug prints or keep them minimal
+                        onPressed: _togglePlayPause,
+                      );
+                    },
+                  ),
+                  IconButton(
+                    iconSize: 32,
+                    icon: const Icon(
+                      Icons.skip_next_rounded,
+                      color: Colors.white,
+                    ),
+                    onPressed: _playNext,
                   ),
                 ],
               ),
             ),
-            IconButton(
-              icon: Icon(
-                _isPlaying ? Icons.pause_rounded : Icons.play_arrow_rounded,
-              ),
-              onPressed: _togglePlayPause,
-            ),
-            IconButton(
-              icon: const Icon(Icons.skip_next_rounded),
-              onPressed: _playNext,
-            ),
-          ],
+          ),
         ),
       ),
     );
   }
 
-  void _handleKeyboardEvent(RawKeyEvent event) {
-    // Solo procesar eventos de tecla presionada
-    if (event is! RawKeyDownEvent) return;
-
-    final logicalKey = event.logicalKey;
-
-    // Detectar F9 para anterior - usa la misma función que el botón
-    if (logicalKey == LogicalKeyboardKey.f9) {
-      _playPrevious();
-      return;
-    }
-
-    // Detectar F10 para play/pausa - usa la misma función que el botón
-    if (logicalKey == LogicalKeyboardKey.f10) {
-      _togglePlayPause();
-      return;
-    }
-
-    // Detectar F11 para siguiente - usa la misma función que el botón
-    if (logicalKey == LogicalKeyboardKey.f11) {
-      _playNext();
-      return;
-    }
-  }
+  // Keyboard handling disabled locally as it's handled globally
+  // void _handleKeyboardEvent(RawKeyEvent event) { ... }
 }

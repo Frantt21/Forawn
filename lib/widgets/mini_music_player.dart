@@ -1,5 +1,7 @@
+import 'dart:ui';
 import 'package:flutter/material.dart';
 import '../services/global_music_player.dart';
+import '../services/global_theme_service.dart';
 
 typedef TextGetter = String Function(String key, {String? fallback});
 
@@ -21,6 +23,23 @@ class _MiniMusicPlayerState extends State<MiniMusicPlayer> {
   final GlobalMusicPlayer _musicPlayer = GlobalMusicPlayer();
   bool _isHovering = false;
   Offset _offset = const Offset(0, 0);
+
+  @override
+  void initState() {
+    super.initState();
+    // Rebuild when color changes
+    GlobalThemeService().dominantColor.addListener(_onColorChanged);
+  }
+
+  @override
+  void dispose() {
+    GlobalThemeService().dominantColor.removeListener(_onColorChanged);
+    super.dispose();
+  }
+
+  void _onColorChanged() {
+    if (mounted) setState(() {});
+  }
 
   @override
   void didChangeDependencies() {
@@ -60,9 +79,9 @@ class _MiniMusicPlayerState extends State<MiniMusicPlayer> {
         const minWidth = 200.0;
         const maxWidth = 380.0;
 
-        // Posición base del mini player
+        // Posición base del mini player (más flotante)
         final baseLeft = 16.0 + _offset.dx;
-        final baseBottom = 16.0 + _offset.dy;
+        final baseBottom = 32.0 + _offset.dy; // Increased bottom margin
 
         // Calcular si hay espacio suficiente para expandir a la derecha
         final spaceToRight = screenSize.width - baseLeft - minWidth;
@@ -99,22 +118,31 @@ class _MiniMusicPlayerState extends State<MiniMusicPlayer> {
                 width: _isHovering ? 380 : 200,
                 padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
-                  color: const Color.fromARGB(225, 30, 30, 30),
-                  borderRadius: BorderRadius.circular(12),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black54,
-                      blurRadius: 10,
-                      offset: const Offset(0, 4),
-                    ),
-                  ],
-                ),
-                child: Material(
+                  // Ensure explicit transparency here
                   color: Colors.transparent,
-                  child: SingleChildScrollView(
-                    child: _isHovering
-                        ? _buildExpandedPlayer()
-                        : _buildCollapsedPlayer(),
+                  // Remove any shadow or border that might imply a container
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(12),
+                  child: BackdropFilter(
+                    filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+                    child: Container(
+                      decoration: BoxDecoration(
+                        color:
+                            (GlobalThemeService().dominantColor.value ??
+                                    const Color.fromARGB(225, 30, 30, 30))
+                                .withOpacity(0.60),
+                      ),
+                      child: Material(
+                        color: Colors.transparent,
+                        child: SingleChildScrollView(
+                          child: _isHovering
+                              ? _buildExpandedPlayer()
+                              : _buildCollapsedPlayer(),
+                        ),
+                      ),
+                    ),
                   ),
                 ),
               ),
