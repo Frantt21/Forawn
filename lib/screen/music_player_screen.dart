@@ -125,7 +125,7 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen>
       // Find index of file and update metadata
       final index = _files.indexWhere((f) => (f as File).path == filePath);
       if (index != -1) {
-        await _updateMetadataFromFile(index);
+        await _updateMetadataFromFile(index, shouldPlay: false);
       }
     };
 
@@ -205,14 +205,27 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen>
   }
 
   void _onCurrentIndexChanged() {
-    final newIndex = _musicPlayer.currentIndex.value;
-    if (mounted && newIndex != null && newIndex != _currentIndex) {
-      setState(() {
-        _currentIndex = newIndex;
-      });
-      // Update metadata when index changes (e.g., from player_screen)
-      if (newIndex >= 0 && newIndex < _files.length) {
-        _updateMetadataFromFile(newIndex);
+    // Use path-based lookup to sync with global player
+    final path = _musicPlayer.currentFilePath.value;
+    final index = _files.indexWhere((f) => f.path == path);
+
+    if (index != -1) {
+      if (_currentIndex != index) {
+        setState(() {
+          _currentIndex = index;
+        });
+      }
+      // Song found in this folder list. Update metadata but DO NOT PLAY.
+      // This keeps the UI in sync even if playing from a playlist or another screen.
+      // passing shouldPlay: false ensures we don't interrupt audio or corrupt global state (filesList).
+      _updateMetadataFromFile(index, shouldPlay: false);
+    } else {
+      // Song not in this folder.
+      // We might want to clear selection or just leave it.
+      if (_currentIndex != null) {
+        setState(() {
+          _currentIndex = null;
+        });
       }
     }
   }
@@ -293,7 +306,10 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen>
     }
   }
 
-  Future<void> _updateMetadataFromFile(int index) async {
+  Future<void> _updateMetadataFromFile(
+    int index, {
+    bool shouldPlay = true,
+  }) async {
     if (index < 0 || index >= _files.length) return;
     _playedIndices.add(index);
     final file = _files[index] as File;
@@ -315,19 +331,23 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen>
         debugPrint('[MusicPlayer] Error reading metadata from DB: $e');
       }
 
-      // Detener reproducción anterior
-      await _musicPlayer.player.stop();
+      if (shouldPlay) {
+        // Detener reproducción anterior
+        await _musicPlayer.player.stop();
 
-      // Reproducir archivo
-      await _musicPlayer.player.play(DeviceFileSource(file.path));
+        // Reproducir archivo
+        await _musicPlayer.player.play(DeviceFileSource(file.path));
+
+        // Update global playback state ONLY if we are the active controller
+        _musicPlayer.currentFilePath.value = file.path;
+        _musicPlayer.currentIndex.value = index;
+        _musicPlayer.filesList.value = _files;
+      }
 
       // Actualizar estado global INMEDIATAMENTE con metadatos
       _musicPlayer.currentTitle.value = title;
       _musicPlayer.currentArtist.value = artist;
       _musicPlayer.currentArt.value = artwork;
-      _musicPlayer.currentIndex.value = index;
-      _musicPlayer.currentFilePath.value = file.path;
-      _musicPlayer.filesList.value = _files;
 
       // Agregar al historial también en background
       MusicHistory().addToHistory(file);
@@ -510,8 +530,11 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen>
                     return ValueListenableBuilder<int>(
                       valueListenable: totalFiles,
                       builder: (context, total, _) {
+                        final isColors = processed > (total / 2);
                         return Text(
-                          'Procesando metadatos y colores ($processed/$total)...',
+                          isColors
+                              ? 'Extrayendo colores ($processed/$total)...'
+                              : 'Procesando metadatos ($processed/$total)...',
                           style: const TextStyle(
                             color: Colors.white70,
                             fontSize: 14,
@@ -547,14 +570,20 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen>
         return ext == '.mp3' || ext == '.m4a' || ext == '.flac';
       }).toList();
 
-      totalFiles.value = files.length;
+      totalFiles.value = files.length * 2;
 
+      // Fase 1: Metadatos
       for (int i = 0; i < files.length && !cancelled; i++) {
-        // LocalMusicDatabase carga metadatos Y colores automáticamente
         await LocalMusicDatabase().getMetadata(files[i].path);
-
         processedFiles.value = i + 1;
-        await Future.delayed(const Duration(milliseconds: 10));
+        await Future.delayed(const Duration(milliseconds: 1));
+      }
+
+      // Fase 2: Colores
+      for (int i = 0; i < files.length && !cancelled; i++) {
+        await LocalMusicDatabase().getDominantColor(files[i].path);
+        processedFiles.value = files.length + i + 1;
+        await Future.delayed(const Duration(milliseconds: 1));
       }
 
       if (!cancelled) {
@@ -629,70 +658,10 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen>
   }
 
   Future<void> _playFile(int index) async {
-    if (index < 0 || index >= _files.length) return;
-    final file = _files[index] as File;
-
-    try {
-      if (mounted) {
-        setState(() {
-          _currentIndex = index;
-          _playedIndices.add(index); // Marcar como reproducida
-        });
-      }
-
-      debugPrint('[MusicPlayer] Playing file: ${file.path}');
-
-      // Detener reproducción anterior
-      try {
-        await _player.stop();
-      } catch (e) {
-        debugPrint("[MusicPlayer] Error stopping player: $e");
-      }
-
-      // Reproducir archivo
-      try {
-        await _player.play(DeviceFileSource(file.path));
-        debugPrint('[MusicPlayer] Play started successfully');
-      } catch (e) {
-        debugPrint("[MusicPlayer] Error playing file: $e");
-        if (mounted) {
-          setState(() => _currentIndex = null);
-        }
-        return;
-      }
-
-      // Pequeño delay antes de obtener duración
-      await Future.delayed(const Duration(milliseconds: 100));
-
-      // Obtener duración
-      try {
-        final dur = await _player.getDuration() ?? Duration.zero;
-        debugPrint('[MusicPlayer] Duration: ${dur.inSeconds}s');
-        _musicPlayer.duration.value = dur;
-      } catch (e) {
-        debugPrint("[MusicPlayer] Error getting duration: $e");
-        _musicPlayer.duration.value = Duration.zero;
-      }
-
-      // IMPORTANTE: Actualizar metadata ANTES de actualizar índice
-      // Esto asegura que los títulos se actualicen inmediatamente
+    // Simplified to route through unified logic
+    if (index >= 0 && index < _files.length) {
+      debugPrint('[MusicPlayer] _playFile requested for index $index');
       await _updateMetadataFromFile(index);
-
-      // Actualizar índice y datos globales
-      _musicPlayer.currentIndex.value = index;
-      _musicPlayer.currentFilePath.value = file.path;
-      _musicPlayer.filesList.value = _files;
-
-      // Agregar al historial cuando se empieza a reproducir
-      MusicHistory().addToHistory(file);
-
-      // El mini reproductor ya no se muestra automáticamente
-      // El usuario debe presionar el botón de "mostrar mini reproductor"
-    } catch (e) {
-      debugPrint("[MusicPlayer] Unexpected error in _playFile: $e");
-      if (mounted) {
-        setState(() => _currentIndex = null);
-      }
     }
   }
 
