@@ -8,7 +8,6 @@ import 'package:flutter/services.dart';
 import 'package:audioplayers/audioplayers.dart';
 import 'package:path/path.dart' as p;
 
-import 'package:audio_metadata_reader/audio_metadata_reader.dart';
 import 'package:palette_generator/palette_generator.dart';
 
 import '../services/global_music_player.dart';
@@ -243,49 +242,24 @@ class _PlayerScreenState extends State<PlayerScreen> {
       await _player.stop();
       await _player.play(DeviceFileSource(file.path));
 
-      // 1. Basic Title fallback
-      final parsedTitle = p.basename(file.path);
-
-      String title = parsedTitle;
-      String artist = 'Unknown Artist';
-      Uint8List? artwork;
-
-      // 2. Read Metadata
-      try {
-        final metadata = readMetadata(file, getImage: true);
-        title = metadata.title?.isNotEmpty == true
-            ? metadata.title!
-            : parsedTitle;
-        artist = metadata.artist?.isNotEmpty == true
-            ? metadata.artist!
-            : 'Unknown Artist';
-        if (metadata.pictures.isNotEmpty) {
-          artwork = metadata.pictures.first.bytes;
-        }
-      } catch (_) {}
-
-      // 3. Update Global State
-      // CRITICAL: Update path FIRST so listeners (like _onArtChanged) see the NEW song's path.
+      // Update Global State - metadata is already cached from music_player_screen
+      // No need to read metadata here, just update the index and path
       _musicPlayer.currentFilePath.value = file.path;
       _musicPlayer.currentIndex.value = index;
-      _musicPlayer.currentTitle.value = title;
-      _musicPlayer.currentArtist.value = artist;
-
-      // Update Art LAST so listeners read correct Path for caching
-      _musicPlayer.currentArt.value = artwork;
       _musicPlayer.isPlaying.value = true;
+
+      // The music_player_screen will handle updating title, artist, and artwork
+      // through its listeners when currentIndex changes
 
       MusicHistory().addToHistory(file);
 
-      // 4. Update Color (reset if null, otherwise listener handles it)
-      if (artwork == null) {
-        if (mounted) setState(() => _dominantColor = null);
-      }
-
-      // 5. Save player state
+      // Save player state
       _musicPlayer.savePlayerState();
 
-      // 6. Fetch Lyrics
+      // Fetch Lyrics using current title/artist from global state
+      final title = _musicPlayer.currentTitle.value;
+      final artist = _musicPlayer.currentArtist.value;
+
       _musicPlayer.currentLyrics.value = null;
       LyricsService().fetchLyrics(title, artist).then((lyrics) {
         if (mounted) {

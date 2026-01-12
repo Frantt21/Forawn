@@ -21,7 +21,7 @@ import '../services/metadata_service.dart';
 import '../services/global_theme_service.dart';
 
 import '../services/music_metadata_cache.dart';
-import 'playlist_detail_screen.dart';
+// import 'playlist_detail_screen.dart'; // TODO: Restore when file is recreated
 import '../services/playlist_service.dart';
 import '../models/playlist_model.dart';
 import '../models/song_model.dart';
@@ -131,7 +131,11 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen>
 
     // Register metadata callback for when playing from playlist
     _musicPlayer.onMetadataNeeded = (filePath) async {
-      await _loadMetadata(filePath);
+      // Find index of file and update metadata
+      final index = _files.indexWhere((f) => (f as File).path == filePath);
+      if (index != -1) {
+        await _updateMetadataFromFile(index);
+      }
     };
 
     // Initialize services ONCE (solo la primera vez que se carga la app)
@@ -226,10 +230,15 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen>
   }
 
   void _onCurrentIndexChanged() {
-    if (mounted) {
+    final newIndex = _musicPlayer.currentIndex.value;
+    if (mounted && newIndex != null && newIndex != _currentIndex) {
       setState(() {
-        _currentIndex = _musicPlayer.currentIndex.value;
+        _currentIndex = newIndex;
       });
+      // Update metadata when index changes (e.g., from player_screen)
+      if (newIndex >= 0 && newIndex < _files.length) {
+        _updateMetadataFromFile(newIndex);
+      }
     }
   }
 
@@ -309,94 +318,6 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen>
     }
   }
 
-  /// Normaliza caracteres especiales mal codificados
-  String _normalizeText(String text) {
-    // Mapa de caracteres mal codificados comunes a sus equivalentes correctos
-    final replacements = {
-      'Ã­': 'í', // í
-      'Ã¡': 'á', // á
-      'Ã©': 'é', // é
-      'Ã³': 'ó', // ó
-      'Ãº': 'ú', // ú
-      'Ã±': 'ñ', // ñ
-      'Ã': 'Í', // Í
-      'Ã': 'Á', // Á
-      'Ã': 'É', // É
-      'Ã': 'Ó', // Ó
-      'Ã': 'Ú', // Ú
-      'Ã': 'Ñ', // Ñ
-    };
-
-    String normalized = text;
-    replacements.forEach((bad, good) {
-      normalized = normalized.replaceAll(bad, good);
-    });
-
-    return normalized;
-  }
-
-  /// Parsea metadatos de YouTube para extraer artista y título
-  Map<String, String> _parseMetadata(String rawTitle, String rawArtist) {
-    // Normalizar caracteres primero
-    String title = _normalizeText(rawTitle);
-    String artist = _normalizeText(rawArtist);
-
-    // Remover patrones comunes de YouTube del título
-    final patterns = [
-      r'\(Official Video\)',
-      r'\(Official Audio\)',
-      r'\(Official Music Video\)',
-      r'\(Visualizer\)',
-      r'\(Lyric Video\)',
-      r'\(Lyrics\)',
-      r'\(Audio\)',
-      r'\(Video\)',
-      r'\[Official Video\]',
-      r'\[Official Audio\]',
-      r'\[Visualizer\]',
-      r'\[Lyric Video\]',
-      r'\[Lyrics\]',
-      r'- Topic\$',
-      r'\| Topic\$',
-    ];
-
-    for (final pattern in patterns) {
-      title = title.replaceAll(RegExp(pattern, caseSensitive: false), '');
-    }
-
-    // Si hay un pipe (|), la parte antes es el artista y después el título
-    // Ejemplo: "kLOuFRENS (Visualizer) | DeBÍ TiRAR MáS FOTos"
-    if (title.contains('|')) {
-      final parts = title.split('|');
-      if (parts.length > 1) {
-        // Si no hay artista o es "Unknown Artist", usar la parte antes del pipe
-        if (artist.isEmpty || artist == 'Unknown Artist') {
-          artist = parts[0].trim();
-        }
-        title = parts.last.trim();
-      }
-    }
-    // Si hay un guion " - " y no tenemos artista, intentar separar
-    // Ejemplo: "Bad Bunny - KLOuFRENS"
-    else if (title.contains(' - ') &&
-        (artist.isEmpty || artist == 'Unknown Artist')) {
-      final parts = title.split(' - ');
-      if (parts.length == 2) {
-        artist = parts[0].trim();
-        title = parts[1].trim();
-      }
-    }
-
-    // Limpiar espacios extras
-    title = title.trim();
-    artist = artist.trim();
-
-    return {
-      'title': title.isNotEmpty ? title : rawTitle,
-      'artist': artist.isNotEmpty ? artist : rawArtist,
-    };
-  }
-
   Future<void> _updateMetadataFromFile(int index) async {
     if (index < 0 || index >= _files.length) return;
     _playedIndices.add(
@@ -433,10 +354,9 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen>
       await _musicPlayer.player.play(DeviceFileSource(file.path));
 
       // Actualizar estado global INMEDIATAMENTE con metadatos
-      final parsed = _parseMetadata(title, artist);
-      _musicPlayer.currentTitle.value = parsed['title']!;
-      _musicPlayer.currentArtist.value = parsed['artist']!;
-      _musicPlayer.currentArt.value = artwork; // Actualizar portada!
+      _musicPlayer.currentTitle.value = title;
+      _musicPlayer.currentArtist.value = artist;
+      _musicPlayer.currentArt.value = artwork;
       _musicPlayer.currentIndex.value = index;
       _musicPlayer.currentFilePath.value = file.path;
       _musicPlayer.filesList.value = _files;
@@ -763,230 +683,6 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen>
     }
   }
 
-  Future<void> _loadMetadata(String filePath) async {
-    try {
-      final file = File(filePath);
-
-      // Intentar obtener del caché primero
-      SongMetadata? cachedMetadata = _libraryMetadataCache[filePath];
-      cachedMetadata ??= await MusicMetadataCache.get(filePath);
-
-      String title = p.basename(filePath);
-      String artist = widget.getText(
-        'unknown_artist',
-        fallback: 'Unknown Artist',
-      );
-      Uint8List? artwork;
-
-      // Si tenemos caché, usarlo
-      if (cachedMetadata != null) {
-        title = cachedMetadata.title;
-        artist = cachedMetadata.artist;
-        artwork = cachedMetadata.artwork;
-        debugPrint('[MusicPlayer] Using cached metadata for: $title');
-      } else {
-        // Solo si no hay caché, leer del archivo
-        final metadata = readMetadata(file, getImage: true);
-
-        if (metadata.title?.isNotEmpty == true) {
-          title = metadata.title!;
-        }
-        if (metadata.artist?.isNotEmpty == true) {
-          artist = metadata.artist!;
-        }
-        if (metadata.pictures.isNotEmpty) {
-          artwork = metadata.pictures.first.bytes;
-        }
-
-        // Guardar en caché para uso futuro
-        await MusicMetadataCache.saveFromMetadata(
-          key: filePath,
-          title: metadata.title,
-          artist: metadata.artist,
-          album: metadata.album,
-          durationMs: metadata.duration?.inMilliseconds,
-          artworkData: artwork,
-        );
-
-        _libraryMetadataCache[filePath] = SongMetadata(
-          title: title,
-          artist: artist,
-          album: metadata.album,
-          durationMs: metadata.duration?.inMilliseconds,
-          artwork: artwork,
-        );
-      }
-
-      // Parsear metadatos para limpiar títulos de YouTube
-      final originalTitle = title; // Guardar título original
-      final parsed = _parseMetadata(title, artist);
-      title = parsed['title']!;
-      artist = parsed['artist']!;
-
-      // Detectar si probablemente viene de YouTube:
-      // 1. Artista desconocido
-      // 2. Título original tenía caracteres de YouTube
-      // 3. No hay artwork (YouTube no embebe portadas correctamente)
-      // 4. Título tiene caracteres mal codificados
-      final likelyFromYouTube =
-          artist == 'Unknown Artist' ||
-          originalTitle.contains('|') ||
-          originalTitle.contains('(') ||
-          originalTitle.contains('Visualizer') ||
-          originalTitle.contains('Official') ||
-          artwork == null ||
-          title.contains('�'); // Caracteres mal codificados
-
-      // Intentar enriquecer con metadatos de Spotify
-      if (likelyFromYouTube) {
-        try {
-          debugPrint(
-            '[MusicPlayer] Attempting to enrich metadata from Spotify for: $title - $artist',
-          );
-          final spotifyMetadata = await MetadataService().searchMetadata(
-            title,
-            artist != 'Unknown Artist' ? artist : null,
-          );
-
-          if (spotifyMetadata != null) {
-            debugPrint(
-              '[MusicPlayer] Enriched: ${spotifyMetadata.title} by ${spotifyMetadata.artist}',
-            );
-            title = spotifyMetadata.title;
-            artist = spotifyMetadata.artist;
-
-            // Descargar portada de Spotify si no hay artwork local
-            if (artwork == null && spotifyMetadata.albumArtUrl != null) {
-              final spotifyArtwork = await MetadataService().downloadAlbumArt(
-                spotifyMetadata.albumArtUrl,
-              );
-              if (spotifyArtwork != null) {
-                artwork = spotifyArtwork;
-                debugPrint('[MusicPlayer] Using Spotify album art');
-              }
-            }
-          }
-        } catch (e) {
-          debugPrint('[MusicPlayer] Error enriching metadata: $e');
-        }
-      }
-
-      // Intentar obtener color del caché primero
-      Color? dominantColor = AlbumColorCache().getColor(filePath);
-
-      // Si no está en caché y hay artwork, extraer el color
-      if (dominantColor == null && artwork != null) {
-        try {
-          final paletteGenerator = await PaletteGenerator.fromImageProvider(
-            MemoryImage(artwork),
-            size: const Size(50, 50), // Reducido para mejor rendimiento
-          );
-          dominantColor =
-              paletteGenerator.dominantColor?.color ??
-              paletteGenerator.vibrantColor?.color;
-
-          // Guardar en caché para uso futuro
-          if (dominantColor != null) {
-            await AlbumColorCache().setColor(filePath, dominantColor);
-          }
-        } catch (e) {
-          debugPrint('[MusicPlayer] Error extracting color: $e');
-        }
-      }
-
-      if (mounted) {
-        setState(() {
-          _currentTitle = title;
-          _currentArtist = artist;
-          _currentArt = artwork;
-          _dominantColor = dominantColor;
-          // Update global theme color
-          if (dominantColor != null) {
-            GlobalThemeService().updateDominantColor(dominantColor);
-          }
-        });
-      }
-
-      _musicPlayer.currentTitle.value = parsed['title']!;
-      _musicPlayer.currentArtist.value = parsed['artist']!;
-
-      // Now update art (triggers listeners)
-      _musicPlayer.currentArt.value = artwork; // Actualizar portada!
-
-      // Explicitly update global color since we might be unmounted and listeners might not effectively update UI,
-      // but we still want the global theme to change.
-      _updateGlobalColor(filePath, artwork);
-
-      // Buscar thumbnail de YouTube para Discord (en background)
-      ThumbnailSearchService()
-          .searchThumbnail(parsed['title']!, parsed['artist']!)
-          .then((thumbnailUrl) {
-            if (thumbnailUrl != null) {
-              MusicStateService().updateMusicState(thumbnailUrl: thumbnailUrl);
-              if (DiscordService().isConnected) {
-                DiscordService().updateMusicPresence();
-              }
-            }
-          });
-
-      // Actualizar servicio de estado de música para Discord
-      MusicStateService().updateMusicState(
-        title: parsed['title']!,
-        artist: parsed['artist']!,
-        artwork: artwork,
-        isPlaying: _isPlaying,
-        duration: _musicPlayer.duration.value,
-        position: _musicPlayer.position.value,
-      );
-
-      // Actualizar Discord Rich Presence si está conectado
-      if (DiscordService().isConnected) {
-        DiscordService().updateMusicPresence();
-      }
-
-      debugPrint(
-        '[MusicPlayer] Loaded metadata: $title by $artist (color: ${dominantColor != null})',
-      );
-    } catch (e) {
-      debugPrint('[MusicPlayer] Error loading metadata: $e');
-
-      final title = p.basename(filePath);
-      final artist = widget.getText(
-        'unknown_artist',
-        fallback: 'Unknown Artist',
-      );
-
-      if (mounted) {
-        setState(() {
-          _currentTitle = title;
-          _currentArtist = artist;
-          _currentArt = null;
-          _dominantColor = null;
-          GlobalThemeService().updateDominantColor(null);
-        });
-      }
-
-      _musicPlayer.currentTitle.value = title;
-      _musicPlayer.currentArtist.value = artist;
-      _musicPlayer.currentArt.value = null;
-
-      // Actualizar servicio de estado de música para Discord
-      MusicStateService().updateMusicState(
-        title: title,
-        artist: artist,
-        artwork: null,
-        isPlaying: _isPlaying,
-        duration: _musicPlayer.duration.value,
-        position: _musicPlayer.position.value,
-      );
-
-      // Actualizar Discord Rich Presence si está conectado
-      if (DiscordService().isConnected) {
-        DiscordService().updateMusicPresence();
-      }
-    }
-  }
-
   Future<void> _playFile(int index) async {
     if (index < 0 || index >= _files.length) return;
     final file = _files[index] as File;
@@ -1033,9 +729,9 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen>
         _musicPlayer.duration.value = Duration.zero;
       }
 
-      // IMPORTANTE: Cargar metadata ANTES de actualizar índice
+      // IMPORTANTE: Actualizar metadata ANTES de actualizar índice
       // Esto asegura que los títulos se actualicen inmediatamente
-      await _loadMetadata(file.path);
+      await _updateMetadataFromFile(index);
 
       // Actualizar índice y datos globales
       _musicPlayer.currentIndex.value = index;
@@ -1198,42 +894,6 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen>
       }
     }
   }
-
-  /// Calcular color con buen contraste basado en el color dominante
-  Color _getContrastColor(Color? baseColor) {
-    if (baseColor == null)
-      return Colors.black; // Negro sobre blanco por defecto
-
-    // Calcular luminancia
-    final luminance = baseColor.computeLuminance();
-
-    // Si el color es oscuro, usar blanco; si es claro, usar negro
-    return luminance > 0.5 ? Colors.black : Colors.white;
-  }
-
-  /// Ajustar el color dominante para los controles
-  /// Si el color es claro, lo oscurece mezclándolo con negro
-  /// Si el color es oscuro, lo aclara mezclándolo con blanco
-  Color _adjustColorForControls(Color? baseColor) {
-    if (baseColor == null) return Colors.purpleAccent;
-
-    // Calcular luminancia para determinar si es claro u oscuro
-    final luminance = baseColor.computeLuminance();
-
-    // Si es muy claro (luminancia > 0.5), oscurecer mezclando con negro
-    if (luminance > 0.5) {
-      return Color.lerp(baseColor, Colors.black, 0.3) ?? baseColor;
-    }
-    // Si es oscuro, aclarar mezclando con blanco
-    else {
-      return Color.lerp(baseColor, Colors.white, 0.3) ?? baseColor;
-    }
-  }
-
-  /// Mostrar menú de opciones de caché de colores
-  /// Mostrar menú de opciones de caché de colores
-
-  /// Mostrar menú de opciones de caché de colores
 
   /// Pre-cargar colores de todas las canciones
   Future<void> _preloadAllColors() async {
@@ -1704,12 +1364,18 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen>
   Widget _buildPlaylistCard(Playlist playlist) {
     return GestureDetector(
       onTap: () {
-        Navigator.push(
-          context,
-          MaterialPageRoute(
-            builder: (context) => PlaylistDetailScreen(playlist: playlist),
+        // TODO: Restore PlaylistDetailScreen
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Playlist detail screen temporarily unavailable'),
           ),
-        ).then((_) => setState(() {}));
+        );
+        // Navigator.push(
+        //   context,
+        //   MaterialPageRoute(
+        //     builder: (context) => PlaylistDetailScreen(playlist: playlist),
+        //   ),
+        // ).then((_) => setState(() {}));
       },
       onLongPress: () {
         showModalBottomSheet(
