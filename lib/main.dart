@@ -599,11 +599,17 @@ class _HomeScreenState extends State<HomeScreen> with WindowListener {
   }
 
   @override
-  void onWindowClose() {}
+  void onWindowClose() {
+    // Guardar estado del reproductor antes de cerrar (inmediato, sin debounce)
+    GlobalMusicPlayer().savePlayerStateImmediate();
+    debugPrint('[App] Player state will be saved on window close');
+  }
 
   @override
   void dispose() {
     windowManager.removeListener(this);
+    // Guardar estado del reproductor al destruir (inmediato)
+    GlobalMusicPlayer().savePlayerStateImmediate();
     // Limpiar Discord Rich Presence
     DiscordService().dispose();
     super.dispose();

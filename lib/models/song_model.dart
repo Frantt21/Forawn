@@ -43,6 +43,10 @@ class Song {
       final metadata = await LocalMusicDatabase().getMetadata(filePath);
 
       if (metadata != null) {
+        // Also fetch pre-cached color if available
+        final cachedColor = await LocalMusicDatabase().getDominantColor(
+          filePath,
+        );
         return Song(
           id: id,
           title: metadata.title,
@@ -53,6 +57,7 @@ class Song {
               : null,
           filePath: filePath,
           artworkData: metadata.artwork, // Artwork embebido
+          dominantColor: cachedColor?.value,
         );
       }
 

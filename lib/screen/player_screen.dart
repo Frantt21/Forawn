@@ -10,10 +10,11 @@ import 'package:path/path.dart' as p;
 
 import '../services/global_music_player.dart';
 import '../services/music_history.dart';
-import '../services/local_music_database.dart';
+
 import '../services/global_theme_service.dart';
 import '../models/synced_lyrics.dart';
-import '../services/lyrics_service.dart';
+import '../models/song_model.dart';
+
 import 'lyrics_display_widget.dart';
 import 'package:window_manager/window_manager.dart';
 
@@ -79,6 +80,8 @@ class _PlayerScreenState extends State<PlayerScreen> with WindowListener {
 
     // Sync initial state
     _useBlurBackground = GlobalThemeService().blurBackground.value;
+    _dominantColor =
+        GlobalThemeService().dominantColor.value; // Use global color directly
     _files = List<FileSystemEntity>.from(_musicPlayer.filesList.value);
     _filteredFiles = _files;
 
@@ -87,19 +90,11 @@ class _PlayerScreenState extends State<PlayerScreen> with WindowListener {
     _currentArtist = _musicPlayer.currentArtist.value;
     _currentArt = _musicPlayer.currentArt.value;
 
-    // Initial color extraction
-    if (_musicPlayer.currentFilePath.value.isNotEmpty) {
-      LocalMusicDatabase()
-          .getDominantColor(_musicPlayer.currentFilePath.value)
-          .then((cachedColor) {
-            if (cachedColor != null && mounted) {
-              setState(() => _dominantColor = cachedColor);
-            }
-          });
-    }
-
     // Listeners
     GlobalThemeService().blurBackground.addListener(_onBlurChanged);
+    GlobalThemeService().dominantColor.addListener(
+      _onColorChanged,
+    ); // Listen to global color
     _musicPlayer.filesList.addListener(_onFilesChanged);
     _musicPlayer.currentArt.addListener(_onArtChanged);
     _musicPlayer.currentTitle.addListener(_onTitleChanged);
@@ -111,6 +106,7 @@ class _PlayerScreenState extends State<PlayerScreen> with WindowListener {
   @override
   void dispose() {
     GlobalThemeService().blurBackground.removeListener(_onBlurChanged);
+    GlobalThemeService().dominantColor.removeListener(_onColorChanged);
     _musicPlayer.filesList.removeListener(_onFilesChanged);
     _musicPlayer.currentArt.removeListener(_onArtChanged);
     _musicPlayer.currentTitle.removeListener(_onTitleChanged);
@@ -118,6 +114,12 @@ class _PlayerScreenState extends State<PlayerScreen> with WindowListener {
     _focusNode.dispose();
     _searchController.dispose();
     super.dispose();
+  }
+
+  void _onColorChanged() {
+    if (mounted) {
+      setState(() => _dominantColor = GlobalThemeService().dominantColor.value);
+    }
   }
 
   void _onBlurChanged() {
@@ -140,18 +142,7 @@ class _PlayerScreenState extends State<PlayerScreen> with WindowListener {
     final art = _musicPlayer.currentArt.value;
     if (mounted) {
       setState(() => _currentArt = art);
-      if (art != null) {
-        if (_musicPlayer.currentFilePath.value.isNotEmpty) {
-          final color = await LocalMusicDatabase().getDominantColor(
-            _musicPlayer.currentFilePath.value,
-          );
-          if (mounted && color != null) {
-            setState(() => _dominantColor = color);
-          }
-        }
-      } else {
-        setState(() => _dominantColor = null);
-      }
+      // Color is handled by _onColorChanged via GlobalThemeService
     }
   }
 
@@ -226,52 +217,57 @@ class _PlayerScreenState extends State<PlayerScreen> with WindowListener {
     return availableIndices[Random().nextInt(availableIndices.length)];
   }
 
-  Future<void> _playFile(int index) async {
+  void _playFile(int index) {
     if (index < 0 || index >= _files.length) return;
     _playedIndices.add(index);
     final file = _files[index] as File;
 
-    try {
-      await _player.stop();
-      await _player.play(DeviceFileSource(file.path));
+    debugPrint('[PlayerScreen] _playFile: index=$index, path=${file.path}');
 
-      // Update Global State - metadata is already cached from music_player_screen
-      // No need to read metadata here, just update the index and path
+    // 1. Update transition direction BEFORE changing index
+    final previousIdx = _musicPlayer.currentIndex.value;
+    if (previousIdx != null) {
+      _musicPlayer.transitionDirection.value = index > previousIdx ? 1 : -1;
+    }
 
-      // Determinar dirección de transición ANTES de actualizar el índice
-      final previousIdx = _musicPlayer.currentIndex.value;
-      if (previousIdx != null) {
-        _musicPlayer.transitionDirection.value = index > previousIdx ? 1 : -1;
-        debugPrint(
-          '🎵 PlayerScreen: previousIdx=$previousIdx, newIdx=$index, direction=${_musicPlayer.transitionDirection.value}',
+    // 2. Update global state IMMEDIATELY (synchronous, no await)
+    _musicPlayer.currentFilePath.value = file.path;
+    _musicPlayer.currentIndex.value = index;
+    _musicPlayer.isPlaying.value = true;
+
+    // 3. Try to get metadata from pre-loaded songsList (instant, no I/O)
+    final songs = _musicPlayer.songsList.value;
+    final matchingSong = songs
+        .where((s) => s.filePath == file.path)
+        .firstOrNull;
+    if (matchingSong != null) {
+      _musicPlayer.currentTitle.value = matchingSong.title;
+      _musicPlayer.currentArtist.value = matchingSong.artist;
+      _musicPlayer.currentArt.value = matchingSong.artworkData;
+      // Update theme color from pre-cached dominantColor (instant, no I/O)
+      if (matchingSong.dominantColor != null) {
+        GlobalThemeService().updateDominantColor(
+          Color(matchingSong.dominantColor!),
         );
       }
-
-      _musicPlayer.currentFilePath.value = file.path;
-      _musicPlayer.currentIndex.value = index;
-      _musicPlayer.isPlaying.value = true;
-
-      // The music_player_screen will handle updating title, artist, and artwork
-      // through its listeners when currentIndex changes
-
-      MusicHistory().addToHistory(file);
-
-      // Save player state
-      _musicPlayer.savePlayerState();
-
-      // Fetch Lyrics using current title/artist from global state
-      final title = _musicPlayer.currentTitle.value;
-      final artist = _musicPlayer.currentArtist.value;
-
-      _musicPlayer.currentLyrics.value = null;
-      LyricsService().fetchLyrics(title, artist).then((lyrics) {
-        if (mounted) {
-          _musicPlayer.currentLyrics.value = lyrics;
-        }
-      });
-    } catch (e) {
-      debugPrint("Error playing file: $e");
+    } else {
+      // Fallback to filename if song not in preloaded list
+      _musicPlayer.currentTitle.value = p.basenameWithoutExtension(file.path);
+      _musicPlayer.currentArtist.value = 'Unknown Artist';
     }
+
+    // 4. Audio operations - fire and forget (non-blocking)
+    _player.stop().then((_) {
+      _player.play(DeviceFileSource(file.path)).catchError((e) {
+        debugPrint("Error playing file: $e");
+      });
+    });
+
+    // 5. Background tasks (non-blocking)
+    MusicHistory().addToHistory(file);
+    // savePlayerState se llama automáticamente en el listener de pausa
+
+    debugPrint('[PlayerScreen] _playFile: completed with metadata');
   }
 
   void _playPrevious() {

@@ -215,13 +215,18 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen>
           _currentIndex = index;
         });
       }
-      // Song found in this folder list. Update metadata but DO NOT PLAY.
-      // This keeps the UI in sync even if playing from a playlist or another screen.
-      // passing shouldPlay: false ensures we don't interrupt audio or corrupt global state (filesList).
-      _updateMetadataFromFile(index, shouldPlay: false);
+      // Sync local UI state from global state (already set by PlayerScreen or elsewhere)
+      // Only sync local variables - NO metadata fetching needed here
+      // as the source that changed currentIndex is responsible for setting metadata
+      if (mounted) {
+        setState(() {
+          _currentTitle = _musicPlayer.currentTitle.value;
+          _currentArtist = _musicPlayer.currentArtist.value;
+          _currentArt = _musicPlayer.currentArt.value;
+        });
+      }
     } else {
       // Song not in this folder.
-      // We might want to clear selection or just leave it.
       if (_currentIndex != null) {
         setState(() {
           _currentIndex = null;
@@ -315,75 +320,92 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen>
     final file = _files[index] as File;
 
     try {
-      String title = p.basename(file.path);
-      String artist = 'Unknown Artist';
-      Uint8List? artwork;
-
-      // Usar LocalMusicDatabase para metadatos
-      try {
-        final metadata = await LocalMusicDatabase().getMetadata(file.path);
-        if (metadata != null) {
-          title = metadata.title;
-          artist = metadata.artist;
-          artwork = metadata.artwork;
-        }
-      } catch (e) {
-        debugPrint('[MusicPlayer] Error reading metadata from DB: $e');
-      }
-
       if (shouldPlay) {
-        // Detener reproducción anterior
-        await _musicPlayer.player.stop();
+        // 1. Playback Priority: Start Audio & Update Basic State IMMEDIATELY
+        final filename = p.basename(file.path);
 
-        // Reproducir archivo
-        await _musicPlayer.player.play(DeviceFileSource(file.path));
-
-        // Update global playback state ONLY if we are the active controller
-        // Determinar dirección de transición antes de actualizar el índice
+        // Update direction
         if (_musicPlayer.currentIndex.value != null) {
           _musicPlayer.transitionDirection.value =
               index > _musicPlayer.currentIndex.value! ? 1 : -1;
         }
 
+        // Set optimistic state
         _musicPlayer.currentFilePath.value = file.path;
         _musicPlayer.currentIndex.value = index;
         _musicPlayer.filesList.value = _files;
 
-        // Agregar al historial cuando iniciamos reproducción
+        // Optimistic metadata (prevents empty UI while loading)
+        // Only set if we don't have cached metadata handy to avoid flicker
+        _musicPlayer.currentTitle.value = filename;
+        _musicPlayer.currentArtist.value = 'Unknown Artist';
+        _musicPlayer.currentArt.value = null;
+        _musicPlayer.isPlaying.value = true;
+
+        // Stop & Play (handling audio)
+        // We don't await stop() strictly before setting UI state to make it feel snappier
+        _musicPlayer.player.stop().then((_) async {
+          await _musicPlayer.player.play(DeviceFileSource(file.path));
+        });
+
+        // Add history in background
         MusicHistory().addToHistory(file);
       }
 
-      // Actualizar estado global INMEDIATAMENTE con metadatos
-      // IMPORTANTE: Actualizar ambos en bloque para evitar que lyrics se busquen con datos mezclados
-      _musicPlayer.currentTitle.value = title;
-      _musicPlayer.currentArtist.value = artist;
-      _musicPlayer.currentArt.value = artwork;
+      // 2. Fetch Metadata in Background (Non-blocking)
+      // We wrap in a separate async flow
+      _fetchAndUpdateMetadata(file, index);
+    } catch (e) {
+      debugPrint('[MusicPlayer] Error in playback flow: $e');
+    }
+  }
 
-      // Pequeño delay antes de obtener duración y colores
-      Future.delayed(const Duration(milliseconds: 100), () async {
-        final dur = await _musicPlayer.player.getDuration();
-        _musicPlayer.duration.value = dur ?? Duration.zero;
+  Future<void> _fetchAndUpdateMetadata(File file, int index) async {
+    try {
+      final metadata = await LocalMusicDatabase().getMetadata(file.path);
 
-        // LocalMusicDatabase maneja el color automáticamente
-        if (artwork != null) {
-          final color = await LocalMusicDatabase().getDominantColor(file.path);
-          if (color != null) {
-            GlobalThemeService().updateDominantColor(color);
+      // 3. Update Global State ONLY if still playing the same song
+      // (User might have skipped rapidly)
+      if (_musicPlayer.currentFilePath.value == file.path) {
+        if (metadata != null) {
+          _musicPlayer.currentTitle.value = metadata.title;
+          _musicPlayer.currentArtist.value = metadata.artist;
+          _musicPlayer.currentArt.value = metadata.artwork;
+        } else {
+          // Keep filename if no metadata found (or update if needed)
+          if (_musicPlayer.currentTitle.value == p.basename(file.path)) {
+            // Already set defaults
           }
         }
-      });
 
-      // Si por casualidad estamos montados (caso raro), actualizar local
-      if (mounted) {
-        setState(() {
-          _currentTitle = title;
-          _currentArtist = artist;
-          _currentArt = artwork;
-          _currentIndex = index;
+        // 4. Color Extraction (Low priority)
+        Future.delayed(const Duration(milliseconds: 200), () async {
+          if (_musicPlayer.currentFilePath.value != file.path) return;
+          final dur = await _musicPlayer.player.getDuration();
+          _musicPlayer.duration.value = dur ?? Duration.zero;
+
+          if (metadata?.artwork != null) {
+            final color = await LocalMusicDatabase().getDominantColor(
+              file.path,
+            );
+            if (color != null &&
+                _musicPlayer.currentFilePath.value == file.path) {
+              GlobalThemeService().updateDominantColor(color);
+            }
+          }
         });
+
+        if (mounted) {
+          setState(() {
+            _currentTitle = _musicPlayer.currentTitle.value;
+            _currentArtist = _musicPlayer.currentArtist.value;
+            _currentArt = _musicPlayer.currentArt.value;
+            _currentIndex = index;
+          });
+        }
       }
     } catch (e) {
-      debugPrint('[MusicPlayer] Error updating metadata: $e');
+      debugPrint('[MusicPlayer] Error fetching metadata: $e');
     }
   }
 

@@ -35,23 +35,13 @@ class GlobalMusicPlayer {
   // Callback para cargar metadatos cuando se reproduce desde playlist
   Function(String filePath)? onMetadataNeeded;
 
-  // Para throttling del guardado de posición
-  DateTime? _lastSaveTime;
-
   void _initGlobalListeners() {
     // Estos listeners NUNCA se cancelan - son globales y persisten
     player.onPositionChanged.listen((pos) {
       position.value = pos;
 
-      // Guardar estado cada segundo durante reproducción (throttled)
-      if (isPlaying.value && currentFilePath.value.isNotEmpty) {
-        final now = DateTime.now();
-        if (_lastSaveTime == null ||
-            now.difference(_lastSaveTime!).inSeconds >= 1) {
-          _lastSaveTime = now;
-          savePlayerState();
-        }
-      }
+      // NO guardar estado continuamente - solo en eventos importantes
+      // (pausa, cambio de canción, cierre de app)
     });
 
     player.onDurationChanged.listen((dur) {
@@ -62,10 +52,11 @@ class GlobalMusicPlayer {
       final wasPlaying = isPlaying.value;
       isPlaying.value = state == PlayerState.playing;
 
-      // Guardar estado cuando se pausa o detiene
+      // Guardar estado SOLO cuando se pausa o detiene (eventos importantes)
       if (wasPlaying && !isPlaying.value && currentFilePath.value.isNotEmpty) {
-        savePlayerState();
-        debugPrint('[GlobalMusicPlayer] State saved on pause/stop');
+        // Ejecutar en microtask para no bloquear el UI
+        Future.microtask(() => savePlayerState());
+        debugPrint('[GlobalMusicPlayer] State will be saved on pause/stop');
       }
 
       // Cuando la canción termina, llamar al callback
@@ -248,20 +239,55 @@ class GlobalMusicPlayer {
     await loadLibraryIfNeeded();
   }
 
-  /// Guardar estado actual del reproductor
-  Future<void> savePlayerState() async {
+  // Sistema de guardado con debouncing
+  Timer? _saveDebounceTimer;
+  bool _hasPendingSave = false;
+
+  /// Guardar estado actual del reproductor (con debouncing)
+  void savePlayerState() {
+    // Marcar que hay un guardado pendiente
+    _hasPendingSave = true;
+
+    // Cancelar timer anterior si existe
+    _saveDebounceTimer?.cancel();
+
+    // Crear nuevo timer de 500ms
+    _saveDebounceTimer = Timer(const Duration(milliseconds: 500), () {
+      if (_hasPendingSave) {
+        _performSave();
+      }
+    });
+  }
+
+  /// Realizar el guardado real (ejecutado después del debounce)
+  Future<void> _performSave() async {
+    _hasPendingSave = false;
+
     try {
       final prefs = await SharedPreferences.getInstance();
-
-      // Obtener posición actual directamente del reproductor
       final currentPosition = position.value;
 
-      await prefs.setInt('player_current_index', currentIndex.value ?? -1);
-      await prefs.setString('player_current_path', currentFilePath.value);
-      await prefs.setString('player_current_title', currentTitle.value);
-      await prefs.setString('player_current_artist', currentArtist.value);
-      await prefs.setInt('player_position_seconds', currentPosition.inSeconds);
-      await prefs.setInt('player_duration_seconds', duration.value.inSeconds);
+      final batch = <String, dynamic>{
+        'player_current_index': currentIndex.value ?? -1,
+        'player_current_path': currentFilePath.value,
+        'player_current_title': currentTitle.value,
+        'player_current_artist': currentArtist.value,
+        'player_position_seconds': currentPosition.inSeconds,
+        'player_duration_seconds': duration.value.inSeconds,
+      };
+
+      // Usar Future.wait para esperar a que todas las operaciones de escritura terminen
+      // Esto es más robusto, especialmente al cerrar la app
+      final writes = <Future<bool>>[];
+      for (final entry in batch.entries) {
+        if (entry.value is int) {
+          writes.add(prefs.setInt(entry.key, entry.value as int));
+        } else if (entry.value is String) {
+          writes.add(prefs.setString(entry.key, entry.value as String));
+        }
+      }
+
+      await Future.wait(writes);
 
       debugPrint(
         '[GlobalMusicPlayer] Player state saved (position: ${currentPosition.inSeconds}s)',
@@ -269,6 +295,13 @@ class GlobalMusicPlayer {
     } catch (e) {
       debugPrint('[GlobalMusicPlayer] Error saving player state: $e');
     }
+  }
+
+  /// Forzar guardado inmediato (para cierre de app)
+  Future<void> savePlayerStateImmediate() async {
+    _saveDebounceTimer?.cancel();
+    _hasPendingSave = false;
+    await _performSave();
   }
 
   /// Cargar estado guardado del reproductor
