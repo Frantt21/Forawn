@@ -339,18 +339,25 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen>
         await _musicPlayer.player.play(DeviceFileSource(file.path));
 
         // Update global playback state ONLY if we are the active controller
+        // Determinar dirección de transición antes de actualizar el índice
+        if (_musicPlayer.currentIndex.value != null) {
+          _musicPlayer.transitionDirection.value =
+              index > _musicPlayer.currentIndex.value! ? 1 : -1;
+        }
+
         _musicPlayer.currentFilePath.value = file.path;
         _musicPlayer.currentIndex.value = index;
         _musicPlayer.filesList.value = _files;
+
+        // Agregar al historial cuando iniciamos reproducción
+        MusicHistory().addToHistory(file);
       }
 
       // Actualizar estado global INMEDIATAMENTE con metadatos
+      // IMPORTANTE: Actualizar ambos en bloque para evitar que lyrics se busquen con datos mezclados
       _musicPlayer.currentTitle.value = title;
       _musicPlayer.currentArtist.value = artist;
       _musicPlayer.currentArt.value = artwork;
-
-      // Agregar al historial también en background
-      MusicHistory().addToHistory(file);
 
       // Pequeño delay antes de obtener duración y colores
       Future.delayed(const Duration(milliseconds: 100), () async {

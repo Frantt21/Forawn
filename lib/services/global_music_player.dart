@@ -153,6 +153,11 @@ class GlobalMusicPlayer {
   // Índice de la canción actual en la lista
   final ValueNotifier<int?> currentIndex = ValueNotifier(null);
 
+  // Tracking para animaciones direccionales
+  final ValueNotifier<int> transitionDirection = ValueNotifier(
+    1,
+  ); // 1 = next (derecha a izquierda), -1 = previous (izquierda a derecha)
+
   // Lista de archivos
   final ValueNotifier<List<FileSystemEntity>> filesList = ValueNotifier([]);
 
@@ -345,6 +350,16 @@ class GlobalMusicPlayer {
 
   Future<void> _playFileAtIndex(int index) async {
     final file = filesList.value[index] as File;
+
+    // Determinar dirección de transición ANTES de actualizar currentIndex
+    final previousIdx = currentIndex.value;
+    if (previousIdx != null) {
+      transitionDirection.value = index > previousIdx ? 1 : -1;
+      debugPrint(
+        '🎵 GlobalMusicPlayer: previousIdx=$previousIdx, newIdx=$index, direction=${transitionDirection.value}',
+      );
+    }
+
     currentIndex.value = index;
     currentFilePath.value = file.path;
 
@@ -382,8 +397,9 @@ class GlobalMusicPlayer {
     });
 
     // Escuchar cambios de canción para cargar lyrics
-    currentTitle.addListener(_checkLoadLyrics);
-    currentArtist.addListener(_checkLoadLyrics);
+    // Usamos debouncing para evitar buscar con title/artist mezclados
+    currentTitle.addListener(_debouncedCheckLoadLyrics);
+    currentArtist.addListener(_debouncedCheckLoadLyrics);
 
     // Timer para actualizar índice de linea (más eficiente que escuchar position stream para UI)
     _lyricsTimer = Timer.periodic(const Duration(milliseconds: 300), (_) {
@@ -398,6 +414,17 @@ class GlobalMusicPlayer {
       if (newIndex != currentLyricIndex.value) {
         currentLyricIndex.value = newIndex;
       }
+    });
+  }
+
+  Timer? _lyricsDebounceTimer;
+  void _debouncedCheckLoadLyrics() {
+    // Cancelar timer anterior si existe
+    _lyricsDebounceTimer?.cancel();
+
+    // Esperar 50ms para que title y artist se actualicen juntos
+    _lyricsDebounceTimer = Timer(const Duration(milliseconds: 50), () {
+      _checkLoadLyrics();
     });
   }
 
@@ -472,6 +499,7 @@ class GlobalMusicPlayer {
     loopMode.dispose();
     isShuffle.dispose();
     currentIndex.dispose();
+    transitionDirection.dispose();
     filesList.dispose();
 
     // Lyrics dispose
@@ -479,6 +507,7 @@ class GlobalMusicPlayer {
     currentLyricIndex.dispose();
     showLyrics.dispose();
     _lyricsTimer?.cancel();
+    _lyricsDebounceTimer?.cancel();
   }
 
   Future<void> _processLibraryColors(List<FileSystemEntity> files) async {
