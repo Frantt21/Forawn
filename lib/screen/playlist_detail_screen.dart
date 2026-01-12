@@ -8,7 +8,7 @@ import '../models/playlist_model.dart';
 import '../models/song_model.dart';
 import '../services/playlist_service.dart';
 import '../services/global_music_player.dart';
-import '../services/global_metadata_service.dart';
+import '../services/local_music_database.dart';
 // For GlobalTheme/etc if needed? No, avoid circle if possible.
 
 /// Pantalla de detalles de Playlist (Versión Desktop/Windows)
@@ -44,7 +44,7 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
   /// Pre-cargar metadatos usando servicio global (limitado a 50)
   Future<void> _preloadSongMetadata() async {
     final paths = widget.playlist.songs.map((s) => s.filePath).toList();
-    await GlobalMetadataService().preloadBatch(paths, limit: 50);
+    await LocalMusicDatabase().preloadBatch(paths.take(50).toList());
     if (mounted) setState(() {});
   }
 
@@ -590,7 +590,7 @@ class _CachedSongArtworkState extends State<_CachedSongArtwork>
 
     // Si no, cargar desde servicio global UNA SOLA VEZ
     return FutureBuilder(
-      future: GlobalMetadataService().get(widget.song.filePath),
+      future: LocalMusicDatabase().getMetadata(widget.song.filePath),
       builder: (context, snapshot) {
         final art = snapshot.data?.artwork;
         if (art != null) {

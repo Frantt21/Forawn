@@ -12,7 +12,7 @@ import 'package:palette_generator/palette_generator.dart';
 
 import '../services/global_music_player.dart';
 import '../services/music_history.dart';
-import '../services/album_color_cache.dart';
+import '../services/local_music_database.dart';
 import '../services/global_theme_service.dart';
 import '../models/synced_lyrics.dart';
 import '../services/lyrics_service.dart';
@@ -69,7 +69,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
 
     // Initial color extraction
     if (_musicPlayer.currentFilePath.value.isNotEmpty) {
-      final cachedColor = AlbumColorCache().getColor(
+      final cachedColor = await LocalMusicDatabase().getDominantColor(
         _musicPlayer.currentFilePath.value,
       );
       if (cachedColor != null) {
@@ -124,7 +124,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
       if (art != null) {
         // Try get from cache first
         if (_musicPlayer.currentFilePath.value.isNotEmpty) {
-          final cached = AlbumColorCache().getColor(
+          final cached = await LocalMusicDatabase().getDominantColor(
             _musicPlayer.currentFilePath.value,
           );
           if (cached != null) {

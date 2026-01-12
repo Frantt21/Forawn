@@ -30,6 +30,7 @@ import 'screen/home_content.dart';
 import 'screen/foraai_screen.dart';
 import 'services/discord_service.dart';
 import 'services/global_music_player.dart';
+import 'services/local_music_database.dart';
 
 const String kDefaultLangCode = 'en';
 const _prefEffectKey = 'window_effect';
@@ -123,6 +124,14 @@ Future<void> main() async {
     } catch (e) {
       debugPrint('[Discord] Error al inicializar: $e');
     }
+  }
+
+  // Inicializar base de datos local de música
+  try {
+    await LocalMusicDatabase().initialize();
+    debugPrint('[Main] LocalMusicDatabase initialized');
+  } catch (e) {
+    debugPrint('[Main] Error initializing LocalMusicDatabase: $e');
   }
 
   runApp(ForawnAppRoot(initialLangCode: currentLang, initialLangMap: lang));

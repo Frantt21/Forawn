@@ -8,9 +8,8 @@ import 'main.dart' show checkForUpdate;
 import 'package:flutter_acrylic/flutter_acrylic.dart' as acrylic;
 import 'widgets/elegant_notification.dart';
 import 'services/discord_service.dart';
-import 'services/album_color_cache.dart';
 import 'services/lyrics_service.dart';
-import 'services/metadata_service.dart';
+import 'services/local_music_database.dart';
 import 'services/global_theme_service.dart';
 
 typedef TextGetter = String Function(String key, {String? fallback});
@@ -538,15 +537,15 @@ class _SettingsScreenState extends State<SettingsScreen> with WindowListener {
                       title: get('storage', fallback: 'Storage'),
                       children: [
                         _SettingsTile(
-                          leadingIcon: Icons.cleaning_services,
+                          leadingIcon: Icons.storage,
                           leadingColor: Colors.redAccent,
                           title: get(
-                            'clear_cache_color',
-                            fallback: 'Clear Color Cache',
+                            'clear_music_database',
+                            fallback: 'Clear Music Database',
                           ),
                           subtitle: get(
-                            'clear_cache_color_sub',
-                            fallback: 'Remove saved palette data',
+                            'clear_music_database_sub',
+                            fallback: 'Remove all cached metadata and colors',
                           ),
                           trailing: IconButton(
                             icon: const Icon(
@@ -554,47 +553,14 @@ class _SettingsScreenState extends State<SettingsScreen> with WindowListener {
                               color: Colors.redAccent,
                             ),
                             onPressed: () async {
-                              await AlbumColorCache().clearCache();
+                              // Clear colors from LocalMusicDatabase
+                              await LocalMusicDatabase().clearDatabase();
                               if (mounted) {
                                 showElegantNotification(
                                   context,
                                   get(
                                     'cache_cleared',
-                                    fallback: 'Color Cache Cleared',
-                                  ),
-                                  backgroundColor: Colors.green,
-                                  textColor: Colors.white,
-                                  icon: Icons.check,
-                                );
-                              }
-                            },
-                          ),
-                        ),
-                        Divider(height: 1, color: currentTheme.dividerColor),
-                        _SettingsTile(
-                          leadingIcon: Icons.storage,
-                          leadingColor: Colors.orangeAccent,
-                          title: get(
-                            'clear_cache_meta',
-                            fallback: 'Clear Metadata Cache',
-                          ),
-                          subtitle: get(
-                            'clear_cache_meta_sub',
-                            fallback: 'Remove local metadata cache',
-                          ),
-                          trailing: IconButton(
-                            icon: const Icon(
-                              Icons.delete_outline,
-                              color: Colors.orangeAccent,
-                            ),
-                            onPressed: () {
-                              MetadataService().clearCache();
-                              if (mounted) {
-                                showElegantNotification(
-                                  context,
-                                  get(
-                                    'metadata_cache_cleared',
-                                    fallback: 'Metadata Cache Cleared',
+                                    fallback: 'Database Cleared',
                                   ),
                                   backgroundColor: Colors.green,
                                   textColor: Colors.white,

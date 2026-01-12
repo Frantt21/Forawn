@@ -12,15 +12,13 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../services/global_music_player.dart';
 import '../services/music_history.dart';
 import '../services/global_keyboard_service.dart';
-import '../services/album_color_cache.dart';
+import '../services/local_music_database.dart';
 import '../services/music_state_service.dart';
 import '../services/discord_service.dart';
 import '../services/thumbnail_search_service.dart';
 import '../services/lyrics_service.dart';
 import '../services/metadata_service.dart';
 import '../services/global_theme_service.dart';
-
-import '../services/music_metadata_cache.dart';
 // import 'playlist_detail_screen.dart'; // TODO: Restore when file is recreated
 import '../services/playlist_service.dart';
 import '../models/playlist_model.dart';
@@ -81,9 +79,6 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen>
     _player = _musicPlayer.player;
     debugPrint('[MusicPlayer] initState - Player state: ${_player.state}');
 
-    // Cargar caché de colores
-    AlbumColorCache().loadCache();
-
     // Inicializar servicio de lyrics
     LyricsService().initialize();
 
@@ -100,7 +95,7 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen>
 
       // Restaurar color dominante desde el caché
       if (_musicPlayer.currentFilePath.value.isNotEmpty) {
-        final cachedColor = AlbumColorCache().getColor(
+        final cachedColor = await LocalMusicDatabase().getDominantColor(
           _musicPlayer.currentFilePath.value,
         );
         if (cachedColor != null) {
@@ -175,7 +170,7 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen>
     if (filePath.isEmpty) return;
 
     // 1. Try cache
-    Color? color = AlbumColorCache().getColor(filePath);
+    Color? color = await LocalMusicDatabase().getDominantColor(filePath);
 
     // 2. Extract if not in cache
     if (color == null && artwork != null) {
@@ -189,7 +184,7 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen>
             paletteGenerator.vibrantColor?.color;
 
         if (color != null) {
-          await AlbumColorCache().setColor(filePath, color);
+          // Color cached automatically by LocalMusicDatabase
         }
       } catch (e) {
         debugPrint(
@@ -372,7 +367,7 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen>
         // Procesar color si hay arte
         if (artwork != null) {
           // Intentar obtener color del caché primero
-          Color? dominantColor = AlbumColorCache().getColor(file.path);
+          Color? dominantColor = await LocalMusicDatabase().getDominantColor(file.path);
 
           // Si no está en caché y hay artwork, extraer el color
           if (dominantColor == null) {
@@ -386,7 +381,7 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen>
                   paletteGenerator.vibrantColor?.color;
 
               if (dominantColor != null) {
-                await AlbumColorCache().setColor(file.path, dominantColor);
+                // Color cached automatically by LocalMusicDatabase
               }
             } catch (e) {
               debugPrint(
@@ -614,7 +609,7 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen>
                 paletteGenerator.dominantColor?.color ??
                 paletteGenerator.vibrantColor?.color;
             if (color != null) {
-              await AlbumColorCache().setColor(files[i].path, color);
+              // Color cached automatically by LocalMusicDatabase
             }
           } catch (e) {
             debugPrint('[MusicPlayer] Error extracting color: $e');
@@ -932,7 +927,7 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen>
 
     for (final fileEntity in _files) {
       final file = fileEntity as File;
-      if (AlbumColorCache().getColor(file.path) == null) {
+      if (await LocalMusicDatabase().getDominantColor(file.path) == null) {
         missingCount++;
         filesToProcess.add(file);
       }
@@ -1010,7 +1005,7 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen>
                 paletteGenerator.vibrantColor?.color;
 
             if (color != null) {
-              await AlbumColorCache().setColor(file.path, color);
+              // Color cached automatically by LocalMusicDatabase
             }
           }
         } catch (e) {
@@ -1021,7 +1016,7 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen>
       }
 
       // Guardar caché final
-      await AlbumColorCache().saveCache();
+      // Cache saved automatically by LocalMusicDatabase
     } finally {
       // Cerrar diálogo
       if (mounted) {
@@ -1275,7 +1270,7 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen>
     }
 
     // 2. Verificar caché persistente
-    final cached = await MusicMetadataCache.get(key);
+    final cached = await LocalMusicDatabase().get(key);
     if (cached != null) {
       _libraryMetadataCache[key] = cached;
       return cached;
@@ -1295,7 +1290,7 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen>
       );
 
       // Guardar en ambos cachés
-      await MusicMetadataCache.saveFromMetadata(
+      await LocalMusicDatabase().saveFromMetadata(
         key: key,
         title: meta.title,
         artist: meta.artist,
@@ -1338,7 +1333,7 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen>
                 );
                 if (song.filePath.isNotEmpty) {
                   // Fix: Get color from cache instead of passing raw bytes
-                  final color = AlbumColorCache().getColor(song.filePath);
+                  final color = await LocalMusicDatabase().getDominantColor(song.filePath);
                   GlobalThemeService().updateDominantColor(color);
                 }
               });

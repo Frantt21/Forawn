@@ -53,27 +53,17 @@ class MetadataService {
   factory MetadataService() => _instance;
   MetadataService._internal();
 
-  // URL del backend - Using ApiConfig is better if possible, but kept hardcoded in original
-  // Wait, I should use ApiConfig.foranlyBackendPrimary if available.
-  // Original was: static const String _baseUrl = 'http://api.foranly.space:24725';
-  // ApiConfig.foranlyBackendPrimary is the same string.
-
-  // Cache en memoria
   final Map<String, TrackMetadata> _cache = {};
 
-  /// Busca metadatos (YouTube based backend)
   Future<TrackMetadata?> searchMetadata(String title, [String? artist]) async {
     try {
       final cacheKey = '${title.toLowerCase()}_${artist?.toLowerCase() ?? ''}';
 
-      // Verificar caché local
       if (_cache.containsKey(cacheKey)) {
         debugPrint('[MetadataService] Using local cache for: $title');
         return _cache[cacheKey];
       }
 
-      // Construir URL
-      // Use ApiConfig.foranlyBackendPrimary
       final uri = Uri.parse('${ApiConfig.foranlyBackendPrimary}/metadata')
           .replace(
             queryParameters: {
