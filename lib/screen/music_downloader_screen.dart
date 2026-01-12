@@ -349,7 +349,7 @@ class _MusicDownloaderScreenState extends State<MusicDownloaderScreen>
     try {
       final uri = Uri.parse(
         '${ApiConfig.foranlyBackendPrimary}/youtube/search',
-      ).replace(queryParameters: {'q': query, 'limit': '20'});
+      ).replace(queryParameters: {'q': query, 'limit': '100'});
 
       debugPrint('[MusicDownloaderScreen] Fetching from URI: $uri');
 

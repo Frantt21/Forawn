@@ -460,12 +460,6 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen>
         debugPrint(
           '[MusicPlayer] Synced with global library: ${_files.length} files',
         );
-
-        // Verificar auto-actualización de colores
-        if (await AlbumColorCache().getAutoUpdateOnStartup()) {
-          // Ejecutar en segundo plano sin esperar
-          _preloadAllColors();
-        }
       }
     } catch (e) {
       debugPrint('[MusicPlayer] Error in _init: $e');
@@ -568,7 +562,7 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen>
                       valueListenable: totalFiles,
                       builder: (context, total, _) {
                         return Text(
-                          'Procesando metadatos ($processed/$total)...',
+                          'Procesando metadatos y colores ($processed/$total)...',
                           style: const TextStyle(
                             color: Colors.white70,
                             fontSize: 14,
@@ -607,7 +601,26 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen>
       totalFiles.value = files.length;
 
       for (int i = 0; i < files.length && !cancelled; i++) {
-        await Song.fromFile(files[i]);
+        final song = await Song.fromFile(files[i]);
+
+        // Also cache color if artwork exists
+        if (song != null && song.artworkData != null) {
+          try {
+            final paletteGenerator = await PaletteGenerator.fromImageProvider(
+              MemoryImage(song.artworkData!),
+              size: const Size(50, 50),
+            );
+            final color =
+                paletteGenerator.dominantColor?.color ??
+                paletteGenerator.vibrantColor?.color;
+            if (color != null) {
+              await AlbumColorCache().setColor(files[i].path, color);
+            }
+          } catch (e) {
+            debugPrint('[MusicPlayer] Error extracting color: $e');
+          }
+        }
+
         processedFiles.value = i + 1;
         await Future.delayed(const Duration(milliseconds: 10));
       }
@@ -895,14 +908,45 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen>
     }
   }
 
-  /// Pre-cargar colores de todas las canciones
-  Future<void> _preloadAllColors() async {
+  /// Recargar solo los colores faltantes
+  Future<void> _reloadMissingColors() async {
     if (_files.isEmpty) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
-              widget.getText('no_songs_loaded', fallback: 'No songs loaded'),
+              widget.getText(
+                'no_songs_loaded',
+                fallback: 'No hay canciones cargadas',
+              ),
+            ),
+          ),
+        );
+      }
+      return;
+    }
+
+    // Contar cuántos colores faltan
+    int missingCount = 0;
+    final List<File> filesToProcess = [];
+
+    for (final fileEntity in _files) {
+      final file = fileEntity as File;
+      if (AlbumColorCache().getColor(file.path) == null) {
+        missingCount++;
+        filesToProcess.add(file);
+      }
+    }
+
+    if (missingCount == 0) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              widget.getText(
+                'all_colors_cached',
+                fallback: 'Todos los colores ya están en caché',
+              ),
             ),
           ),
         );
@@ -911,7 +955,6 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen>
     }
 
     final processedNotifier = ValueNotifier<int>(0);
-    final total = _files.length;
 
     // Mostrar diálogo de progreso
     showDialog(
@@ -921,21 +964,28 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen>
         valueListenable: processedNotifier,
         builder: (context, processed, _) {
           return AlertDialog(
+            backgroundColor: const Color(0xFF1C1C1E),
             title: Text(
               widget.getText(
-                'processing_colors',
-                fallback: 'Processing Colors',
+                'reloading_missing_colors',
+                fallback: 'Recargando Colores Faltantes',
               ),
+              style: const TextStyle(color: Colors.white),
             ),
             content: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
                 LinearProgressIndicator(
-                  value: total > 0 ? processed / total : 0,
+                  value: missingCount > 0 ? processed / missingCount : 0,
+                  backgroundColor: Colors.white10,
+                  valueColor: const AlwaysStoppedAnimation<Color>(
+                    Color(0xFFBB86FC),
+                  ),
                 ),
                 const SizedBox(height: 16),
                 Text(
-                  '$processed / $total ${widget.getText('songs_count', fallback: 'songs')}',
+                  '$processed / $missingCount ${widget.getText('colors', fallback: 'colores')}',
+                  style: const TextStyle(color: Colors.white70),
                 ),
               ],
             ),
@@ -944,18 +994,9 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen>
       ),
     );
 
-    // Procesar archivos en segundo plano
+    // Procesar solo archivos sin color
     try {
-      for (final fileEntity in _files) {
-        final file = fileEntity as File;
-        final filePath = file.path;
-
-        // Saltar si ya está en caché
-        if (AlbumColorCache().getColor(filePath) != null) {
-          processedNotifier.value++;
-          continue;
-        }
-
+      for (final file in filesToProcess) {
         try {
           final metadata = readMetadata(file, getImage: true);
           if (metadata?.pictures.isNotEmpty == true) {
@@ -969,11 +1010,11 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen>
                 paletteGenerator.vibrantColor?.color;
 
             if (color != null) {
-              await AlbumColorCache().setColor(filePath, color);
+              await AlbumColorCache().setColor(file.path, color);
             }
           }
         } catch (e) {
-          debugPrint('[ColorCache] Error processing $filePath: $e');
+          debugPrint('[ColorCache] Error processing ${file.path}: $e');
         }
 
         processedNotifier.value++;
@@ -988,7 +1029,7 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen>
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
-              '${processedNotifier.value} ${widget.getText('colors_processed', fallback: 'colors processed')}',
+              '${processedNotifier.value} ${widget.getText('colors_processed', fallback: 'colores procesados')}',
             ),
           ),
         );
@@ -1016,24 +1057,62 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen>
               Container(
                 margin: const EdgeInsets.only(top: 8, bottom: 8),
                 height: 40,
-                child: ListView(
-                  scrollDirection: Axis.horizontal,
-                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                child: Row(
                   children: [
-                    _buildTabButton(
-                      widget.getText('home', fallback: 'Home'),
-                      0,
+                    Expanded(
+                      child: ListView(
+                        scrollDirection: Axis.horizontal,
+                        padding: const EdgeInsets.symmetric(horizontal: 16),
+                        children: [
+                          _buildTabButton(
+                            widget.getText('home', fallback: 'Home'),
+                            0,
+                          ),
+                          const SizedBox(width: 8),
+                          _buildTabButton(
+                            widget.getText('library', fallback: 'Library'),
+                            1,
+                          ),
+                          const SizedBox(width: 8),
+                          _buildTabButton(
+                            widget.getText('playlists', fallback: 'Playlists'),
+                            2,
+                          ),
+                        ],
+                      ),
+                    ),
+                    // Menu button
+                    PopupMenuButton<String>(
+                      icon: const Icon(Icons.more_vert, color: Colors.white70),
+                      color: const Color(0xFF1C1C1E),
+                      onSelected: (value) {
+                        if (value == 'reload_colors') {
+                          _reloadMissingColors();
+                        }
+                      },
+                      itemBuilder: (context) => [
+                        PopupMenuItem(
+                          value: 'reload_colors',
+                          child: Row(
+                            children: [
+                              const Icon(
+                                Icons.palette,
+                                color: Colors.amberAccent,
+                              ),
+                              const SizedBox(width: 12),
+                              Text(
+                                widget.getText(
+                                  'reload_missing_colors',
+                                  fallback: 'Reload Missing Colors',
+                                ),
+                                style: const TextStyle(color: Colors.white),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
                     ),
                     const SizedBox(width: 8),
-                    _buildTabButton(
-                      widget.getText('library', fallback: 'Library'),
-                      1,
-                    ),
-                    const SizedBox(width: 8),
-                    _buildTabButton(
-                      widget.getText('playlists', fallback: 'Playlists'),
-                      2,
-                    ),
                   ],
                 ),
               ),

@@ -82,26 +82,4 @@ class AlbumColorCache {
   Map<String, dynamic> getStats() {
     return {'totalColors': _colorCache.length, 'isLoaded': _isLoaded};
   }
-
-  /// Obtener preferencia de auto-actualización
-  Future<bool> getAutoUpdateOnStartup() async {
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      return prefs.getBool('auto_update_colors_on_startup') ?? false;
-    } catch (e) {
-      print('[ColorCache] Error getting auto-update preference: $e');
-      return false;
-    }
-  }
-
-  /// Establecer preferencia de auto-actualización
-  Future<void> setAutoUpdateOnStartup(bool value) async {
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.setBool('auto_update_colors_on_startup', value);
-      print('[ColorCache] Auto-update on startup set to: $value');
-    } catch (e) {
-      print('[ColorCache] Error setting auto-update preference: $e');
-    }
-  }
 }

@@ -170,22 +170,4 @@ class MetadataService {
     _cache.clear();
     debugPrint('[MetadataService] Local cache cleared');
   }
-
-  /// Limpia el caché del servidor
-  Future<void> clearServerCache() async {
-    try {
-      final response = await http
-          .post(Uri.parse('${ApiConfig.foranlyBackendPrimary}/clear-cache'))
-          .timeout(const Duration(seconds: 5));
-
-      if (response.statusCode == 200) {
-        final data = json.decode(response.body);
-        debugPrint(
-          '[MetadataService] Server cache cleared: ${data['cleared']} entries',
-        );
-      }
-    } catch (e) {
-      debugPrint('[MetadataService] Error clearing server cache: $e');
-    }
-  }
 }

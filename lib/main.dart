@@ -5,7 +5,6 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show rootBundle;
 import 'package:flutter_acrylic/flutter_acrylic.dart' as acrylic;
-import 'package:forawn/screen/notes_screen.dart';
 import 'package:forawn/screen/qrcode_generator.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:window_manager/window_manager.dart';
@@ -647,7 +646,6 @@ class _HomeScreenState extends State<HomeScreen> with WindowListener {
       'video',
       'player',
       'images',
-      'notes',
       'translate',
       'qr',
       'foraai',
@@ -683,10 +681,6 @@ class _HomeScreenState extends State<HomeScreen> with WindowListener {
         currentLang: widget.currentLangCode,
         onRegisterFolderAction: (action) =>
             _registerFolderAction(action, 'images'),
-      ),
-      'notes': NotesScreen(
-        getText: widget.getText,
-        currentLang: widget.currentLangCode,
       ),
       'translate': TranslateScreen(
         getText: widget.getText,
@@ -775,8 +769,6 @@ class _HomeScreenState extends State<HomeScreen> with WindowListener {
           'music_player_title',
           fallback: 'Reproductor de Música',
         );
-      case 'notes':
-        return widget.getText('notes_title', fallback: 'Notas');
       case 'translate':
         return widget.getText('translate_title', fallback: 'Traductor');
       case 'qr':

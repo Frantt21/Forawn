@@ -286,6 +286,21 @@ class LyricsService {
     }
   }
 
+  /// Elimina TODAS las lyrics descargadas (tanto encontradas como no encontradas)
+  Future<int> clearAllLyrics() async {
+    if (_database == null) await initialize();
+
+    try {
+      final count = await _database!.delete('lyrics');
+      _cache.clear();
+      _log.info('Eliminadas TODAS las lyrics: $count entradas');
+      return count;
+    } catch (e) {
+      _log.warning('Error al eliminar todas las lyrics: $e');
+      return 0;
+    }
+  }
+
   /// Obtiene estadísticas
   Future<Map<String, int>> getStats() async {
     if (_database == null) await initialize();

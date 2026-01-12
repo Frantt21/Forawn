@@ -12,8 +12,6 @@ import 'services/album_color_cache.dart';
 import 'services/lyrics_service.dart';
 import 'services/metadata_service.dart';
 import 'services/global_theme_service.dart';
-import 'package:path/path.dart' as p;
-import 'package:audio_metadata_reader/audio_metadata_reader.dart';
 
 typedef TextGetter = String Function(String key, {String? fallback});
 typedef LanguageSelector = Future<void> Function(String code);
@@ -80,7 +78,6 @@ class _SettingsScreenState extends State<SettingsScreen> with WindowListener {
 
   // Player Prefs
   bool _useBlurBackground = false;
-  bool _autoUpdateColors = false;
 
   bool _langMenuOpen = false;
   bool _langHovered = false;
@@ -178,7 +175,6 @@ class _SettingsScreenState extends State<SettingsScreen> with WindowListener {
       final savedLang = _prefs!.getString(_preferredLangKey);
       final discordEnabled = _prefs!.getBool(_discordEnabledKey) ?? false;
       final blurBg = _prefs!.getBool('use_blur_background') ?? false;
-      final autoUpdate = await AlbumColorCache().getAutoUpdateOnStartup();
 
       if (!mounted) return;
       setState(() {
@@ -186,7 +182,6 @@ class _SettingsScreenState extends State<SettingsScreen> with WindowListener {
         _discordEnabled = discordEnabled;
         _discordConnected = DiscordService().isConnected;
         _useBlurBackground = blurBg;
-        _autoUpdateColors = autoUpdate;
         if (savedLang != null && savedLang.isNotEmpty) {
           _selectedLang = savedLang;
         }
@@ -487,37 +482,52 @@ class _SettingsScreenState extends State<SettingsScreen> with WindowListener {
                         ),
                         Divider(height: 1, color: currentTheme.dividerColor),
                         _SettingsTile(
-                          leadingIcon: Icons.colorize,
+                          leadingIcon: Icons.palette,
                           leadingColor: Colors.amberAccent,
                           title: get(
-                            'auto_color_title',
-                            fallback: 'Auto-update Colors',
+                            'reload_missing_colors',
+                            fallback: 'Reload Missing Colors',
                           ),
                           subtitle: get(
-                            'auto_color_sub',
-                            fallback: 'Extract colors on startup',
+                            'reload_missing_colors_sub',
+                            fallback: 'Reprocess songs without cached colors',
                           ),
-                          trailing: Switch(
-                            value: _autoUpdateColors,
-                            onChanged: _toggleAutoUpdate,
-                            activeColor: Colors.purpleAccent,
+                          trailing: IconButton(
+                            icon: const Icon(Icons.refresh),
+                            onPressed: () {
+                              // This will be handled by music_player_screen
+                              showElegantNotification(
+                                context,
+                                get(
+                                  'use_player_reload',
+                                  fallback:
+                                      'Please use the music player menu to reload colors',
+                                ),
+                                icon: Icons.info,
+                                backgroundColor: Colors.blue,
+                                textColor: Colors.white,
+                              );
+                            },
                           ),
                         ),
                         Divider(height: 1, color: currentTheme.dividerColor),
                         _SettingsTile(
-                          leadingIcon: Icons.lyrics,
+                          leadingIcon: Icons.lyrics_outlined,
                           leadingColor: Colors.pinkAccent,
                           title: get(
-                            'download_lyrics',
-                            fallback: 'Missing Lyrics',
+                            'clear_all_lyrics',
+                            fallback: 'Clear All Lyrics',
                           ),
                           subtitle: get(
-                            'download_lyrics_sub',
-                            fallback: 'Download for local songs',
+                            'clear_all_lyrics_sub',
+                            fallback: 'Delete all downloaded lyrics',
                           ),
                           trailing: IconButton(
-                            icon: const Icon(Icons.download),
-                            onPressed: _downloadMissingLyrics,
+                            icon: const Icon(
+                              Icons.delete_outline,
+                              color: Colors.pinkAccent,
+                            ),
+                            onPressed: _clearAllLyrics,
                           ),
                         ),
                       ],
@@ -570,21 +580,20 @@ class _SettingsScreenState extends State<SettingsScreen> with WindowListener {
                           ),
                           subtitle: get(
                             'clear_cache_meta_sub',
-                            fallback: 'Remove Spotify/Server cache',
+                            fallback: 'Remove local metadata cache',
                           ),
                           trailing: IconButton(
                             icon: const Icon(
                               Icons.delete_outline,
                               color: Colors.orangeAccent,
                             ),
-                            onPressed: () async {
+                            onPressed: () {
                               MetadataService().clearCache();
-                              await MetadataService().clearServerCache();
                               if (mounted) {
                                 showElegantNotification(
                                   context,
                                   get(
-                                    'spotify_cache_cleared',
+                                    'metadata_cache_cleared',
                                     fallback: 'Metadata Cache Cleared',
                                   ),
                                   backgroundColor: Colors.green,
@@ -639,146 +648,67 @@ class _SettingsScreenState extends State<SettingsScreen> with WindowListener {
     } catch (_) {}
   }
 
-  Future<void> _toggleAutoUpdate(bool value) async {
-    await AlbumColorCache().setAutoUpdateOnStartup(value);
-    if (!mounted) return;
-    setState(() => _autoUpdateColors = value);
-  }
-
-  Future<List<File>> _getMusicFiles() async {
-    _prefs ??= await SharedPreferences.getInstance();
-    final folder = _prefs!.getString('download_folder');
-    if (folder == null || folder.isEmpty) return [];
-
-    final dir = Directory(folder);
-    if (!await dir.exists()) return [];
-
-    final validExt = {'.mp3', '.m4a', '.flac', '.wav', '.ogg'};
-    return dir
-        .listSync()
-        .whereType<File>()
-        .where((f) => validExt.contains(p.extension(f.path).toLowerCase()))
-        .toList();
-  }
-
-  Future<void> _downloadMissingLyrics() async {
-    final files = await _getMusicFiles();
-    if (files.isEmpty) {
-      if (mounted) {
-        showElegantNotification(
-          context,
-          widget.getText('no_files', fallback: 'No music files found'),
-          backgroundColor: Colors.orange,
-          textColor: Colors.white,
-          icon: Icons.warning,
-        );
-      }
-      return;
-    }
-
-    if (!mounted) return;
-    _showProgressDialog(
-      title: widget.getText('scanning_lyrics', fallback: 'Scanning lyrics'),
-      items: files,
-      onProcess: (file, counters) async {
-        String title = p.basename(file.path);
-        String artist = 'Unknown Artist';
-        try {
-          final metadata = await readMetadata(file, getImage: false);
-          if (metadata.title?.isNotEmpty == true) title = metadata.title!;
-          if (metadata.artist?.isNotEmpty == true) artist = metadata.artist![0];
-        } catch (_) {}
-
-        final saved = await LyricsService().getStoredLyrics(title, artist);
-        if (saved == null) {
-          final downloaded = await LyricsService().fetchLyrics(title, artist);
-          if (downloaded != null)
-            counters['added'] = (counters['added'] ?? 0) + 1;
-        } else {
-          counters['skipped'] = (counters['skipped'] ?? 0) + 1;
-        }
-      },
-    );
-  }
-
-  Future<void> _preloadColors() async {
-    if (mounted) {
-      showElegantNotification(
-        context,
-        widget.getText(
-          'use_player_preload',
-          fallback: 'Please use the player to preload colors for now.',
-        ),
-        icon: Icons.info,
-        backgroundColor: Colors.blue,
-        textColor: Colors.white,
-      );
-    }
-  }
-
-  Future<void> _showProgressDialog({
-    required String title,
-    required List<File> items,
-    required Future<void> Function(File, Map<String, int>) onProcess,
-  }) async {
-    final ValueNotifier<int> processed = ValueNotifier(0);
-    final Map<String, int> counters = {'added': 0, 'skipped': 0};
-    bool cancel = false;
-
-    showDialog(
+  Future<void> _clearAllLyrics() async {
+    // Confirm with user
+    final confirmed = await showDialog<bool>(
       context: context,
-      barrierDismissible: false,
       builder: (context) => AlertDialog(
-        backgroundColor: const Color(0xFF1E1E1E),
-        title: Text(title, style: const TextStyle(color: Colors.white)),
-        content: ValueListenableBuilder<int>(
-          valueListenable: processed,
-          builder: (context, value, _) {
-            return Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                LinearProgressIndicator(
-                  value: items.isEmpty ? 0 : value / items.length,
-                  color: Colors.purpleAccent,
-                  backgroundColor: Colors.white10,
-                ),
-                const SizedBox(height: 16),
-                Text(
-                  '$value / ${items.length}',
-                  style: const TextStyle(color: Colors.white),
-                ),
-              ],
-            );
-          },
+        backgroundColor: const Color(0xFF1C1C1E),
+        title: Text(
+          widget.getText(
+            'confirm_clear_lyrics',
+            fallback: 'Borrar Todas las Lyrics',
+          ),
+          style: const TextStyle(color: Colors.white),
+        ),
+        content: Text(
+          widget.getText(
+            'confirm_clear_lyrics_desc',
+            fallback:
+                '¿Estás seguro de que quieres borrar todas las lyrics descargadas?',
+          ),
+          style: const TextStyle(color: Colors.white70),
         ),
         actions: [
           TextButton(
-            onPressed: () {
-              cancel = true;
-              Navigator.pop(context);
-            },
-            child: Text(widget.getText('cancel', fallback: 'Cancel')),
+            onPressed: () => Navigator.pop(context, false),
+            child: Text(widget.getText('cancel', fallback: 'Cancelar')),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.pinkAccent),
+            onPressed: () => Navigator.pop(context, true),
+            child: Text(widget.getText('delete', fallback: 'Borrar')),
           ),
         ],
       ),
     );
 
-    for (final file in items) {
-      if (cancel) break;
-      await onProcess(file, counters);
-      processed.value++;
-      if (processed.value % 5 == 0) await Future.delayed(Duration.zero);
-    }
+    if (confirmed != true) return;
 
-    if (!cancel && mounted && Navigator.canPop(context)) {
-      Navigator.pop(context);
-      showElegantNotification(
-        context,
-        'Done. Added: ${counters['added']}, Skipped: ${counters['skipped']}',
-        icon: Icons.check,
-        backgroundColor: Colors.green,
-        textColor: Colors.white,
-      );
+    try {
+      final count = await LyricsService().clearAllLyrics();
+      if (mounted) {
+        showElegantNotification(
+          context,
+          widget.getText(
+            'lyrics_cleared',
+            fallback: '$count lyrics eliminadas',
+          ),
+          backgroundColor: Colors.green,
+          textColor: Colors.white,
+          icon: Icons.check,
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        showElegantNotification(
+          context,
+          widget.getText('error', fallback: 'Error al borrar lyrics'),
+          backgroundColor: Colors.red,
+          textColor: Colors.white,
+          icon: Icons.error,
+        );
+      }
     }
   }
 }
