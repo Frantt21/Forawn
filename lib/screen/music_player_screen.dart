@@ -1,7 +1,7 @@
 import 'dart:async';
 import 'dart:io';
 import 'dart:math';
-import 'dart:ui'; // Needed for PointerDeviceKind
+import 'dart:ui';
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -15,17 +15,12 @@ import '../services/global_keyboard_service.dart';
 import '../services/local_music_database.dart';
 import '../services/music_state_service.dart';
 import '../services/discord_service.dart';
-import '../services/thumbnail_search_service.dart';
 import '../services/lyrics_service.dart';
-import '../services/metadata_service.dart';
 import '../services/global_theme_service.dart';
-// import 'playlist_detail_screen.dart'; // TODO: Restore when file is recreated
 import '../services/playlist_service.dart';
 import '../models/playlist_model.dart';
 import '../models/song_model.dart';
 
-import 'package:audio_metadata_reader/audio_metadata_reader.dart';
-import 'package:palette_generator/palette_generator.dart';
 import 'player_screen.dart';
 
 typedef TextGetter = String Function(String key, {String? fallback});
@@ -95,13 +90,14 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen>
 
       // Restaurar color dominante desde el caché
       if (_musicPlayer.currentFilePath.value.isNotEmpty) {
-        final cachedColor = await LocalMusicDatabase().getDominantColor(
-          _musicPlayer.currentFilePath.value,
-        );
-        if (cachedColor != null) {
-          _dominantColor = cachedColor;
-          GlobalThemeService().updateDominantColor(cachedColor);
-        }
+        LocalMusicDatabase()
+            .getDominantColor(_musicPlayer.currentFilePath.value)
+            .then((cachedColor) {
+              if (cachedColor != null && mounted) {
+                setState(() => _dominantColor = cachedColor);
+                GlobalThemeService().updateDominantColor(cachedColor);
+              }
+            });
       }
     }
 
@@ -169,31 +165,15 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen>
   Future<void> _updateGlobalColor(String filePath, Uint8List? artwork) async {
     if (filePath.isEmpty) return;
 
-    // 1. Try cache
-    Color? color = await LocalMusicDatabase().getDominantColor(filePath);
-
-    // 2. Extract if not in cache
-    if (color == null && artwork != null) {
-      try {
-        final paletteGenerator = await PaletteGenerator.fromImageProvider(
-          MemoryImage(artwork),
-          size: const Size(50, 50),
-        );
-        color =
-            paletteGenerator.dominantColor?.color ??
-            paletteGenerator.vibrantColor?.color;
-
-        if (color != null) {
-          // Color cached automatically by LocalMusicDatabase
-        }
-      } catch (e) {
-        debugPrint(
-          '[MusicPlayer] Error extracting color in background sync: $e',
-        );
-      }
+    Color? color;
+    try {
+      // LocalMusicDatabase handles extraction automatically
+      color = await LocalMusicDatabase().getDominantColor(filePath);
+    } catch (e) {
+      debugPrint('[MusicPlayer] Error getting dominant color: $e');
     }
 
-    // 3. Update Global Service (ALWAYS, even if unmounted)
+    // Update Global Service (ALWAYS, even if unmounted)
     if (color != null) {
       GlobalThemeService().updateDominantColor(color);
     } else if (artwork == null) {
@@ -201,8 +181,8 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen>
       GlobalThemeService().updateDominantColor(null);
     }
 
-    // 4. Update Local State (Only if mounted)
-    if (mounted) {
+    // Update Local State (Only if mounted)
+    if (mounted && color != null) {
       setState(() {
         _dominantColor = color;
       });
@@ -315,31 +295,24 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen>
 
   Future<void> _updateMetadataFromFile(int index) async {
     if (index < 0 || index >= _files.length) return;
-    _playedIndices.add(
-      index,
-    ); // Registrar en historial para shuffle inteligente
+    _playedIndices.add(index);
     final file = _files[index] as File;
 
     try {
-      // Valor por defecto
       String title = p.basename(file.path);
       String artist = 'Unknown Artist';
       Uint8List? artwork;
 
-      // Intentar leer metadatos reales
+      // Usar LocalMusicDatabase para metadatos
       try {
-        final metadata = readMetadata(file, getImage: true);
-        if (metadata.title?.isNotEmpty == true) {
-          title = metadata.title!;
-        }
-        if (metadata.artist?.isNotEmpty == true) {
-          artist = metadata.artist!;
-        }
-        if (metadata.pictures.isNotEmpty) {
-          artwork = metadata.pictures.first.bytes;
+        final metadata = await LocalMusicDatabase().getMetadata(file.path);
+        if (metadata != null) {
+          title = metadata.title;
+          artist = metadata.artist;
+          artwork = metadata.artwork;
         }
       } catch (e) {
-        debugPrint('[MusicPlayer] Error reading metadata in background: $e');
+        debugPrint('[MusicPlayer] Error reading metadata from DB: $e');
       }
 
       // Detener reproducción anterior
@@ -364,35 +337,12 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen>
         final dur = await _musicPlayer.player.getDuration();
         _musicPlayer.duration.value = dur ?? Duration.zero;
 
-        // Procesar color si hay arte
+        // LocalMusicDatabase maneja el color automáticamente
         if (artwork != null) {
-          // Intentar obtener color del caché primero
-          Color? dominantColor = await LocalMusicDatabase().getDominantColor(file.path);
-
-          // Si no está en caché y hay artwork, extraer el color
-          if (dominantColor == null) {
-            try {
-              final paletteGenerator = await PaletteGenerator.fromImageProvider(
-                MemoryImage(artwork),
-                size: const Size(50, 50),
-              );
-              dominantColor =
-                  paletteGenerator.dominantColor?.color ??
-                  paletteGenerator.vibrantColor?.color;
-
-              if (dominantColor != null) {
-                // Color cached automatically by LocalMusicDatabase
-              }
-            } catch (e) {
-              debugPrint(
-                '[MusicPlayer] Error extracting color in background: $e',
-              );
-            }
+          final color = await LocalMusicDatabase().getDominantColor(file.path);
+          if (color != null) {
+            GlobalThemeService().updateDominantColor(color);
           }
-          // Aquí no actualizamos UI local de color porque asumimos background,
-          // pero el componente que escuche podría querer saber el color.
-          // Por ahora, el MiniPlayer no usa el color dominante global (¿o sí?),
-          // pero sí usa el artwork.
         }
       });
 
@@ -466,6 +416,10 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen>
       final result = await FilePicker.platform.getDirectoryPath();
 
       if (result == null) return;
+
+      // Limpiar base de datos anterior al cambiar de carpeta
+      debugPrint('[MusicPlayer] Clearing database for new folder');
+      await LocalMusicDatabase().clearDatabase();
 
       final prefs = await SharedPreferences.getInstance();
       await prefs.setString('download_folder', result);
@@ -596,25 +550,8 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen>
       totalFiles.value = files.length;
 
       for (int i = 0; i < files.length && !cancelled; i++) {
-        final song = await Song.fromFile(files[i]);
-
-        // Also cache color if artwork exists
-        if (song != null && song.artworkData != null) {
-          try {
-            final paletteGenerator = await PaletteGenerator.fromImageProvider(
-              MemoryImage(song.artworkData!),
-              size: const Size(50, 50),
-            );
-            final color =
-                paletteGenerator.dominantColor?.color ??
-                paletteGenerator.vibrantColor?.color;
-            if (color != null) {
-              // Color cached automatically by LocalMusicDatabase
-            }
-          } catch (e) {
-            debugPrint('[MusicPlayer] Error extracting color: $e');
-          }
-        }
+        // LocalMusicDatabase carga metadatos Y colores automáticamente
+        await LocalMusicDatabase().getMetadata(files[i].path);
 
         processedFiles.value = i + 1;
         await Future.delayed(const Duration(milliseconds: 10));
@@ -993,21 +930,8 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen>
     try {
       for (final file in filesToProcess) {
         try {
-          final metadata = readMetadata(file, getImage: true);
-          if (metadata?.pictures.isNotEmpty == true) {
-            final artwork = metadata!.pictures.first.bytes;
-            final paletteGenerator = await PaletteGenerator.fromImageProvider(
-              MemoryImage(artwork),
-              size: const Size(50, 50),
-            );
-            final color =
-                paletteGenerator.dominantColor?.color ??
-                paletteGenerator.vibrantColor?.color;
-
-            if (color != null) {
-              // Color cached automatically by LocalMusicDatabase
-            }
-          }
+          // LocalMusicDatabase handles extraction automatically
+          await LocalMusicDatabase().getDominantColor(file.path);
         } catch (e) {
           debugPrint('[ColorCache] Error processing ${file.path}: $e');
         }
@@ -1264,41 +1188,14 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen>
   Future<SongMetadata?> _cacheAwareReadMetadata(File file) async {
     final key = file.path;
 
-    // 1. Verificar caché en memoria primero (más rápido)
+    // 1. Verificar caché en memoria
     if (_libraryMetadataCache.containsKey(key)) {
       return _libraryMetadataCache[key];
     }
 
-    // 2. Verificar caché persistente
-    final cached = await LocalMusicDatabase().get(key);
-    if (cached != null) {
-      _libraryMetadataCache[key] = cached;
-      return cached;
-    }
-
-    // 3. Leer del archivo (solo etiquetas, sin cargar imagen completa aún)
+    // 2. Usar LocalMusicDatabase (maneja caché automáticamente)
     try {
-      final meta = await Future(() => readMetadata(file, getImage: true));
-      final artwork = meta.pictures.firstOrNull?.bytes;
-
-      final metadata = SongMetadata(
-        title: meta.title ?? p.basename(file.path),
-        artist: meta.artist ?? "Unknown Artist",
-        album: meta.album,
-        durationMs: meta.duration?.inMilliseconds,
-        artwork: artwork,
-      );
-
-      // Guardar en ambos cachés
-      await LocalMusicDatabase().saveFromMetadata(
-        key: key,
-        title: meta.title,
-        artist: meta.artist,
-        album: meta.album,
-        durationMs: meta.duration?.inMilliseconds,
-        artworkData: artwork,
-      );
-
+      final metadata = await LocalMusicDatabase().getMetadata(key);
       _libraryMetadataCache[key] = metadata;
       return metadata;
     } catch (e) {
@@ -1321,22 +1218,22 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen>
             MaterialPageRoute(
               builder: (context) => PlayerScreen(getText: widget.getText),
             ),
-          ).then((_) {
+          ).then((_) async {
             if (mounted) {
               // Refresh metadata and color from global state
-              setState(() {
-                // Trigger global color update from current song
-                final song = GlobalMusicPlayer().songsList.value.firstWhere(
-                  (s) => s.filePath == filePath,
-                  orElse: () =>
-                      Song(id: '', title: '', artist: '', filePath: ''),
+              // Trigger global color update from current song
+              final song = GlobalMusicPlayer().songsList.value.firstWhere(
+                (s) => s.filePath == filePath,
+                orElse: () => Song(id: '', title: '', artist: '', filePath: ''),
+              );
+              if (song.filePath.isNotEmpty) {
+                // Fix: Get color from cache instead of passing raw bytes
+                final color = await LocalMusicDatabase().getDominantColor(
+                  song.filePath,
                 );
-                if (song.filePath.isNotEmpty) {
-                  // Fix: Get color from cache instead of passing raw bytes
-                  final color = await LocalMusicDatabase().getDominantColor(song.filePath);
-                  GlobalThemeService().updateDominantColor(color);
-                }
-              });
+                GlobalThemeService().updateDominantColor(color);
+              }
+              if (mounted) setState(() {});
             }
           });
         }

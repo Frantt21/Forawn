@@ -8,8 +8,6 @@ import 'package:flutter/services.dart';
 import 'package:audioplayers/audioplayers.dart';
 import 'package:path/path.dart' as p;
 
-import 'package:palette_generator/palette_generator.dart';
-
 import '../services/global_music_player.dart';
 import '../services/music_history.dart';
 import '../services/local_music_database.dart';
@@ -69,14 +67,13 @@ class _PlayerScreenState extends State<PlayerScreen> {
 
     // Initial color extraction
     if (_musicPlayer.currentFilePath.value.isNotEmpty) {
-      final cachedColor = await LocalMusicDatabase().getDominantColor(
-        _musicPlayer.currentFilePath.value,
-      );
-      if (cachedColor != null) {
-        _dominantColor = cachedColor;
-      } else if (_currentArt != null) {
-        _extractColor(_currentArt!);
-      }
+      LocalMusicDatabase()
+          .getDominantColor(_musicPlayer.currentFilePath.value)
+          .then((cachedColor) {
+            if (cachedColor != null && mounted) {
+              setState(() => _dominantColor = cachedColor);
+            }
+          });
     }
 
     // Listeners
@@ -117,22 +114,19 @@ class _PlayerScreenState extends State<PlayerScreen> {
     }
   }
 
-  void _onArtChanged() {
+  Future<void> _onArtChanged() async {
     final art = _musicPlayer.currentArt.value;
     if (mounted) {
       setState(() => _currentArt = art);
       if (art != null) {
-        // Try get from cache first
         if (_musicPlayer.currentFilePath.value.isNotEmpty) {
-          final cached = await LocalMusicDatabase().getDominantColor(
+          final color = await LocalMusicDatabase().getDominantColor(
             _musicPlayer.currentFilePath.value,
           );
-          if (cached != null) {
-            setState(() => _dominantColor = cached);
-            return;
+          if (mounted && color != null) {
+            setState(() => _dominantColor = color);
           }
         }
-        _extractColor(art);
       } else {
         setState(() => _dominantColor = null);
       }
@@ -147,29 +141,6 @@ class _PlayerScreenState extends State<PlayerScreen> {
   void _onArtistChanged() {
     if (mounted)
       setState(() => _currentArtist = _musicPlayer.currentArtist.value);
-  }
-
-  Future<void> _extractColor(Uint8List bytes) async {
-    try {
-      final palette = await PaletteGenerator.fromImageProvider(
-        MemoryImage(bytes),
-        size: const Size(50, 50),
-      );
-      if (mounted) {
-        setState(() {
-          _dominantColor =
-              palette.dominantColor?.color ?? palette.vibrantColor?.color;
-        });
-        // Save to cache
-        if (_dominantColor != null &&
-            _musicPlayer.currentFilePath.value.isNotEmpty) {
-          await AlbumColorCache().setColor(
-            _musicPlayer.currentFilePath.value,
-            _dominantColor!,
-          );
-        }
-      }
-    } catch (_) {}
   }
 
   Color _adjustColorForControls(Color? color) {

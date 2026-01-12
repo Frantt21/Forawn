@@ -1,7 +1,7 @@
 import 'dart:io';
 import 'dart:typed_data';
 
-import '../services/music_metadata_cache.dart';
+import '../services/local_music_database.dart';
 
 /// Modelo para una canción
 class Song {
@@ -39,24 +39,24 @@ class Song {
       final filePath = file.path;
       final id = filePath.hashCode.toString();
 
-      // Intentar cargar desde caché primero
-      final cached = await MusicMetadataCache.get(filePath);
+      // Intentar cargar desde LocalMusicDatabase primero
+      final metadata = await LocalMusicDatabase().getMetadata(filePath);
 
-      if (cached != null) {
+      if (metadata != null) {
         return Song(
           id: id,
-          title: cached.title,
-          artist: cached.artist,
-          album: cached.album,
-          duration: cached.durationMs != null
-              ? Duration(milliseconds: cached.durationMs!)
+          title: metadata.title,
+          artist: metadata.artist,
+          album: metadata.album,
+          duration: metadata.durationMs != null
+              ? Duration(milliseconds: metadata.durationMs!)
               : null,
           filePath: filePath,
-          artworkData: cached.artwork, // Artwork embebido
+          artworkData: metadata.artwork, // Artwork embebido
         );
       }
 
-      // Si no hay caché, leer del archivo
+      // Si no hay caché, leer del archivo (esto cargará automáticamente en LocalMusicDatabase)
       final fileName = file.path.split('/').last.replaceAll('.mp3', '');
       String title = fileName;
       String artist = 'Unknown Artist';

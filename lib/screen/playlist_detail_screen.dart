@@ -9,9 +9,7 @@ import '../models/song_model.dart';
 import '../services/playlist_service.dart';
 import '../services/global_music_player.dart';
 import '../services/local_music_database.dart';
-// For GlobalTheme/etc if needed? No, avoid circle if possible.
 
-/// Pantalla de detalles de Playlist (Versión Desktop/Windows)
 class PlaylistDetailScreen extends StatefulWidget {
   final Playlist playlist;
 
