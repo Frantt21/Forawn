@@ -1894,44 +1894,230 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen>
 
     await showDialog(
       context: context,
-      builder: (context) => AlertDialog(
-        backgroundColor: const Color(0xFF1C1C1E),
-        title: Text(
-          widget.getText('add_to_playlist', fallback: "Add to Playlist"),
-          style: const TextStyle(color: Colors.white),
-        ),
-        content: SizedBox(
-          width: 300,
-          height: 300,
-          child: ListView.builder(
-            itemCount: playlists.length,
-            itemBuilder: (context, index) {
-              final playlist = playlists[index];
-              final alreadyIn = playlist.songs.any(
-                (s) => s.filePath == file.path,
-              );
+      builder: (context) => Dialog(
+        backgroundColor: const Color(0xFF1F1F1F),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        child: Container(
+          width: 350,
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // Title
+              Text(
+                widget.getText('add_to_playlist', fallback: "Add to Playlist"),
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 20,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              const SizedBox(height: 20),
 
-              return ListTile(
-                title: Text(
-                  playlist.name,
-                  style: TextStyle(
-                    color: alreadyIn ? Colors.grey : Colors.white,
+              // New Playlist Button
+              Material(
+                color: Colors.purpleAccent.withOpacity(0.1),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(10),
+                  side: BorderSide(
+                    color: Colors.purpleAccent.withOpacity(0.5),
+                    width: 1,
                   ),
                 ),
-                trailing: alreadyIn
-                    ? const Icon(Icons.check, color: Colors.purpleAccent)
-                    : null,
-                onTap: alreadyIn
-                    ? null
-                    : () {
-                        PlaylistService().addSongToPlaylist(playlist.id, song);
-                        Navigator.pop(context);
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(content: Text("Added to ${playlist.name}")),
-                        );
-                      },
-              );
-            },
+                child: InkWell(
+                  borderRadius: BorderRadius.circular(10),
+                  onTap: () {
+                    Navigator.pop(context);
+                    _showCreatePlaylistDialog();
+                  },
+                  child: Padding(
+                    padding: const EdgeInsets.all(16),
+                    child: Row(
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.all(8),
+                          decoration: BoxDecoration(
+                            color: Colors.purpleAccent.withOpacity(0.2),
+                            shape: BoxShape.circle,
+                          ),
+                          child: const Icon(
+                            Icons.add,
+                            color: Colors.purpleAccent,
+                            size: 20,
+                          ),
+                        ),
+                        const SizedBox(width: 16),
+                        Text(
+                          widget.getText(
+                            'new_playlist',
+                            fallback: "New Playlist",
+                          ),
+                          style: const TextStyle(
+                            color: Colors.purpleAccent,
+                            fontWeight: FontWeight.bold,
+                            fontSize: 16,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 16),
+
+              // Playlist List
+              ConstrainedBox(
+                constraints: const BoxConstraints(maxHeight: 300),
+                child: ListView.separated(
+                  shrinkWrap: true,
+                  itemCount: playlists.length,
+                  separatorBuilder: (_, __) => const SizedBox(height: 8),
+                  itemBuilder: (context, index) {
+                    final playlist = playlists[index];
+                    final alreadyIn = playlist.songs.any(
+                      (s) => s.filePath == file.path,
+                    );
+
+                    return Material(
+                      color: Colors.white.withOpacity(0.05),
+                      borderRadius: BorderRadius.circular(10),
+                      child: InkWell(
+                        borderRadius: BorderRadius.circular(10),
+                        onTap: alreadyIn
+                            ? null
+                            : () {
+                                PlaylistService().addSongToPlaylist(
+                                  playlist.id,
+                                  song,
+                                );
+                                Navigator.pop(context);
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(
+                                    content: Text("Added to ${playlist.name}"),
+                                    behavior: SnackBarBehavior.floating,
+                                    shape: RoundedRectangleBorder(
+                                      borderRadius: BorderRadius.circular(10),
+                                    ),
+                                    backgroundColor: Colors.grey[900],
+                                  ),
+                                );
+                              },
+                        child: Padding(
+                          padding: const EdgeInsets.all(12),
+                          child: Row(
+                            children: [
+                              // Playlist Image
+                              Container(
+                                width: 48,
+                                height: 48,
+                                decoration: BoxDecoration(
+                                  color: Colors.grey[850],
+                                  borderRadius: BorderRadius.circular(8),
+                                  image: playlist.imagePath != null
+                                      ? DecorationImage(
+                                          image: FileImage(
+                                            File(playlist.imagePath!),
+                                          ),
+                                          fit: BoxFit.cover,
+                                        )
+                                      : null,
+                                ),
+                                child: playlist.imagePath == null
+                                    ? const Icon(
+                                        Icons.queue_music,
+                                        color: Colors.white54,
+                                        size: 24,
+                                      )
+                                    : null,
+                              ),
+                              const SizedBox(width: 16),
+                              // Info
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      playlist.name,
+                                      style: const TextStyle(
+                                        color: Colors.white,
+                                        fontWeight: FontWeight.w500,
+                                        fontSize: 15,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 4),
+                                    Text(
+                                      '${playlist.songs.length} ${widget.getText('songs', fallback: 'songs')}',
+                                      style: TextStyle(
+                                        color: Colors.white.withOpacity(0.5),
+                                        fontSize: 12,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              // Status Badge
+                              if (alreadyIn)
+                                Container(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 12,
+                                    vertical: 6,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    color: const Color(
+                                      0xFF1E3A25,
+                                    ), // Dark green bg
+                                    borderRadius: BorderRadius.circular(20),
+                                  ),
+                                  child: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      const Icon(
+                                        Icons.check_circle,
+                                        color: Color(
+                                          0xFF4CAF50,
+                                        ), // Bright green
+                                        size: 14,
+                                      ),
+                                      const SizedBox(width: 4),
+                                      Text(
+                                        widget.getText(
+                                          'added',
+                                          fallback: "Added",
+                                        ),
+                                        style: const TextStyle(
+                                          color: Color(0xFF4CAF50),
+                                          fontSize: 12,
+                                          fontWeight: FontWeight.bold,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    );
+                  },
+                ),
+              ),
+
+              // Cancel Button
+              Align(
+                alignment: Alignment.centerRight,
+                child: Padding(
+                  padding: const EdgeInsets.only(top: 16),
+                  child: TextButton(
+                    onPressed: () => Navigator.pop(context),
+                    child: Text(
+                      widget.getText('cancel', fallback: "Cancel"),
+                      style: const TextStyle(color: Colors.grey, fontSize: 16),
+                    ),
+                  ),
+                ),
+              ),
+            ],
           ),
         ),
       ),
