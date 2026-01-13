@@ -25,7 +25,7 @@ import 'package:url_launcher/url_launcher.dart';
 
 import 'screen/video_downloader.dart';
 import 'widgets/sidebar_navigation.dart';
-import 'widgets/mini_music_player.dart';
+
 import 'screen/home_content.dart';
 import 'screen/foraai_screen.dart';
 import 'services/discord_service.dart';
@@ -1048,13 +1048,6 @@ class _HomeScreenState extends State<HomeScreen> with WindowListener {
                   );
                 },
               ),
-            ),
-            // Mini Music Player overlay
-            MiniMusicPlayer(
-              getText: widget.getText,
-              onExpandPressed: () {
-                _handleNavigation('player');
-              },
             ),
           ],
         );

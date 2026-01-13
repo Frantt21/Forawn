@@ -22,6 +22,8 @@ import '../models/playlist_model.dart';
 import '../models/song_model.dart';
 
 import 'player_screen.dart';
+import 'playlist_detail_screen.dart';
+import '../widgets/mini_player.dart';
 
 typedef TextGetter = String Function(String key, {String? fallback});
 
@@ -53,10 +55,11 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen>
   // Controlador de búsqueda
 
   // Campos para UI local (sincronizados con global)
-  String _currentTitle = '';
-  String _currentArtist = '';
-  Uint8List? _currentArt;
-  Color? _dominantColor;
+  // Campos para UI local (sincronizados con global)
+  // String _currentTitle = ''; // Removed
+  // String _currentArtist = ''; // Removed
+  // Uint8List? _currentArt; // Removed
+  // Color? _dominantColor; // Removed
   int? _currentIndex;
   final Set<int> _playedIndices = {}; // Rastreo para shuffle inteligente
 
@@ -84,17 +87,15 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen>
     if (_musicPlayer.currentIndex.value != null &&
         _musicPlayer.currentIndex.value! >= 0) {
       _currentIndex = _musicPlayer.currentIndex.value;
-      _currentTitle = _musicPlayer.currentTitle.value;
-      _currentArtist = _musicPlayer.currentArtist.value;
-      _currentArt = _musicPlayer.currentArt.value;
+      _currentIndex = _musicPlayer.currentIndex.value;
+      // _currentTitle, _currentArtist, _currentArt removed
 
       // Restaurar color dominante desde el caché
       if (_musicPlayer.currentFilePath.value.isNotEmpty) {
         LocalMusicDatabase()
             .getDominantColor(_musicPlayer.currentFilePath.value)
             .then((cachedColor) {
-              if (cachedColor != null && mounted) {
-                setState(() => _dominantColor = cachedColor);
+              if (cachedColor != null) {
                 GlobalThemeService().updateDominantColor(cachedColor);
               }
             });
@@ -144,22 +145,14 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen>
   }
 
   void _onMetadataChanged() {
-    if (mounted) {
-      final newArt = _musicPlayer.currentArt.value;
-      // If the art changed, we might need to update the color
-      if (newArt != _currentArt) {
-        final path = _musicPlayer.currentFilePath.value;
-        if (path.isNotEmpty) {
-          _updateGlobalColor(path, newArt);
-        }
-      }
+    final newArt = _musicPlayer.currentArt.value;
+    final path = _musicPlayer.currentFilePath.value;
 
-      setState(() {
-        _currentTitle = _musicPlayer.currentTitle.value;
-        _currentArtist = _musicPlayer.currentArtist.value;
-        _currentArt = newArt;
-      });
+    if (path.isNotEmpty) {
+      _updateGlobalColor(path, newArt);
     }
+
+    // Local state updates removed as MiniPlayer handles its own state
   }
 
   Future<void> _updateGlobalColor(String filePath, Uint8List? artwork) async {
@@ -181,12 +174,7 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen>
       GlobalThemeService().updateDominantColor(null);
     }
 
-    // Update Local State (Only if mounted)
-    if (mounted && color != null) {
-      setState(() {
-        _dominantColor = color;
-      });
-    }
+    // Update Local State (Only if mounted) -> Removed _dominantColor
   }
 
   Future<void> _loadCachedState() async {
@@ -218,13 +206,6 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen>
       // Sync local UI state from global state (already set by PlayerScreen or elsewhere)
       // Only sync local variables - NO metadata fetching needed here
       // as the source that changed currentIndex is responsible for setting metadata
-      if (mounted) {
-        setState(() {
-          _currentTitle = _musicPlayer.currentTitle.value;
-          _currentArtist = _musicPlayer.currentArtist.value;
-          _currentArt = _musicPlayer.currentArt.value;
-        });
-      }
     } else {
       // Song not in this folder.
       if (_currentIndex != null) {
@@ -248,8 +229,7 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen>
       // Actualizar UI local si estamos montados
       if (mounted) {
         setState(() {
-          _currentTitle = _musicPlayer.currentTitle.value;
-          _currentArtist = _musicPlayer.currentArtist.value;
+          // Local metadata removed
         });
       }
     };
@@ -397,9 +377,7 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen>
 
         if (mounted) {
           setState(() {
-            _currentTitle = _musicPlayer.currentTitle.value;
-            _currentArtist = _musicPlayer.currentArtist.value;
-            _currentArt = _musicPlayer.currentArt.value;
+            // Local metadata removed
             _currentIndex = index;
           });
         }
@@ -674,9 +652,7 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen>
           try {
             await _player.stop();
           } catch (_) {}
-          _currentTitle = '';
-          _currentArtist = '';
-          _currentArt = null;
+          // Local metadata reset removed
           _musicPlayer.position.value = Duration.zero;
           _musicPlayer.duration.value = Duration.zero;
         }
@@ -1045,7 +1021,6 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen>
                   ],
                 ),
               ),
-
               // Spacing for MiniPlayer
               const SizedBox(height: 80),
             ],
@@ -1053,10 +1028,10 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen>
 
           // Mini Player at the bottom
           Positioned(
-            left: 16,
-            right: 16,
-            bottom: 16,
-            child: _buildMiniPlayer(),
+            left: 32,
+            right: 32,
+            bottom: 32,
+            child: MiniPlayer(getText: widget.getText),
           ),
         ],
       ),
@@ -1067,23 +1042,22 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen>
     bool isSelected = _tabIndex == index;
     return GestureDetector(
       onTap: () => setState(() => _tabIndex = index),
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
+        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
         decoration: BoxDecoration(
           color: isSelected
-              ? Colors.white.withOpacity(0.1)
-              : Colors.transparent,
+              ? Colors.white.withOpacity(0.2) // Active
+              : Colors.white.withOpacity(0.05), // Inactive
           borderRadius: BorderRadius.circular(20),
-          border: Border.all(
-            color: isSelected ? Colors.transparent : Colors.transparent,
-          ),
         ),
-        alignment: Alignment.center,
         child: Text(
           label,
           style: TextStyle(
-            color: isSelected ? Colors.white : Colors.grey,
+            color: isSelected ? Colors.white : Colors.white60,
+            fontSize: 15,
             fontWeight: FontWeight.bold,
+            height: 1.0,
           ),
         ),
       ),
@@ -1177,32 +1151,91 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen>
               ),
             ),
 
-          const SizedBox(height: 100), // Bottom padding
+          const SizedBox(height: 24),
+          Text(
+            widget.getText('recent_favorites', fallback: 'Recent Favorites'),
+            style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+          ),
+          const SizedBox(height: 16),
+          _buildRecentFavorites(),
+
+          const SizedBox(
+            height: 140,
+          ), // Bottom padding increased to avoid overlap
         ],
       ),
     );
   }
 
-  Future<SongMetadata?> _cacheAwareReadMetadata(File file) async {
-    final key = file.path;
-
-    // 1. Verificar caché en memoria
-    if (_libraryMetadataCache.containsKey(key)) {
-      return _libraryMetadataCache[key];
+  Widget _buildRecentFavorites() {
+    final likedIds = PlaylistService().likedSongIds;
+    if (likedIds.isEmpty) {
+      return Container(
+        height: 150,
+        decoration: BoxDecoration(
+          color: Colors.white.withOpacity(0.05),
+          borderRadius: BorderRadius.circular(16),
+        ),
+        child: Center(
+          child: Text(
+            widget.getText('no_favorites_yet', fallback: 'No favorites yet'),
+            style: TextStyle(color: Colors.white.withOpacity(0.3)),
+          ),
+        ),
+      );
     }
 
-    // 2. Usar LocalMusicDatabase (maneja caché automáticamente)
-    try {
-      final metadata = await LocalMusicDatabase().getMetadata(key);
-      _libraryMetadataCache[key] = metadata;
-      return metadata;
-    } catch (e) {
-      _libraryMetadataCache[key] = null;
-      return null;
+    // Filtrar archivos que están en favoritos y tomar los últimos 10
+    final favoritePaths = _files
+        .where((file) => likedIds.contains(file.path.hashCode.toString()))
+        .map((file) => file.path)
+        .toList()
+        .reversed // De la más reciente a la más antigua
+        .take(10)
+        .toList()
+        .reversed // Invertir para mostrar de la más antigua a la más reciente
+        .toList();
+
+    if (favoritePaths.isEmpty) {
+      return Container(
+        height: 150,
+        decoration: BoxDecoration(
+          color: Colors.white.withOpacity(0.05),
+          borderRadius: BorderRadius.circular(16),
+        ),
+        child: Center(
+          child: Text(
+            widget.getText(
+              'no_favorites_in_library',
+              fallback: 'No favorites in current library',
+            ),
+            style: TextStyle(color: Colors.white.withOpacity(0.3)),
+          ),
+        ),
+      );
     }
+
+    return SizedBox(
+      height: 160,
+      child: ScrollConfiguration(
+        behavior: const ScrollBehavior().copyWith(
+          scrollbars: false,
+          dragDevices: {PointerDeviceKind.touch, PointerDeviceKind.mouse},
+        ),
+        child: ListView.separated(
+          scrollDirection: Axis.horizontal,
+          physics: const AlwaysScrollableScrollPhysics(),
+          itemCount: favoritePaths.length,
+          separatorBuilder: (_, __) => const SizedBox(width: 12),
+          itemBuilder: (context, index) {
+            return _buildFavoriteCard(favoritePaths[index]);
+          },
+        ),
+      ),
+    );
   }
 
-  Widget _buildHistoryCard(String filePath) {
+  Widget _buildFavoriteCard(String filePath) {
     final file = File(filePath);
     final fileName = p.basename(filePath);
 
@@ -1218,14 +1251,11 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen>
             ),
           ).then((_) async {
             if (mounted) {
-              // Refresh metadata and color from global state
-              // Trigger global color update from current song
               final song = GlobalMusicPlayer().songsList.value.firstWhere(
                 (s) => s.filePath == filePath,
                 orElse: () => Song(id: '', title: '', artist: '', filePath: ''),
               );
               if (song.filePath.isNotEmpty) {
-                // Fix: Get color from cache instead of passing raw bytes
                 final color = await LocalMusicDatabase().getDominantColor(
                   song.filePath,
                 );
@@ -1243,7 +1273,6 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen>
         decoration: BoxDecoration(
           color: const Color(0xFF1C1C1E),
           borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: Colors.white.withOpacity(0.1)),
         ),
         child: ClipRRect(
           borderRadius: BorderRadius.circular(12),
@@ -1330,81 +1359,288 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen>
     );
   }
 
-  Widget _buildPlaylistCard(Playlist playlist) {
+  Future<SongMetadata?> _cacheAwareReadMetadata(File file) async {
+    final key = file.path;
+
+    // 1. Verificar caché en memoria
+    if (_libraryMetadataCache.containsKey(key)) {
+      return _libraryMetadataCache[key];
+    }
+
+    // 2. Usar LocalMusicDatabase (maneja caché automáticamente)
+    try {
+      final metadata = await LocalMusicDatabase().getMetadata(key);
+      _libraryMetadataCache[key] = metadata;
+      return metadata;
+    } catch (e) {
+      _libraryMetadataCache[key] = null;
+      return null;
+    }
+  }
+
+  Widget _buildHistoryCard(String filePath) {
+    final file = File(filePath);
+    final fileName = p.basename(filePath);
+
     return GestureDetector(
       onTap: () {
-        // TODO: Restore PlaylistDetailScreen
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Playlist detail screen temporarily unavailable'),
-          ),
-        );
-        // Navigator.push(
-        //   context,
-        //   MaterialPageRoute(
-        //     builder: (context) => PlaylistDetailScreen(playlist: playlist),
-        //   ),
-        // ).then((_) => setState(() {}));
+        final index = _files.indexWhere((f) => f.path == filePath);
+        if (index != -1) {
+          _playFile(index);
+          Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (context) => PlayerScreen(getText: widget.getText),
+            ),
+          ).then((_) async {
+            if (mounted) {
+              // Refresh metadata and color from global state
+              // Trigger global color update from current song
+              final song = GlobalMusicPlayer().songsList.value.firstWhere(
+                (s) => s.filePath == filePath,
+                orElse: () => Song(id: '', title: '', artist: '', filePath: ''),
+              );
+              if (song.filePath.isNotEmpty) {
+                // Fix: Get color from cache instead of passing raw bytes
+                final color = await LocalMusicDatabase().getDominantColor(
+                  song.filePath,
+                );
+                GlobalThemeService().updateDominantColor(color);
+              }
+              if (mounted) setState(() {});
+            }
+          });
+        }
       },
-      onLongPress: () {
-        showModalBottomSheet(
-          context: context,
-          backgroundColor: const Color(0xFF1C1C1E),
-          builder: (context) => Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              ListTile(
-                leading: const Icon(Icons.delete, color: Colors.red),
-                title: Text(
-                  widget.getText('delete', fallback: "Delete"),
-                  style: const TextStyle(color: Colors.red),
-                ),
-                onTap: () {
-                  Navigator.pop(context);
-                  PlaylistService().deletePlaylist(playlist.id);
-                  setState(() {});
+      child: FutureBuilder<Color?>(
+        future: LocalMusicDatabase().getDominantColor(filePath),
+        builder: (context, colorSnapshot) {
+          final dominantColor = colorSnapshot.data;
+          final currentFilePath = GlobalMusicPlayer().currentFilePath.value;
+          final isCurrentSong = currentFilePath == filePath;
+          final isPlaying =
+              GlobalMusicPlayer().isPlaying.value && isCurrentSong;
+
+          return Container(
+            width: 160,
+            height: 160,
+            margin: const EdgeInsets.only(bottom: 8),
+            padding: EdgeInsets.zero,
+            decoration: BoxDecoration(
+              color: const Color(0xFF1C1C1E),
+              borderRadius: BorderRadius.circular(12),
+              border: isCurrentSong && dominantColor != null
+                  ? Border.all(color: dominantColor, width: 3)
+                  : null,
+            ),
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(9),
+              child: FutureBuilder<SongMetadata?>(
+                future: _cacheAwareReadMetadata(file),
+                builder: (context, snapshot) {
+                  final data = snapshot.data;
+                  final art = data?.artwork;
+                  final title = data?.title ?? fileName;
+                  final artist = data?.artist ?? "Unknown Artist";
+
+                  return Stack(
+                    fit: StackFit.expand,
+                    children: [
+                      // Background Image or Placeholder
+                      art != null
+                          ? Image.memory(art, fit: BoxFit.cover)
+                          : Container(
+                              color: Colors.grey[900],
+                              child: const Icon(
+                                Icons.music_note,
+                                size: 50,
+                                color: Colors.grey,
+                              ),
+                            ),
+
+                      // Gradient Overlay
+                      Container(
+                        decoration: BoxDecoration(
+                          gradient: LinearGradient(
+                            begin: Alignment.topCenter,
+                            end: Alignment.bottomCenter,
+                            colors: [
+                              Colors.transparent,
+                              Colors.black.withOpacity(0.8),
+                            ],
+                            stops: const [0.5, 1.0],
+                          ),
+                        ),
+                      ),
+
+                      // Audio bars indicator - persistent for current song
+                      if (isCurrentSong)
+                        Positioned(
+                          top: 8,
+                          right: 8,
+                          child: _AnimatedAudioBars(
+                            size: 16,
+                            playing: GlobalMusicPlayer().isPlaying.value,
+                          ),
+                        ),
+
+                      // Text Content
+                      Padding(
+                        padding: const EdgeInsets.all(12.0),
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.end,
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              title,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                fontWeight: FontWeight.bold,
+                                fontSize: 13,
+                                color: Colors.white,
+                                shadows: [
+                                  Shadow(blurRadius: 2, color: Colors.black),
+                                ],
+                              ),
+                            ),
+                            const SizedBox(height: 2),
+                            Text(
+                              artist,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                color: Colors.white70,
+                                fontSize: 11,
+                                shadows: [
+                                  Shadow(blurRadius: 2, color: Colors.black),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  );
                 },
               ),
-            ],
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+  Widget _buildPlaylistCard(
+    Playlist playlist, {
+    bool isFavorite = false,
+    double? width = 160,
+    double? height = 160,
+  }) {
+    return GestureDetector(
+      onTap: () {
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (context) => PlaylistDetailScreen(
+              playlist: playlist,
+              isReadOnly: isFavorite,
+            ),
           ),
-        );
+        ).then((_) => setState(() {}));
       },
+      onLongPress: isFavorite
+          ? null
+          : () {
+              showModalBottomSheet(
+                context: context,
+                backgroundColor: const Color(0xFF1C1C1E),
+                builder: (context) => Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    ListTile(
+                      leading: const Icon(Icons.delete, color: Colors.red),
+                      title: Text(
+                        widget.getText('delete', fallback: "Delete"),
+                        style: const TextStyle(color: Colors.red),
+                      ),
+                      onTap: () {
+                        Navigator.pop(context);
+                        PlaylistService().deletePlaylist(playlist.id);
+                        setState(() {});
+                      },
+                    ),
+                  ],
+                ),
+              );
+            },
       child: Container(
-        width: 160,
-        height: 160,
+        width: width,
+        height: height,
         decoration: BoxDecoration(
           color: const Color(0xFF1C1C1E),
           borderRadius: BorderRadius.circular(12),
           border: Border.all(color: Colors.white.withOpacity(0.1)),
+          boxShadow: isFavorite
+              ? [
+                  BoxShadow(
+                    color: Colors.purpleAccent.withOpacity(0.2),
+                    blurRadius: 8,
+                    offset: const Offset(0, 4),
+                  ),
+                ]
+              : null,
         ),
         child: ClipRRect(
           borderRadius: BorderRadius.circular(12),
           child: Stack(
             fit: StackFit.expand,
             children: [
-              // Background Image
-              playlist.imagePath != null
-                  ? Image.file(File(playlist.imagePath!), fit: BoxFit.cover)
-                  : Container(
-                      color: Colors.grey[800],
-                      child: const Icon(
-                        Icons.queue_music,
-                        size: 40,
-                        color: Colors.white54,
-                      ),
+              // Background (Special for Favorites)
+              if (isFavorite)
+                Container(
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                      colors: [
+                        Colors.purpleAccent.withOpacity(0.6),
+                        Colors.deepPurple.withOpacity(0.8),
+                      ],
                     ),
-
-              // Gradient Overlay
-              Container(
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    begin: Alignment.topCenter,
-                    end: Alignment.bottomCenter,
-                    colors: [Colors.transparent, Colors.black.withOpacity(0.8)],
-                    stops: const [0.5, 1.0],
+                  ),
+                  child: const Center(
+                    child: Icon(Icons.favorite, size: 40, color: Colors.white),
+                  ),
+                )
+              // Standard Playlist Image
+              else if (playlist.imagePath != null)
+                Image.file(File(playlist.imagePath!), fit: BoxFit.cover)
+              else
+                Container(
+                  color: Colors.grey[800],
+                  child: const Icon(
+                    Icons.queue_music,
+                    size: 40,
+                    color: Colors.white54,
                   ),
                 ),
-              ),
+
+              // Gradient Overlay (Only for non-favorites or image ones)
+              if (!isFavorite || playlist.imagePath != null)
+                Container(
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.topCenter,
+                      end: Alignment.bottomCenter,
+                      colors: [
+                        Colors.transparent,
+                        Colors.black.withOpacity(0.8),
+                      ],
+                      stops: const [0.5, 1.0],
+                    ),
+                  ),
+                ),
 
               // Text Content
               Padding(
@@ -1444,6 +1680,8 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen>
       ),
     );
   }
+
+  // Construct virtual Favorites playlist
 
   Widget _buildLibraryTab() {
     if (_files.isEmpty) {
@@ -1493,10 +1731,7 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen>
               leading: Container(
                 width: 48,
                 decoration: BoxDecoration(
-                  // Ensure explicit transparency here
-                  color: Colors.transparent,
-                  // Remove any shadow or border that might imply a container
-                  borderRadius: BorderRadius.circular(12),
+                  borderRadius: BorderRadius.circular(8),
                   image: art != null
                       ? DecorationImage(
                           image: MemoryImage(art),
@@ -1533,35 +1768,78 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen>
                     final song = await Song.fromFile(file);
                     if (song != null) {
                       PlaylistService().toggleLike(song.id);
+                      if (mounted) setState(() {}); // Actualizar UI
                     }
                   } else if (value == 'delete') {
                     // Confirm delete logic could go here
                   }
                 },
                 itemBuilder: (BuildContext context) {
+                  // Usar el mismo sistema de ID que Song.fromFile
+                  final songId = file.path.hashCode.toString();
+                  final isLiked = PlaylistService().isLiked(songId);
                   return [
                     PopupMenuItem(
                       value: 'add_to_playlist',
-                      child: Text(
-                        widget.getText(
-                          'add_to_playlist',
-                          fallback: "Add to Playlist",
-                        ),
-                        style: const TextStyle(color: Colors.white),
+                      child: Row(
+                        children: [
+                          const Icon(
+                            Icons.playlist_add,
+                            color: Colors.white,
+                            size: 20,
+                          ),
+                          const SizedBox(width: 12),
+                          Text(
+                            widget.getText(
+                              'add_to_playlist',
+                              fallback: "Add to Playlist",
+                            ),
+                            style: const TextStyle(color: Colors.white),
+                          ),
+                        ],
                       ),
                     ),
                     PopupMenuItem(
                       value: 'toggle_favorite',
-                      child: Text(
-                        widget.getText('favorite', fallback: "Favorite"),
-                        style: const TextStyle(color: Colors.white),
+                      child: Row(
+                        children: [
+                          Icon(
+                            isLiked ? Icons.favorite : Icons.favorite_border,
+                            color: isLiked ? Colors.purpleAccent : Colors.white,
+                            size: 20,
+                          ),
+                          const SizedBox(width: 8),
+                          Text(
+                            widget.getText(
+                              isLiked ? 'remove_favorite' : 'add_favorite',
+                              fallback: isLiked
+                                  ? "Remove from Favorites"
+                                  : "Add to Favorites",
+                            ),
+                            style: TextStyle(
+                              color: isLiked
+                                  ? Colors.purpleAccent
+                                  : Colors.white,
+                            ),
+                          ),
+                        ],
                       ),
                     ),
                     PopupMenuItem(
                       value: 'delete',
-                      child: Text(
-                        widget.getText('delete', fallback: "Delete"),
-                        style: const TextStyle(color: Colors.red),
+                      child: Row(
+                        children: [
+                          const Icon(
+                            Icons.delete_outline,
+                            color: Colors.red,
+                            size: 20,
+                          ),
+                          const SizedBox(width: 12),
+                          Text(
+                            widget.getText('delete', fallback: "Delete"),
+                            style: const TextStyle(color: Colors.red),
+                          ),
+                        ],
                       ),
                     ),
                   ];
@@ -1573,9 +1851,7 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen>
                 if (mounted) {
                   setState(() {
                     _currentIndex = actualIndex;
-                    _currentTitle = title;
-                    _currentArtist = artist;
-                    _currentArt = art;
+                    // Local metadata updates removed
                   });
                 }
                 _playFile(actualIndex);
@@ -1760,201 +2036,205 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen>
     );
   }
 
-  Widget _buildPlaylistsTab() {
-    final playlists = PlaylistService().playlists;
-
-    return GridView.builder(
-      padding: const EdgeInsets.only(left: 16, right: 16, top: 16, bottom: 100),
-      gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
-        maxCrossAxisExtent: 160,
-        crossAxisSpacing: 12,
-        mainAxisSpacing: 12,
-        childAspectRatio: 0.8,
-      ),
-      itemCount: playlists.length + 1,
-      itemBuilder: (context, index) {
-        if (index == 0) {
-          return GestureDetector(
-            onTap: _showCreatePlaylistDialog,
-            child: Container(
-              decoration: BoxDecoration(
-                color: Colors.purpleAccent.withOpacity(0.1),
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(
-                  color: Colors.purpleAccent.withOpacity(0.3),
-                  width: 1,
-                ),
-              ),
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Container(
-                    padding: const EdgeInsets.all(16),
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      color: Colors.purpleAccent.withOpacity(0.2),
-                    ),
-                    child: const Icon(
-                      Icons.add,
-                      size: 32,
-                      color: Colors.purpleAccent,
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  Text(
-                    widget.getText(
-                      'create_playlist',
-                      fallback: "Create Playlist",
-                    ),
-                    style: const TextStyle(
-                      color: Colors.purpleAccent,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          );
-        }
-        return _buildPlaylistCard(playlists[index - 1]);
-      },
-    );
-  }
-
-  Widget _buildMiniPlayer() {
-    // Hide if no song is loaded
-    if (_currentTitle.isEmpty && _currentArt == null) {
-      return const SizedBox.shrink();
-    }
-
-    return GestureDetector(
-      onTap: () {
-        Navigator.push(
-          context,
-          MaterialPageRoute(
-            builder: (context) => PlayerScreen(getText: widget.getText),
-          ),
-        ).then((_) {
-          if (mounted) setState(() {});
-        });
-      },
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 600),
-        curve: Curves.easeInOut,
-        height: 80, // Slightly taller for floating effect
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-        margin: const EdgeInsets.only(
-          bottom: 16,
-          left: 16,
-          right: 16,
-        ), // Floating margin
-        decoration: BoxDecoration(
-          color: Colors.transparent, // Explicit transparency for glass effect
-          borderRadius: BorderRadius.circular(16),
-        ),
-        child: ClipRRect(
-          borderRadius: BorderRadius.circular(16),
-          child: BackdropFilter(
-            filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              decoration: BoxDecoration(
-                color: (_dominantColor ?? const Color(0xFF1C1C1E)).withOpacity(
-                  0.60,
-                ),
-                borderRadius: BorderRadius.circular(16),
-                // No shadow for glass feel
-              ),
-              child: Row(
-                children: [
-                  // Artwork
-                  AnimatedSwitcher(
-                    duration: const Duration(milliseconds: 400),
-                    transitionBuilder: (child, animation) {
-                      return FadeTransition(opacity: animation, child: child);
-                    },
-                    child: Container(
-                      key: ValueKey(_currentTitle),
-                      width: 48,
-                      height: 48,
-                      decoration: BoxDecoration(
-                        borderRadius: BorderRadius.circular(8),
-                        color: Colors.grey[800],
-                        image: _currentArt != null
-                            ? DecorationImage(
-                                image: MemoryImage(_currentArt!),
-                                fit: BoxFit.cover,
-                              )
-                            : null,
-                      ),
-                      child: _currentArt == null
-                          ? const Icon(Icons.music_note, color: Colors.white54)
-                          : null,
-                    ),
-                  ),
-                  const SizedBox(width: 16),
-                  // Title & Artist
-                  Expanded(
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          _currentTitle.isEmpty ? "No song" : _currentTitle,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
-                            fontWeight: FontWeight.bold,
-                            fontSize: 14,
-                            color: Colors.white,
-                          ),
-                        ),
-                        Text(
-                          _currentArtist,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
-                            color: Colors.white70,
-                            fontSize: 12,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  // Controls
-                  ValueListenableBuilder<bool>(
-                    valueListenable: _musicPlayer.isPlaying,
-                    builder: (context, isPlaying, _) {
-                      return IconButton(
-                        iconSize: 32,
-                        icon: Icon(
-                          isPlaying
-                              ? Icons.pause_rounded
-                              : Icons.play_arrow_rounded,
-                          color: Colors.white,
-                        ),
-                        // Remove debug prints or keep them minimal
-                        onPressed: _togglePlayPause,
-                      );
-                    },
-                  ),
-                  IconButton(
-                    iconSize: 32,
-                    icon: const Icon(
-                      Icons.skip_next_rounded,
-                      color: Colors.white,
-                    ),
-                    onPressed: _playNext,
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
   // Keyboard handling disabled locally as it's handled globally
   // void _handleKeyboardEvent(RawKeyEvent event) { ... }
+
+  Widget _buildPlaylistsTab() {
+    final playlists = PlaylistService().playlists;
+    // Ensure favorites playlist is built correctly or use placeholder
+    final favoritesPlaylist = _buildFavoritesPlaylist();
+    // 1 for Favorites + N playlists + 1 for Create Button
+    final itemCount = playlists.length + 2;
+
+    return GridView.builder(
+      padding: const EdgeInsets.fromLTRB(16, 0, 16, 100),
+      gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
+        maxCrossAxisExtent: 200, // Reduced from 1:1 fixed crossAxisCount: 2
+        childAspectRatio: 1.0,
+        crossAxisSpacing: 16,
+        mainAxisSpacing: 16,
+      ),
+      itemCount: itemCount,
+      itemBuilder: (context, index) {
+        // 1. Favorites (First)
+        if (index == 0) {
+          return _buildPlaylistCard(
+            favoritesPlaylist,
+            isFavorite: true,
+            width: null, // Flexible width for Grid
+            height: null,
+          );
+        }
+
+        // 3. Create Playlist (Last)
+        if (index == itemCount - 1) {
+          return _buildCreatePlaylistCard();
+        }
+
+        // 2. Existing Playlists
+        // Index 0 is Favorites, so playlist index starts at 0 when index is 1
+        return _buildPlaylistCard(
+          playlists[index - 1],
+          width: null, // Flexible width for Grid
+          height: null,
+        );
+      },
+    );
+  }
+
+  Playlist _buildFavoritesPlaylist() {
+    final likedIds = PlaylistService().likedSongIds;
+    final favoriteSongs = <Song>[];
+
+    if (_files.isNotEmpty) {
+      for (var entity in _files) {
+        if (entity is File) {
+          // Usar el mismo sistema de ID que Song.fromFile
+          final songId = entity.path.hashCode.toString();
+          if (likedIds.contains(songId)) {
+            favoriteSongs.add(
+              Song(
+                id: songId,
+                title: p.basename(entity.path),
+                artist: 'Unknown',
+                filePath: entity.path,
+              ),
+            );
+          }
+        }
+      }
+    }
+
+    return Playlist(
+      id: 'favorites',
+      name: widget.getText('favorites', fallback: 'Favorites'),
+      songs: favoriteSongs,
+      isPinned: true,
+      createdAt: DateTime.now(),
+      lastOpened: DateTime.now(),
+    );
+  }
+
+  Widget _buildCreatePlaylistCard() {
+    return GestureDetector(
+      onTap: () => _showCreatePlaylistDialog(),
+      child: Container(
+        decoration: BoxDecoration(
+          color: Colors.transparent,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+            color: Colors.white.withOpacity(0.3),
+            width: 1,
+            style: BorderStyle.solid,
+          ),
+        ),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: Colors.purpleAccent.withOpacity(0.2),
+              ),
+              child: const Icon(
+                Icons.add,
+                size: 32,
+                color: Colors.purpleAccent,
+              ),
+            ),
+            const SizedBox(height: 12),
+            Text(
+              widget.getText('create_playlist', fallback: 'Create Playlist'),
+              style: const TextStyle(
+                color: Colors.purpleAccent,
+                fontWeight: FontWeight.bold,
+                fontSize: 14,
+              ),
+              textAlign: TextAlign.center,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// Animated audio bars widget for playing indicator
+class _AnimatedAudioBars extends StatefulWidget {
+  final double size;
+  final bool playing;
+
+  const _AnimatedAudioBars({required this.size, required this.playing});
+
+  @override
+  State<_AnimatedAudioBars> createState() => _AnimatedAudioBarsState();
+}
+
+class _AnimatedAudioBarsState extends State<_AnimatedAudioBars>
+    with SingleTickerProviderStateMixin {
+  late AnimationController _controller;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      duration: const Duration(milliseconds: 800),
+      vsync: this,
+    );
+    if (widget.playing) {
+      _controller.repeat(reverse: true);
+    }
+  }
+
+  @override
+  void didUpdateWidget(_AnimatedAudioBars oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.playing != oldWidget.playing) {
+      if (widget.playing) {
+        _controller.repeat(reverse: true);
+      } else {
+        _controller.stop();
+      }
+    }
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      width: widget.size,
+      height: widget.size,
+      child: AnimatedBuilder(
+        animation: _controller,
+        builder: (context, child) {
+          return Row(
+            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              _buildBar(0.3 + (_controller.value * 0.7)),
+              _buildBar(0.5 + (_controller.value * 0.5)),
+              _buildBar(0.4 + (_controller.value * 0.6)),
+            ],
+          );
+        },
+      ),
+    );
+  }
+
+  Widget _buildBar(double heightFactor) {
+    return Container(
+      width: widget.size / 5,
+      height: widget.size * heightFactor,
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(widget.size / 10),
+      ),
+    );
+  }
 }

@@ -332,4 +332,28 @@ class GlobalKeyboardService {
     }
     playFile(nextIndex);
   }
+
+  void requestPlayPrevious() {
+    if (_playPreviousCallback != null) {
+      _playPreviousCallback!.call();
+    } else {
+      _handlePreviousTrack();
+    }
+  }
+
+  void requestTogglePlayPause() {
+    if (_togglePlayPauseCallback != null) {
+      _togglePlayPauseCallback!.call();
+    } else {
+      _handlePlayPause();
+    }
+  }
+
+  void requestPlayNext() {
+    if (_playNextCallback != null) {
+      _playNextCallback!.call();
+    } else {
+      _handleNextTrack();
+    }
+  }
 }
