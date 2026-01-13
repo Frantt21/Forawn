@@ -373,7 +373,7 @@
     "discord_connected":  "Conectado",
     "discord_disconnected":  "Desconectado",
     "discord_reconnect":  "Intentar reconectar",
-    "music_player_title":  "Reproductor de música",
+    "music_player_title":  "Reproductor",
     "no_song":  "No hay canción seleccionada",
     "no_lyrics":  "No se encontraron letras",
     "synchronize": "Sincronizar",
@@ -420,5 +420,8 @@
     "discord_off": "Desconectado",
     "confirm_clear_lyrics": "Borrar Todas las Letras",
     "confirm_clear_lyrics_desc": "¿Estás seguro de que quieres eliminar todas las letras descargadas?",
-    "lyrics_cleared": "Letras eliminadas"
+    "lyrics_cleared": "Letras eliminadas",
+    "added": "Añadido",
+    "hide_lyrics": "Ocultar letras",
+    "show_lyrics": "Mostrar letras"
 }

@@ -420,5 +420,8 @@
     "discord_off": "Disconnected",
     "confirm_clear_lyrics": "Clear All Lyrics",
     "confirm_clear_lyrics_desc": "Are you sure you want to delete all downloaded lyrics?",
-    "lyrics_cleared": "Lyrics cleared"
+    "lyrics_cleared": "Lyrics cleared",
+    "added": "Added",
+    "hide_lyrics": "Hide lyrics",
+    "show_lyrics": "Show lyrics"
 }
