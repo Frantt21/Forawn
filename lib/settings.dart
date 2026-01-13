@@ -695,7 +695,7 @@ class _SettingsSection extends StatelessWidget {
       builder: (context, dominantColor, _) {
         // Use GlobalThemeService color if available, otherwise use theme's card color
         // Use hardcoded color to match input fields as requested
-        const containerColor = Color(0xFF1C1C1E);
+        const containerColor = Color.fromARGB(255, 45, 45, 45);
 
         return Column(
           crossAxisAlignment: CrossAxisAlignment.start,
