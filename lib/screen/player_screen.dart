@@ -571,9 +571,11 @@ class _PlayerScreenState extends State<PlayerScreen> with WindowListener {
                                                           IconButton(
                                                             icon: const Icon(
                                                               Icons.lyrics,
-                                                              color:
-                                                                  Colors.white,
                                                             ),
+                                                            color:
+                                                                _adjustColorForControls(
+                                                                  _dominantColor,
+                                                                ),
                                                             onPressed: () =>
                                                                 _musicPlayer
                                                                         .showLyrics
@@ -584,6 +586,99 @@ class _PlayerScreenState extends State<PlayerScreen> with WindowListener {
                                                               fallback:
                                                                   'Hide Lyrics',
                                                             ),
+                                                          ),
+                                                          PopupMenuButton<
+                                                            String
+                                                          >(
+                                                            icon: Icon(
+                                                              Icons.more_vert,
+                                                              color: _adjustColorForControls(
+                                                                _dominantColor,
+                                                              ),
+                                                            ),
+                                                            onSelected: (value) {
+                                                              // Implement actions later
+                                                            },
+                                                            itemBuilder:
+                                                                (
+                                                                  BuildContext
+                                                                  context,
+                                                                ) =>
+                                                                    <
+                                                                      PopupMenuEntry<
+                                                                        String
+                                                                      >
+                                                                    >[
+                                                                      PopupMenuItem<
+                                                                        String
+                                                                      >(
+                                                                        value:
+                                                                            'synchronize',
+                                                                        child: Row(
+                                                                          children: [
+                                                                            const Icon(
+                                                                              Icons.timer,
+                                                                              color: Colors.white70,
+                                                                            ),
+                                                                            const SizedBox(
+                                                                              width: 8,
+                                                                            ),
+                                                                            Text(
+                                                                              widget.getText(
+                                                                                'synchronize',
+                                                                                fallback: 'Sincronizar',
+                                                                              ),
+                                                                            ),
+                                                                          ],
+                                                                        ),
+                                                                      ),
+                                                                      PopupMenuItem<
+                                                                        String
+                                                                      >(
+                                                                        value:
+                                                                            'search_lyrics',
+                                                                        child: Row(
+                                                                          children: [
+                                                                            const Icon(
+                                                                              Icons.search,
+                                                                              color: Colors.white70,
+                                                                            ),
+                                                                            const SizedBox(
+                                                                              width: 8,
+                                                                            ),
+                                                                            Text(
+                                                                              widget.getText(
+                                                                                'search_lyrics',
+                                                                                fallback: 'Buscar lyrics',
+                                                                              ),
+                                                                            ),
+                                                                          ],
+                                                                        ),
+                                                                      ),
+                                                                      PopupMenuItem<
+                                                                        String
+                                                                      >(
+                                                                        value:
+                                                                            'remove_lyrics',
+                                                                        child: Row(
+                                                                          children: [
+                                                                            const Icon(
+                                                                              Icons.delete,
+                                                                              color: Colors.white70,
+                                                                            ),
+                                                                            const SizedBox(
+                                                                              width: 8,
+                                                                            ),
+                                                                            Text(
+                                                                              widget.getText(
+                                                                                'remove_lyrics',
+                                                                                fallback: 'Eliminar lyrics',
+                                                                              ),
+                                                                            ),
+                                                                          ],
+                                                                        ),
+                                                                      ),
+                                                                    ],
                                                           ),
                                                         ],
                                                       ),
@@ -1013,7 +1108,125 @@ class _PlayerScreenState extends State<PlayerScreen> with WindowListener {
                                                       onPressed: _playNext,
                                                     ),
 
-                                                    const SizedBox(width: 24),
+                                                    const SizedBox(width: 12),
+
+                                                    // Lyrics Toggle
+                                                    ValueListenableBuilder<
+                                                      bool
+                                                    >(
+                                                      valueListenable:
+                                                          _musicPlayer
+                                                              .showLyrics,
+                                                      builder: (context, showLyrics, _) {
+                                                        return IconButton(
+                                                          icon: Icon(
+                                                            showLyrics
+                                                                ? Icons.lyrics
+                                                                : Icons
+                                                                      .lyrics_outlined,
+                                                            color:
+                                                                _adjustColorForControls(
+                                                                  _dominantColor,
+                                                                ),
+                                                          ),
+                                                          onPressed: () =>
+                                                              _musicPlayer
+                                                                      .showLyrics
+                                                                      .value =
+                                                                  !showLyrics,
+                                                        );
+                                                      },
+                                                    ),
+
+                                                    const SizedBox(width: 8),
+
+                                                    // Gear / Settings Menu
+                                                    PopupMenuButton<String>(
+                                                      icon: Icon(
+                                                        Icons.settings_outlined,
+                                                        color:
+                                                            _adjustColorForControls(
+                                                              _dominantColor,
+                                                            ),
+                                                      ),
+                                                      onSelected: (value) {
+                                                        // TODO: Implement actions
+                                                      },
+                                                      itemBuilder: (BuildContext context) => <PopupMenuEntry<String>>[
+                                                        PopupMenuItem<String>(
+                                                          value:
+                                                              'add_favorites',
+                                                          child: Row(
+                                                            children: [
+                                                              const Icon(
+                                                                Icons
+                                                                    .favorite_border,
+                                                                color: Colors
+                                                                    .white70,
+                                                              ),
+                                                              const SizedBox(
+                                                                width: 8,
+                                                              ),
+                                                              Text(
+                                                                widget.getText(
+                                                                  'add_favorites',
+                                                                  fallback:
+                                                                      'Añadir a favoritos',
+                                                                ),
+                                                              ),
+                                                            ],
+                                                          ),
+                                                        ),
+                                                        PopupMenuItem<String>(
+                                                          value:
+                                                              'edit_metadata',
+                                                          child: Row(
+                                                            children: [
+                                                              const Icon(
+                                                                Icons.edit,
+                                                                color: Colors
+                                                                    .white70,
+                                                              ),
+                                                              const SizedBox(
+                                                                width: 8,
+                                                              ),
+                                                              Text(
+                                                                widget.getText(
+                                                                  'edit_metadata',
+                                                                  fallback:
+                                                                      'Editar metadatos',
+                                                                ),
+                                                              ),
+                                                            ],
+                                                          ),
+                                                        ),
+                                                        PopupMenuItem<String>(
+                                                          value: 'add_playlist',
+                                                          child: Row(
+                                                            children: [
+                                                              const Icon(
+                                                                Icons
+                                                                    .playlist_add,
+                                                                color: Colors
+                                                                    .white70,
+                                                              ),
+                                                              const SizedBox(
+                                                                width: 8,
+                                                              ),
+                                                              Text(
+                                                                widget.getText(
+                                                                  'add_playlist',
+                                                                  fallback:
+                                                                      'Añadir a playlist',
+                                                                ),
+                                                              ),
+                                                            ],
+                                                          ),
+                                                        ),
+                                                      ],
+                                                    ),
+
+                                                    const SizedBox(width: 16),
 
                                                     // Volume
                                                     Icon(
@@ -1066,38 +1279,6 @@ class _PlayerScreenState extends State<PlayerScreen> with WindowListener {
                                                           },
                                                         ),
                                                       ),
-                                                    ),
-
-                                                    const SizedBox(width: 16),
-
-                                                    // Lyrics Toggle
-                                                    ValueListenableBuilder<
-                                                      bool
-                                                    >(
-                                                      valueListenable:
-                                                          _musicPlayer
-                                                              .showLyrics,
-                                                      builder: (context, showLyrics, _) {
-                                                        return IconButton(
-                                                          icon: Icon(
-                                                            showLyrics
-                                                                ? Icons.lyrics
-                                                                : Icons
-                                                                      .lyrics_outlined,
-                                                            color: showLyrics
-                                                                ? _adjustColorForControls(
-                                                                    _dominantColor,
-                                                                  )
-                                                                : Colors
-                                                                      .white54,
-                                                          ),
-                                                          onPressed: () =>
-                                                              _musicPlayer
-                                                                      .showLyrics
-                                                                      .value =
-                                                                  !showLyrics,
-                                                        );
-                                                      },
                                                     ),
                                                   ],
                                                 ),

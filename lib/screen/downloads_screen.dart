@@ -404,7 +404,7 @@ class _DownloadsScreenState extends State<DownloadsScreen>
       final get = widget.getText;
       final tasks = _dm.tasksReversed;
       return Scaffold(
-        backgroundColor: Colors.transparent,
+        backgroundColor: Theme.of(context).scaffoldBackgroundColor,
         body: Column(
           children: [
             _buildTitleBar(),
@@ -455,7 +455,7 @@ class _DownloadsScreenState extends State<DownloadsScreen>
     } catch (e, st) {
       debugPrint('[DownloadsScreen] Build error: $e\n$st');
       return Scaffold(
-        backgroundColor: Colors.transparent,
+        backgroundColor: Theme.of(context).scaffoldBackgroundColor,
         body: Center(
           child: Column(
             mainAxisSize: MainAxisSize.min,

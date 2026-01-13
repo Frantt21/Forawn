@@ -11,14 +11,17 @@ import '../models/song_model.dart';
 import '../services/playlist_service.dart';
 import '../services/global_music_player.dart';
 import '../services/local_music_database.dart';
+import '../widgets/mini_player.dart';
 
 class PlaylistDetailScreen extends StatefulWidget {
   final Playlist playlist;
   final bool isReadOnly;
+  final String Function(String key, {String? fallback}) getText;
 
   const PlaylistDetailScreen({
     super.key,
     required this.playlist,
+    required this.getText,
     this.isReadOnly = false,
   });
 
@@ -199,7 +202,10 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen>
                 });
               },
               decoration: InputDecoration(
-                hintText: 'Search songs...',
+                hintText: widget.getText(
+                  'search_songs',
+                  fallback: 'Search songs...',
+                ),
                 hintStyle: TextStyle(
                   color: textColor.withOpacity(0.5),
                   fontSize: 16,
@@ -301,23 +307,30 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen>
                 },
                 itemBuilder: (BuildContext context) {
                   return [
-                    const PopupMenuItem(
+                    PopupMenuItem(
                       value: 'edit',
                       child: Row(
                         children: [
                           Icon(Icons.edit, color: Colors.black54),
                           SizedBox(width: 8),
-                          Text('Edit Playlist'),
+                          Text(
+                            widget.getText(
+                              'edit_playlist',
+                              fallback: 'Edit Playlist',
+                            ),
+                          ),
                         ],
                       ),
                     ),
-                    const PopupMenuItem(
+                    PopupMenuItem(
                       value: 'add',
                       child: Row(
                         children: [
                           Icon(Icons.add, color: Colors.black54),
                           SizedBox(width: 8),
-                          Text('Add Songs'),
+                          Text(
+                            widget.getText('add_songs', fallback: 'Add Songs'),
+                          ),
                         ],
                       ),
                     ),
@@ -406,7 +419,7 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen>
                           ),
                         const SizedBox(height: 8),
                         Text(
-                          "${playlist.songs.length} Songs",
+                          "${playlist.songs.length} ${widget.getText('songs', fallback: 'Songs')}",
                           style: const TextStyle(color: Colors.white70),
                         ),
                         const SizedBox(height: 32),
@@ -416,7 +429,7 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen>
                           children: [
                             _buildActionButton(
                               icon: Icons.play_arrow,
-                              label: "Play",
+                              label: widget.getText('play', fallback: 'Play'),
                               isPrimary: true,
                               onPressed: playlist.songs.isEmpty
                                   ? null
@@ -433,7 +446,10 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen>
                             const SizedBox(width: 12),
                             _buildActionButton(
                               icon: Icons.shuffle,
-                              label: "Shuffle",
+                              label: widget.getText(
+                                'shuffle',
+                                fallback: 'Shuffle',
+                              ),
                               isPrimary: false,
                               onPressed: playlist.songs.isEmpty
                                   ? null
@@ -505,18 +521,48 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen>
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
                           ),
-                          trailing: widget.isReadOnly
+                          trailing:
+                              (widget.isReadOnly && playlist.id != 'favorites')
                               ? null
-                              : IconButton(
+                              : PopupMenuButton<String>(
                                   icon: const Icon(
-                                    Icons.remove_circle_outline,
-                                    color: Colors.redAccent,
+                                    Icons.more_vert,
+                                    color: Colors.white70,
                                   ),
-                                  onPressed: () =>
-                                      PlaylistService().removeSongFromPlaylist(
-                                        playlist.id,
-                                        song.id,
-                                      ),
+                                  onSelected: (value) async {
+                                    if (value == 'remove') {
+                                      await PlaylistService()
+                                          .removeSongFromPlaylist(
+                                            playlist.id,
+                                            song.id,
+                                          );
+                                    }
+                                  },
+                                  itemBuilder: (BuildContext context) =>
+                                      <PopupMenuEntry<String>>[
+                                        PopupMenuItem<String>(
+                                          value: 'remove',
+                                          child: Row(
+                                            children: [
+                                              Icon(
+                                                Icons.delete_outline,
+                                                color: Colors.redAccent,
+                                              ),
+                                              SizedBox(width: 12),
+                                              Text(
+                                                widget.getText(
+                                                  'remove_from_playlist',
+                                                  fallback:
+                                                      'Remove from playlist',
+                                                ),
+                                                style: TextStyle(
+                                                  color: Colors.redAccent,
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                        ),
+                                      ],
                                 ),
                           onTap: () {
                             final files = songs
@@ -535,6 +581,14 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen>
               ),
               const SliverToBoxAdapter(child: SizedBox(height: 100)),
             ],
+          ),
+
+          // Mini Player
+          Positioned(
+            bottom: 16,
+            left: 16,
+            right: 16,
+            child: SafeArea(child: MiniPlayer(getText: widget.getText)),
           ),
         ],
       ),
@@ -578,9 +632,12 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen>
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           // Título
-                          const Text(
-                            'Edit Playlist',
-                            style: TextStyle(
+                          Text(
+                            widget.getText(
+                              'edit_playlist',
+                              fallback: 'Edit Playlist',
+                            ),
+                            style: const TextStyle(
                               color: Colors.white,
                               fontSize: 24,
                               fontWeight: FontWeight.bold,
@@ -647,7 +704,7 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen>
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
                                   Text(
-                                    'Name',
+                                    widget.getText('name', fallback: 'Name'),
                                     style: TextStyle(
                                       color: Colors.white.withOpacity(0.5),
                                       fontSize: 12,
@@ -663,7 +720,10 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen>
                                     ),
                                     cursorColor: Colors.purpleAccent,
                                     decoration: InputDecoration(
-                                      hintText: 'Playlist Name',
+                                      hintText: widget.getText(
+                                        'playlist_name_hint',
+                                        fallback: 'Playlist Name',
+                                      ),
                                       hintStyle: TextStyle(
                                         color: Colors.white.withOpacity(0.3),
                                       ),
@@ -688,7 +748,10 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen>
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
                                   Text(
-                                    'Description',
+                                    widget.getText(
+                                      'description',
+                                      fallback: 'Description',
+                                    ),
                                     style: TextStyle(
                                       color: Colors.white.withOpacity(0.5),
                                       fontSize: 12,
@@ -705,7 +768,10 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen>
                                     ),
                                     cursorColor: Colors.purpleAccent,
                                     decoration: InputDecoration(
-                                      hintText: 'Add a description...',
+                                      hintText: widget.getText(
+                                        'playlist_description_hint',
+                                        fallback: 'Add a description...',
+                                      ),
                                       hintStyle: TextStyle(
                                         color: Colors.white.withOpacity(0.3),
                                       ),
@@ -724,9 +790,9 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen>
                             children: [
                               TextButton(
                                 onPressed: () => Navigator.pop(ctx),
-                                child: const Text(
-                                  'Cancel',
-                                  style: TextStyle(
+                                child: Text(
+                                  widget.getText('cancel', fallback: 'Cancel'),
+                                  style: const TextStyle(
                                     color: Colors.white70,
                                     fontSize: 16,
                                   ),
@@ -756,9 +822,9 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen>
                                     Navigator.pop(ctx);
                                   }
                                 },
-                                child: const Text(
-                                  'Save',
-                                  style: TextStyle(
+                                child: Text(
+                                  widget.getText('save', fallback: 'Save'),
+                                  style: const TextStyle(
                                     fontSize: 16,
                                     fontWeight: FontWeight.bold,
                                   ),

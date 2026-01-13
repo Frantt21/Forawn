@@ -1567,6 +1567,7 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen>
           MaterialPageRoute(
             builder: (context) => PlaylistDetailScreen(
               playlist: playlist,
+              getText: widget.getText,
               isReadOnly: isFavorite,
             ),
           ),
@@ -1834,7 +1835,7 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen>
                           const SizedBox(width: 8),
                           Text(
                             widget.getText(
-                              isLiked ? 'remove_favorite' : 'add_favorite',
+                              isLiked ? 'remove_favorites' : 'add_favorites',
                               fallback: isLiked
                                   ? "Remove from Favorites"
                                   : "Add to Favorites",
@@ -1906,7 +1907,7 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen>
             children: [
               // Title
               Text(
-                widget.getText('add_to_playlist', fallback: "Add to Playlist"),
+                widget.getText('add_playlist', fallback: "Add to Playlist"),
                 style: const TextStyle(
                   color: Colors.white,
                   fontSize: 20,

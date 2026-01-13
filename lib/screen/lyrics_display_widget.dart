@@ -105,8 +105,6 @@ class _LyricsDisplayState extends State<LyricsDisplay>
     if (renderObject == null) return;
 
     final viewport = RenderAbstractViewport.of(renderObject);
-    // ignore: unnecessary_null_comparison
-    if (viewport == null) return;
 
     // Obtenemos el offset necesario para centrar el item
     final targetOffset = viewport.getOffsetToReveal(renderObject, 0.5).offset;
