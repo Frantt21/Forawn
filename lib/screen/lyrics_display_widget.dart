@@ -8,12 +8,14 @@ class LyricsDisplay extends StatefulWidget {
   final SyncedLyrics lyrics;
   final ValueNotifier<int?> currentIndexNotifier;
   final TextGetter getText;
+  final TextAlign textAlign;
 
   const LyricsDisplay({
     super.key,
     required this.lyrics,
     required this.currentIndexNotifier,
     required this.getText,
+    this.textAlign = TextAlign.center,
   });
 
   @override
@@ -143,10 +145,10 @@ class _LyricsDisplayState extends State<LyricsDisplay> {
                             ]
                           : [],
                     ),
-                    textAlign: TextAlign.center,
+                    textAlign: widget.textAlign,
                     child: Text(
                       widget.lyrics.lines[index].text,
-                      textAlign: TextAlign.center,
+                      textAlign: widget.textAlign,
                     ),
                   ),
                 ),
