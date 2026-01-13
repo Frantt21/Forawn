@@ -576,11 +576,14 @@ class _MusicDownloaderScreenState extends State<MusicDownloaderScreen>
       if (mounted && context.mounted) {
         Navigator.of(context)
             .push(
-              MaterialPageRoute(
-                builder: (_) => DownloadsScreen(
-                  getText: widget.getText,
-                  currentLang: widget.currentLang,
-                ),
+              PageRouteBuilder(
+                pageBuilder: (context, animation, secondaryAnimation) =>
+                    DownloadsScreen(
+                      getText: widget.getText,
+                      currentLang: widget.currentLang,
+                    ),
+                transitionDuration: Duration.zero,
+                reverseTransitionDuration: Duration.zero,
               ),
             )
             .catchError((e, st) {
