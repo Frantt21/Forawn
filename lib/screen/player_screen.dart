@@ -217,17 +217,22 @@ class _PlayerScreenState extends State<PlayerScreen> with WindowListener {
     return availableIndices[Random().nextInt(availableIndices.length)];
   }
 
-  void _playFile(int index) {
+  void _playFile(int index, {int? transitionDirection}) {
     if (index < 0 || index >= _files.length) return;
     _playedIndices.add(index);
     final file = _files[index] as File;
 
     debugPrint('[PlayerScreen] _playFile: index=$index, path=${file.path}');
 
-    // 1. Update transition direction BEFORE changing index
-    final previousIdx = _musicPlayer.currentIndex.value;
-    if (previousIdx != null) {
-      _musicPlayer.transitionDirection.value = index > previousIdx ? 1 : -1;
+    // 1. Set explicit direction if provided, otherwise infer or default to 1 (next)
+    if (transitionDirection != null) {
+      _musicPlayer.transitionDirection.value = transitionDirection;
+    } else {
+      final previousIdx = _musicPlayer.currentIndex.value;
+      if (previousIdx != null) {
+        // Fallback: simple comparison, though less reliable with shuffle
+        _musicPlayer.transitionDirection.value = index > previousIdx ? 1 : -1;
+      }
     }
 
     // 2. Update global state IMMEDIATELY (synchronous, no await)
@@ -276,7 +281,7 @@ class _PlayerScreenState extends State<PlayerScreen> with WindowListener {
     if (prevFile != null) {
       final index = _files.indexWhere((f) => f.path == prevFile.path);
       if (index != -1) {
-        _playFile(index);
+        _playFile(index, transitionDirection: -1);
         return;
       }
     }
@@ -290,7 +295,7 @@ class _PlayerScreenState extends State<PlayerScreen> with WindowListener {
     newIndex = currentIndex - 1;
     if (newIndex < 0) newIndex = _files.length - 1;
 
-    _playFile(newIndex);
+    _playFile(newIndex, transitionDirection: -1);
   }
 
   void _playNext() {
@@ -305,7 +310,7 @@ class _PlayerScreenState extends State<PlayerScreen> with WindowListener {
       newIndex = currentIndex + 1;
       if (newIndex >= _files.length) newIndex = 0;
     }
-    _playFile(newIndex);
+    _playFile(newIndex, transitionDirection: 1);
   }
 
   void _togglePlayPause() async {
@@ -418,118 +423,145 @@ class _PlayerScreenState extends State<PlayerScreen> with WindowListener {
                                                           children: [
                                                             AspectRatio(
                                                               aspectRatio: 1,
-                                                              child: ValueListenableBuilder<int>(
-                                                                valueListenable:
-                                                                    _musicPlayer
-                                                                        .transitionDirection,
-                                                                builder:
-                                                                    (
-                                                                      context,
-                                                                      direction,
-                                                                      _,
-                                                                    ) {
-                                                                      return AnimatedSwitcher(
-                                                                        duration: const Duration(
-                                                                          milliseconds:
-                                                                              350,
-                                                                        ),
-                                                                        switchInCurve:
-                                                                            Curves.easeOutQuad,
-                                                                        switchOutCurve:
-                                                                            Curves.easeInQuad,
-                                                                        transitionBuilder:
-                                                                            (
-                                                                              child,
-                                                                              animation,
-                                                                            ) {
-                                                                              final inAnimation =
-                                                                                  Tween<
-                                                                                        Offset
-                                                                                      >(
-                                                                                        begin: Offset(
-                                                                                          direction.toDouble(),
-                                                                                          0.0,
-                                                                                        ),
-                                                                                        end: Offset.zero,
-                                                                                      )
-                                                                                      .animate(
-                                                                                        CurvedAnimation(
-                                                                                          parent: animation,
-                                                                                          curve: Curves.easeOutQuad,
-                                                                                        ),
-                                                                                      );
-
-                                                                              final outAnimation =
-                                                                                  Tween<
-                                                                                        Offset
-                                                                                      >(
-                                                                                        begin: Offset(
-                                                                                          -direction.toDouble(),
-                                                                                          0.0,
-                                                                                        ),
-                                                                                        end: Offset.zero,
-                                                                                      )
-                                                                                      .animate(
-                                                                                        CurvedAnimation(
-                                                                                          parent: animation,
-                                                                                          curve: Curves.easeInQuad,
-                                                                                        ),
-                                                                                      );
-
-                                                                              if (child.key ==
-                                                                                  ValueKey(
-                                                                                    _currentTitle,
-                                                                                  )) {
-                                                                                return SlideTransition(
-                                                                                  position: inAnimation,
-                                                                                  child: child,
-                                                                                );
-                                                                              } else {
-                                                                                return SlideTransition(
-                                                                                  position: outAnimation,
-                                                                                  child: child,
-                                                                                );
-                                                                              }
-                                                                            },
-                                                                        child: Container(
-                                                                          key: ValueKey(
-                                                                            _currentTitle,
+                                                              child: Container(
+                                                                decoration: BoxDecoration(
+                                                                  borderRadius:
+                                                                      BorderRadius.circular(
+                                                                        20,
+                                                                      ),
+                                                                  boxShadow: [
+                                                                    const BoxShadow(
+                                                                      color: Colors
+                                                                          .black45,
+                                                                      blurRadius:
+                                                                          30,
+                                                                      offset:
+                                                                          Offset(
+                                                                            0,
+                                                                            15,
                                                                           ),
-                                                                          decoration: BoxDecoration(
-                                                                            borderRadius: BorderRadius.circular(
-                                                                              20,
-                                                                            ),
-                                                                            boxShadow: [
-                                                                              BoxShadow(
-                                                                                color: Colors.black45,
-                                                                                blurRadius: 20,
-                                                                              ),
-                                                                            ],
-                                                                            image:
-                                                                                _currentArt !=
-                                                                                    null
-                                                                                ? DecorationImage(
-                                                                                    image: MemoryImage(
-                                                                                      _currentArt!,
+                                                                    ),
+                                                                  ],
+                                                                  color: Colors
+                                                                      .white12,
+                                                                ),
+                                                                child: ClipRRect(
+                                                                  borderRadius:
+                                                                      BorderRadius.circular(
+                                                                        20,
+                                                                      ),
+                                                                  child: AnimatedSwitcher(
+                                                                    duration: const Duration(
+                                                                      milliseconds:
+                                                                          350,
+                                                                    ),
+                                                                    layoutBuilder:
+                                                                        (
+                                                                          currentChild,
+                                                                          previousChildren,
+                                                                        ) {
+                                                                          return Stack(
+                                                                            alignment:
+                                                                                Alignment.center,
+                                                                            children:
+                                                                                <
+                                                                                  Widget
+                                                                                >[
+                                                                                  ...previousChildren,
+                                                                                  if (currentChild !=
+                                                                                      null)
+                                                                                    currentChild,
+                                                                                ],
+                                                                          );
+                                                                        },
+                                                                    transitionBuilder:
+                                                                        (
+                                                                          child,
+                                                                          animation,
+                                                                        ) {
+                                                                          final inAnimation =
+                                                                              Tween<
+                                                                                    Offset
+                                                                                  >(
+                                                                                    begin: const Offset(
+                                                                                      1.0,
+                                                                                      0.0,
                                                                                     ),
-                                                                                    fit: BoxFit.cover,
+                                                                                    end: Offset.zero,
                                                                                   )
-                                                                                : null,
-                                                                            color:
-                                                                                Colors.white12,
-                                                                          ),
-                                                                          child:
-                                                                              _currentArt ==
-                                                                                  null
-                                                                              ? const Icon(
-                                                                                  Icons.music_note,
-                                                                                  size: 80,
-                                                                                  color: Colors.white12,
-                                                                                )
-                                                                              : null,
-                                                                        ),
-                                                                      );
-                                                                    },
+                                                                                  .animate(
+                                                                                    CurvedAnimation(
+                                                                                      parent: animation,
+                                                                                      curve: Curves.easeOutQuad,
+                                                                                    ),
+                                                                                  );
+
+                                                                          final outAnimation =
+                                                                              Tween<
+                                                                                    Offset
+                                                                                  >(
+                                                                                    begin: const Offset(
+                                                                                      -1.0,
+                                                                                      0.0,
+                                                                                    ),
+                                                                                    end: Offset.zero,
+                                                                                  )
+                                                                                  .animate(
+                                                                                    CurvedAnimation(
+                                                                                      parent: animation,
+                                                                                      curve: Curves.easeInQuad,
+                                                                                    ),
+                                                                                  );
+
+                                                                          if (child.key ==
+                                                                              ValueKey(
+                                                                                _musicPlayer.currentFilePath.value,
+                                                                              )) {
+                                                                            return SlideTransition(
+                                                                              position: inAnimation,
+                                                                              child: child,
+                                                                            );
+                                                                          } else {
+                                                                            return SlideTransition(
+                                                                              position: outAnimation,
+                                                                              child: child,
+                                                                            );
+                                                                          }
+                                                                        },
+                                                                    child: Container(
+                                                                      key: ValueKey(
+                                                                        _musicPlayer
+                                                                            .currentFilePath
+                                                                            .value,
+                                                                      ),
+                                                                      width: double
+                                                                          .infinity,
+                                                                      height: double
+                                                                          .infinity,
+                                                                      decoration:
+                                                                          _currentArt !=
+                                                                              null
+                                                                          ? BoxDecoration(
+                                                                              image: DecorationImage(
+                                                                                image: MemoryImage(
+                                                                                  _currentArt!,
+                                                                                ),
+                                                                                fit: BoxFit.cover,
+                                                                              ),
+                                                                            )
+                                                                          : null,
+                                                                      child:
+                                                                          _currentArt ==
+                                                                              null
+                                                                          ? const Icon(
+                                                                              Icons.music_note,
+                                                                              size: 80,
+                                                                              color: Colors.white12,
+                                                                            )
+                                                                          : null,
+                                                                    ),
+                                                                  ),
+                                                                ),
                                                               ),
                                                             ),
                                                             const SizedBox(
@@ -621,126 +653,140 @@ class _PlayerScreenState extends State<PlayerScreen> with WindowListener {
                                                 flex: 12,
                                                 child: AspectRatio(
                                                   aspectRatio: 1,
-                                                  child: ValueListenableBuilder<int>(
-                                                    valueListenable: _musicPlayer
-                                                        .transitionDirection,
-                                                    builder: (context, direction, _) {
-                                                      return AnimatedSwitcher(
-                                                        duration:
-                                                            const Duration(
-                                                              milliseconds: 350,
-                                                            ),
-                                                        switchInCurve:
-                                                            Curves.easeOutQuad,
-                                                        switchOutCurve:
-                                                            Curves.easeInQuad,
-                                                        transitionBuilder: (child, animation) {
-                                                          final inAnimation =
-                                                              Tween<Offset>(
-                                                                begin: Offset(
-                                                                  direction
-                                                                      .toDouble(),
-                                                                  0.0,
-                                                                ),
-                                                                end:
-                                                                    Offset.zero,
-                                                              ).animate(
-                                                                CurvedAnimation(
-                                                                  parent:
-                                                                      animation,
-                                                                  curve: Curves
-                                                                      .easeOutQuad,
-                                                                ),
-                                                              );
-
-                                                          final outAnimation =
-                                                              Tween<Offset>(
-                                                                begin: Offset(
-                                                                  -direction
-                                                                      .toDouble(),
-                                                                  0.0,
-                                                                ),
-                                                                end:
-                                                                    Offset.zero,
-                                                              ).animate(
-                                                                CurvedAnimation(
-                                                                  parent:
-                                                                      animation,
-                                                                  curve: Curves
-                                                                      .easeInQuad,
-                                                                ),
-                                                              );
-
-                                                          if (child.key ==
-                                                              ValueKey(
-                                                                _currentTitle,
-                                                              )) {
-                                                            return SlideTransition(
-                                                              position:
-                                                                  inAnimation,
-                                                              child: child,
-                                                            );
-                                                          } else {
-                                                            return SlideTransition(
-                                                              position:
-                                                                  outAnimation,
-                                                              child: child,
-                                                            );
-                                                          }
-                                                        },
-                                                        child: Container(
-                                                          key: ValueKey(
-                                                            _currentTitle,
-                                                          ),
-                                                          decoration: BoxDecoration(
-                                                            borderRadius:
-                                                                BorderRadius.circular(
-                                                                  20,
-                                                                ),
-                                                            boxShadow: [
-                                                              if (_dominantColor !=
-                                                                  null)
-                                                                BoxShadow(
-                                                                  color: _dominantColor!
-                                                                      .withOpacity(
-                                                                        0.5,
-                                                                      ),
-                                                                  blurRadius:
-                                                                      40,
-                                                                  spreadRadius:
-                                                                      5,
-                                                                ),
-                                                              const BoxShadow(
-                                                                color: Colors
-                                                                    .black45,
-                                                                blurRadius: 20,
+                                                  child: ValueListenableBuilder<bool>(
+                                                    valueListenable: ValueNotifier(
+                                                      true,
+                                                    ), // Dummy wrapper to minimize changes if needed or just remove it.
+                                                    builder: (context, _, __) {
+                                                      return Container(
+                                                        decoration: BoxDecoration(
+                                                          borderRadius:
+                                                              BorderRadius.circular(
+                                                                20,
                                                               ),
-                                                            ],
-                                                            image:
-                                                                _currentArt !=
-                                                                    null
-                                                                ? DecorationImage(
-                                                                    image: MemoryImage(
-                                                                      _currentArt!,
+                                                          boxShadow: [
+                                                            if (_dominantColor !=
+                                                                null)
+                                                              BoxShadow(
+                                                                color: _dominantColor!
+                                                                    .withOpacity(
+                                                                      0.5,
                                                                     ),
-                                                                    fit: BoxFit
-                                                                        .cover,
-                                                                  )
-                                                                : null,
-                                                            color:
-                                                                Colors.white12,
+                                                                blurRadius: 40,
+                                                                spreadRadius: 5,
+                                                              ),
+                                                            const BoxShadow(
+                                                              color: Colors
+                                                                  .black45,
+                                                              blurRadius: 20,
+                                                            ),
+                                                          ],
+                                                          color: Colors.white12,
+                                                        ),
+                                                        child: ClipRRect(
+                                                          borderRadius:
+                                                              BorderRadius.circular(
+                                                                20,
+                                                              ),
+                                                          child: AnimatedSwitcher(
+                                                            duration:
+                                                                const Duration(
+                                                                  milliseconds:
+                                                                      350,
+                                                                ),
+                                                            switchInCurve: Curves
+                                                                .easeOutQuad,
+                                                            switchOutCurve:
+                                                                Curves
+                                                                    .easeInQuad,
+                                                            transitionBuilder: (child, animation) {
+                                                              final inAnimation =
+                                                                  Tween<Offset>(
+                                                                    begin:
+                                                                        const Offset(
+                                                                          1.0,
+                                                                          0.0,
+                                                                        ),
+                                                                    end: Offset
+                                                                        .zero,
+                                                                  ).animate(
+                                                                    CurvedAnimation(
+                                                                      parent:
+                                                                          animation,
+                                                                      curve: Curves
+                                                                          .easeOutQuad,
+                                                                    ),
+                                                                  );
+
+                                                              final outAnimation =
+                                                                  Tween<Offset>(
+                                                                    begin:
+                                                                        const Offset(
+                                                                          -1.0,
+                                                                          0.0,
+                                                                        ),
+                                                                    end: Offset
+                                                                        .zero,
+                                                                  ).animate(
+                                                                    CurvedAnimation(
+                                                                      parent:
+                                                                          animation,
+                                                                      curve: Curves
+                                                                          .easeInQuad,
+                                                                    ),
+                                                                  );
+
+                                                              if (child.key ==
+                                                                  ValueKey(
+                                                                    _currentTitle,
+                                                                  )) {
+                                                                return SlideTransition(
+                                                                  position:
+                                                                      inAnimation,
+                                                                  child: child,
+                                                                );
+                                                              } else {
+                                                                return SlideTransition(
+                                                                  position:
+                                                                      outAnimation,
+                                                                  child: child,
+                                                                );
+                                                              }
+                                                            },
+                                                            child: Container(
+                                                              key: ValueKey(
+                                                                _currentTitle,
+                                                              ),
+                                                              width: double
+                                                                  .infinity,
+                                                              height: double
+                                                                  .infinity,
+                                                              decoration:
+                                                                  _currentArt !=
+                                                                      null
+                                                                  ? BoxDecoration(
+                                                                      image: DecorationImage(
+                                                                        image: MemoryImage(
+                                                                          _currentArt!,
+                                                                        ),
+                                                                        fit: BoxFit
+                                                                            .cover,
+                                                                      ),
+                                                                    )
+                                                                  : null,
+                                                              child:
+                                                                  _currentArt ==
+                                                                      null
+                                                                  ? const Icon(
+                                                                      Icons
+                                                                          .music_note,
+                                                                      size: 120,
+                                                                      color: Colors
+                                                                          .white12,
+                                                                    )
+                                                                  : null,
+                                                            ),
                                                           ),
-                                                          child:
-                                                              _currentArt ==
-                                                                  null
-                                                              ? const Icon(
-                                                                  Icons
-                                                                      .music_note,
-                                                                  size: 120,
-                                                                  color: Colors
-                                                                      .white12,
-                                                                )
-                                                              : null,
                                                         ),
                                                       );
                                                     },
