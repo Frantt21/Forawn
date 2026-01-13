@@ -195,7 +195,10 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen>
   void _onCurrentIndexChanged() {
     // Use path-based lookup to sync with global player
     final path = _musicPlayer.currentFilePath.value;
-    final index = _files.indexWhere((f) => f.path == path);
+    // Use case-insensitive comparison for Windows robustness
+    final index = _files.indexWhere(
+      (f) => f.path.toLowerCase() == path.toLowerCase(),
+    );
 
     if (index != -1) {
       if (_currentIndex != index) {
@@ -208,7 +211,9 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen>
       // as the source that changed currentIndex is responsible for setting metadata
     } else {
       // Song not in this folder.
-      if (_currentIndex != null) {
+      // Only reset if we actually have a valid path but it's not in the list
+      // (To avoid clearing state during initial load glitches)
+      if (path.isNotEmpty && _currentIndex != null && _files.isNotEmpty) {
         setState(() {
           _currentIndex = null;
         });
@@ -433,6 +438,10 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen>
           '[MusicPlayer] Synced with global library: ${_files.length} files',
         );
       }
+
+      // IMPORTANTE: Cargar estado guardado del reproductor después de cargar la librería
+      // Esto asegura que el mini-player muestre la última canción reproducida
+      await _musicPlayer.loadPlayerState();
     } catch (e) {
       debugPrint('[MusicPlayer] Error in _init: $e');
     }
@@ -768,8 +777,8 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen>
       // Pausar
       debugPrint('[MusicPlayer] Pausing...');
       _player.pause();
-      // Actualizar estado global y local inmediatamente
-      _musicPlayer.isPlaying.value = false;
+      // Remove manual update to let listener handle it and trigger save
+      // _musicPlayer.isPlaying.value = false;
 
       // Actualizar estado de reproducción para Discord
       MusicStateService().updateMusicState(isPlaying: false);
@@ -787,6 +796,21 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen>
     } else {
       // Reanudar o reproducir
       if (_currentIndex == null && _files.isNotEmpty) {
+        // Intentar recuperar el índice si hay un path guardado
+        final currentPath = _musicPlayer.currentFilePath.value;
+        if (currentPath.isNotEmpty) {
+          final recoveredIndex = _files.indexWhere(
+            (f) => f.path.toLowerCase() == currentPath.toLowerCase(),
+          );
+          if (recoveredIndex != -1) {
+            debugPrint(
+              '[MusicPlayer] Recovered index for resume: $recoveredIndex',
+            );
+            _playFile(recoveredIndex);
+            return;
+          }
+        }
+
         // Si no hay canción seleccionada, reproducir la primera
         debugPrint('[MusicPlayer] No song selected, playing first file');
         _playFile(0);
@@ -794,8 +818,8 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen>
         // Si hay canción en pausa, reanudar
         debugPrint('[MusicPlayer] Resuming...');
         _player.resume();
-        // Actualizar estado global y local inmediatamente
-        _musicPlayer.isPlaying.value = true;
+        // Remove manual update to let listener handle it
+        // _musicPlayer.isPlaying.value = true;
 
         // Actualizar estado de reproducción para Discord
         MusicStateService().updateMusicState(isPlaying: true);
@@ -1021,8 +1045,7 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen>
                   ],
                 ),
               ),
-              // Spacing for MiniPlayer
-              const SizedBox(height: 80),
+              // Spacing for MiniPlayer removed to allow content to scroll behind
             ],
           ),
 

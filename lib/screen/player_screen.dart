@@ -394,10 +394,19 @@ class _PlayerScreenState extends State<PlayerScreen> with WindowListener {
                               valueListenable: _musicPlayer.showLyrics,
                               builder: (context, showLyrics, _) {
                                 return Expanded(
-                                  child: AnimatedSwitcher(
-                                    duration: const Duration(milliseconds: 500),
-                                    child: showLyrics
-                                        ? SizedBox.expand(
+                                  child: IndexedStack(
+                                    index: showLyrics ? 0 : 1,
+                                    sizing: StackFit.expand,
+                                    children: [
+                                      // Lyrics View
+                                      IgnorePointer(
+                                        ignoring: !showLyrics,
+                                        child: AnimatedOpacity(
+                                          opacity: showLyrics ? 1.0 : 0.0,
+                                          duration: const Duration(
+                                            milliseconds: 0,
+                                          ),
+                                          child: SizedBox.expand(
                                             child: Column(
                                               key: const ValueKey(
                                                 'lyrics_column_view',
@@ -613,21 +622,45 @@ class _PlayerScreenState extends State<PlayerScreen> with WindowListener {
                                                         );
                                                       }
                                                       return LyricsDisplay(
+                                                        key: ValueKey(
+                                                          _musicPlayer
+                                                              .currentFilePath
+                                                              .value,
+                                                        ),
                                                         lyrics: lyrics,
                                                         currentIndexNotifier:
                                                             _musicPlayer
                                                                 .currentLyricIndex,
+                                                        positionNotifier:
+                                                            _musicPlayer
+                                                                .position,
                                                         getText: widget.getText,
                                                         textAlign:
                                                             TextAlign.start,
+                                                        onTap: (timestamp) {
+                                                          _player.seek(
+                                                            timestamp,
+                                                          );
+                                                        },
                                                       );
                                                     },
                                                   ),
                                                 ),
                                               ],
                                             ),
-                                          )
-                                        : Column(
+                                          ),
+                                        ),
+                                      ),
+
+                                      // Cover Art View
+                                      IgnorePointer(
+                                        ignoring: showLyrics,
+                                        child: AnimatedOpacity(
+                                          opacity: showLyrics ? 0.0 : 1.0,
+                                          duration: const Duration(
+                                            milliseconds: 0,
+                                          ),
+                                          child: Column(
                                             key: const ValueKey('cover_art'),
                                             children: [
                                               const Spacer(),
@@ -682,13 +715,30 @@ class _PlayerScreenState extends State<PlayerScreen> with WindowListener {
                                                                 Curves
                                                                     .easeInQuad,
                                                             transitionBuilder: (child, animation) {
+                                                              // Determine direction from GlobalMusicPlayer
+                                                              // 1 = Next (Enter from Right), -1 = Prev (Enter from Left)
+                                                              final direction =
+                                                                  _musicPlayer
+                                                                      .transitionDirection
+                                                                      .value;
+
+                                                              // Calculate offsets based on direction
+                                                              final inBegin =
+                                                                  Offset(
+                                                                    direction
+                                                                        .toDouble(),
+                                                                    0.0,
+                                                                  );
+                                                              final outEnd = Offset(
+                                                                -direction
+                                                                    .toDouble(),
+                                                                0.0,
+                                                              );
+
                                                               final inAnimation =
                                                                   Tween<Offset>(
                                                                     begin:
-                                                                        const Offset(
-                                                                          1.0,
-                                                                          0.0,
-                                                                        ),
+                                                                        inBegin,
                                                                     end: Offset
                                                                         .zero,
                                                                   ).animate(
@@ -703,10 +753,14 @@ class _PlayerScreenState extends State<PlayerScreen> with WindowListener {
                                                               final outAnimation =
                                                                   Tween<Offset>(
                                                                     begin:
-                                                                        const Offset(
-                                                                          -1.0,
-                                                                          0.0,
-                                                                        ),
+                                                                        outEnd, // Start at -1 if dir=1 (Wait, no. Start at 0, end at -1)
+                                                                    // BUT for exit, we map t=1->0 to Position.
+                                                                    // We want child to move FROM 0 TO -1.
+                                                                    // At t=1 (start), pos should be 0.
+                                                                    // At t=0 (end), pos should be -1.
+                                                                    // So Tween(begin: -1, end: 0) works because lerp(-1,0,1)=0, lerp(-1,0,0)=-1.
+                                                                    // IF direction=1 (Next), we want exit to Left (-1). So Tween(-1, 0).
+                                                                    // IF direction=-1 (Prev), we want exit to Right (1). So Tween(1, 0).
                                                                     end: Offset
                                                                         .zero,
                                                                   ).animate(
@@ -806,6 +860,9 @@ class _PlayerScreenState extends State<PlayerScreen> with WindowListener {
                                               ),
                                             ],
                                           ),
+                                        ),
+                                      ),
+                                    ],
                                   ),
                                 );
                               },
@@ -815,7 +872,7 @@ class _PlayerScreenState extends State<PlayerScreen> with WindowListener {
                               valueListenable: _musicPlayer.showLyrics,
                               builder: (context, showLyrics, _) {
                                 return AnimatedSwitcher(
-                                  duration: const Duration(milliseconds: 500),
+                                  duration: const Duration(milliseconds: 0),
                                   child: showLyrics
                                       ? const SizedBox.shrink()
                                       : Column(
@@ -1045,7 +1102,7 @@ class _PlayerScreenState extends State<PlayerScreen> with WindowListener {
                                                   ],
                                                 ),
 
-                                                const SizedBox(height: 24),
+                                                const SizedBox(height: 8),
 
                                                 // Progress Bar
                                                 ValueListenableBuilder<

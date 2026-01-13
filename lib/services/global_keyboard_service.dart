@@ -289,10 +289,15 @@ class GlobalKeyboardService {
       _musicPlayer.player.pause();
       // El listener onPlayerStateChanged actualizará isPlaying.value
     } else {
-      if (_musicPlayer.currentIndex.value != null) {
-        print('[GlobalKeyboardService] Resuming');
+      final currentIndex = _musicPlayer.currentIndex.value;
+      if (currentIndex != null) {
+        print('[GlobalKeyboardService] Resuming from index $currentIndex');
         _musicPlayer.player.resume();
         // El listener onPlayerStateChanged actualizará isPlaying.value
+      } else if (_files != null && _files!.isNotEmpty) {
+        // Si no hay índice actual pero hay archivos, reproducir el primero
+        print('[GlobalKeyboardService] No current index, playing first file');
+        playFile(0);
       }
     }
   }
