@@ -1,4 +1,4 @@
-{
+﻿{
     "title":  "Forawn",
     "clock_label":  "当前时间",
     "download_button":  "音乐",
@@ -401,5 +401,24 @@
     "home": "主页",
     "library": "库",
     "playlists": "播放列表",
-    "create_playlist": "创建播放列表"
+    "create_playlist": "创建播放列表",
+    "language_subtitle": "Choose your preferred language",
+    "click_to_check": "Click to check for new versions",
+    "nsfw_desc": "Show adult content",
+    "music_player": "Music Player",
+    "blur_bg_title": "Blurred Background",
+    "blur_bg_sub": "Show blurred album art behind player",
+    "reload_missing_colors": "Reload Missing Colors",
+    "reload_missing_colors_sub": "Reprocess songs without cached colors",
+    "use_player_reload": "Please use the music player menu to reload colors",
+    "clear_all_lyrics": "Clear All Lyrics",
+    "clear_all_lyrics_sub": "Delete all downloaded lyrics",
+    "clear_music_database": "Clear Music Database",
+    "clear_music_database_sub": "Remove all cached metadata and colors",
+    "integrations": "Integrations",
+    "discord_on": "Connected",
+    "discord_off": "Disconnected",
+    "confirm_clear_lyrics": "Clear All Lyrics",
+    "confirm_clear_lyrics_desc": "Are you sure you want to delete all downloaded lyrics?",
+    "lyrics_cleared": "Lyrics cleared"
 }
