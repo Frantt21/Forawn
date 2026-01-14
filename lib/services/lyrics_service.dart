@@ -5,6 +5,7 @@ import 'package:sqflite/sqflite.dart';
 import 'package:path/path.dart' as p;
 import 'package:forawn/config/api_config.dart';
 import 'package:forawn/models/synced_lyrics.dart';
+import 'package:forawn/models/lyrics_search_result.dart';
 
 /// Servicio para gestionar letras sincronizadas de canciones (LRCLIB provider)
 class LyricsService {
@@ -15,6 +16,60 @@ class LyricsService {
   final _log = Logger('LyricsService');
   Database? _database;
   final _cache = <String, SyncedLyrics>{}; // Cache en memoria
+
+  /// Busca letras manualmente devolviendo una lista de resultados
+  Future<List<LyricsSearchResult>> searchLyrics(String query) async {
+    try {
+      final encodedQuery = Uri.encodeComponent(query);
+      final uri = Uri.parse(
+        '${ApiConfig.lyricsBaseUrl}/search?q=$encodedQuery',
+      );
+
+      _log.info('Manual search lyrics: $query');
+      final response = await http
+          .get(uri)
+          .timeout(
+            const Duration(seconds: 10),
+            onTimeout: () => throw Exception('Timeout searching lyrics'),
+          );
+
+      if (response.statusCode == 200) {
+        final List results = json.decode(response.body);
+        return results
+            .map((e) => LyricsSearchResult.fromJson(e as Map<String, dynamic>))
+            .toList();
+      }
+      return [];
+    } catch (e) {
+      _log.warning('Error searching lyrics: $e');
+      return [];
+    }
+  }
+
+  /// Guarda unos lyrics seleccionados manualmente
+  Future<void> saveManualLyrics(
+    String songTitle,
+    String artist,
+    String lrcContent,
+  ) async {
+    try {
+      // Guardar en DB
+      await _storeLyrics(songTitle, artist, lrcContent, notFound: false);
+
+      // Actualizar caché
+      final lyrics = SyncedLyrics.fromLRC(
+        songTitle: songTitle,
+        artist: artist,
+        lrcContent: lrcContent,
+      );
+      final cacheKey = '${songTitle.toLowerCase()}_${artist.toLowerCase()}';
+      _cache[cacheKey] = lyrics;
+
+      _log.info('Lyrics manually saved for: $songTitle - $artist');
+    } catch (e) {
+      _log.warning('Error saving manual lyrics: $e');
+    }
+  }
 
   /// Inicializa la base de datos
   Future<void> initialize() async {

@@ -22,6 +22,8 @@ import '../services/metadata_service.dart';
 import '../services/playlist_service.dart';
 import '../models/song_model.dart';
 import 'package:file_picker/file_picker.dart';
+import '../models/lyrics_search_result.dart';
+import '../services/lyrics_service.dart'; // Import LyricsService
 
 typedef TextGetter = String Function(String key, {String? fallback});
 
@@ -1368,10 +1370,32 @@ class _PlayerScreenState extends State<PlayerScreen> with WindowListener {
                                                                 _dominantColor,
                                                               ),
                                                             ),
-                                                            onSelected: (value) {
+                                                            onSelected: (value) async {
                                                               if (value ==
                                                                   'synchronize') {
                                                                 _showSyncDialog();
+                                                              } else if (value ==
+                                                                  'search_lyrics') {
+                                                                _showSearchLyricsDialog();
+                                                              } else if (value ==
+                                                                  'remove_lyrics') {
+                                                                final title =
+                                                                    _musicPlayer
+                                                                        .currentTitle
+                                                                        .value;
+                                                                final artist =
+                                                                    _musicPlayer
+                                                                        .currentArtist
+                                                                        .value;
+                                                                await LyricsService()
+                                                                    .deleteLyrics(
+                                                                      title,
+                                                                      artist,
+                                                                    );
+                                                                _musicPlayer
+                                                                        .currentLyrics
+                                                                        .value =
+                                                                    null;
                                                               }
                                                             },
                                                             itemBuilder:
@@ -2631,6 +2655,267 @@ class _PlayerScreenState extends State<PlayerScreen> with WindowListener {
           ),
         ],
       ),
+    );
+  }
+
+  void _showSearchLyricsDialog() {
+    final title = _musicPlayer.currentTitle.value;
+    final artist = _musicPlayer.currentArtist.value;
+    final searchController = TextEditingController(text: '$title $artist');
+
+    List<LyricsSearchResult>? results;
+    bool isLoading = false;
+    String? error;
+
+    showDialog(
+      context: context,
+      barrierDismissible: true,
+      builder: (context) {
+        return StatefulBuilder(
+          builder: (context, setState) {
+            Future<void> performSearch() async {
+              final query = searchController.text.trim();
+              if (query.isEmpty) return;
+
+              setState(() {
+                isLoading = true;
+                error = null;
+                results = null;
+              });
+
+              try {
+                // FocusScope.of(context).unfocus(); // Opcional: ocultar teclado
+                final res = await LyricsService().searchLyrics(query);
+                if (context.mounted) {
+                  setState(() {
+                    results = res;
+                    isLoading = false;
+                  });
+                }
+              } catch (e) {
+                if (context.mounted) {
+                  setState(() {
+                    error = e.toString();
+                    isLoading = false;
+                  });
+                }
+              }
+            }
+
+            return Dialog(
+              backgroundColor: const Color(0xFF1C1C1E),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(20),
+              ),
+              child: Container(
+                width: 500, // Fixed width for desktop/large screens
+                constraints: BoxConstraints(
+                  maxHeight: MediaQuery.of(context).size.height * 0.8,
+                  minWidth: 300,
+                  maxWidth: 500,
+                ),
+                padding: const EdgeInsets.all(20),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Stack(
+                      alignment: Alignment.center,
+                      children: [
+                        const Text(
+                          'Buscar Letra',
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontSize: 18,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                        Align(
+                          alignment: Alignment.centerRight,
+                          child: IconButton(
+                            icon: const Icon(
+                              Icons.close,
+                              color: Colors.white70,
+                            ),
+                            onPressed: () => Navigator.pop(context),
+                            padding: EdgeInsets.zero,
+                            constraints: const BoxConstraints(),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 20),
+                    TextField(
+                      controller: searchController,
+                      style: const TextStyle(color: Colors.white),
+                      decoration: InputDecoration(
+                        isDense: true,
+                        filled: true,
+                        fillColor: const Color(0xFF2C2C2E),
+                        hintText: 'Canción Artista...',
+                        hintStyle: const TextStyle(color: Colors.white38),
+                        suffixIcon: IconButton(
+                          icon: const Icon(
+                            Icons.search,
+                            color: Color(0xFFD046FF),
+                          ),
+                          onPressed: performSearch,
+                        ),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                          borderSide: BorderSide.none,
+                        ),
+                        contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 16,
+                          vertical: 12,
+                        ),
+                      ),
+                      onSubmitted: (_) => performSearch(),
+                    ),
+                    const SizedBox(height: 16),
+                    Expanded(
+                      child: isLoading
+                          ? const Center(
+                              child: CircularProgressIndicator(
+                                color: Color(0xFFD046FF),
+                              ),
+                            )
+                          : error != null
+                          ? Center(
+                              child: Text(
+                                error!,
+                                style: const TextStyle(color: Colors.redAccent),
+                                textAlign: TextAlign.center,
+                              ),
+                            )
+                          : results == null
+                          ? const Center(
+                              child: Text(
+                                'Busca para ver resultados',
+                                style: TextStyle(color: Colors.white38),
+                              ),
+                            )
+                          : results!.isEmpty
+                          ? const Center(
+                              child: Text(
+                                'No se encontraron resultados',
+                                style: TextStyle(color: Colors.white38),
+                              ),
+                            )
+                          : ListView.separated(
+                              itemCount: results!.length,
+                              separatorBuilder: (_, __) =>
+                                  const SizedBox(height: 8),
+                              itemBuilder: (context, index) {
+                                final item = results![index];
+                                return InkWell(
+                                  onTap: () async {
+                                    // Guardar
+                                    await LyricsService().saveManualLyrics(
+                                      title,
+                                      artist,
+                                      item.syncedLyrics.isNotEmpty
+                                          ? item.syncedLyrics
+                                          : item.plainLyrics,
+                                    );
+
+                                    // Actualizar player
+                                    final newLyrics = SyncedLyrics.fromLRC(
+                                      songTitle: title,
+                                      artist: artist,
+                                      lrcContent: item.syncedLyrics.isNotEmpty
+                                          ? item.syncedLyrics
+                                          : item.plainLyrics,
+                                    );
+                                    _musicPlayer.currentLyrics.value =
+                                        newLyrics;
+
+                                    Navigator.pop(context);
+                                  },
+                                  borderRadius: BorderRadius.circular(12),
+                                  child: Container(
+                                    padding: const EdgeInsets.all(12),
+                                    decoration: BoxDecoration(
+                                      color: const Color(0xFF2C2C2E),
+                                      borderRadius: BorderRadius.circular(12),
+                                    ),
+                                    child: Row(
+                                      children: [
+                                        Container(
+                                          padding: const EdgeInsets.all(8),
+                                          decoration: BoxDecoration(
+                                            color: Colors.white10,
+                                            borderRadius: BorderRadius.circular(
+                                              8,
+                                            ),
+                                          ),
+                                          child: const Icon(
+                                            Icons.library_music,
+                                            color: Colors.white70,
+                                            size: 20,
+                                          ),
+                                        ),
+                                        const SizedBox(width: 12),
+                                        Expanded(
+                                          child: Column(
+                                            crossAxisAlignment:
+                                                CrossAxisAlignment.start,
+                                            children: [
+                                              Text(
+                                                item.trackName,
+                                                style: const TextStyle(
+                                                  color: Colors.white,
+                                                  fontSize: 14,
+                                                  fontWeight: FontWeight.bold,
+                                                ),
+                                                maxLines: 1,
+                                                overflow: TextOverflow.ellipsis,
+                                              ),
+                                              Text(
+                                                item.artistName,
+                                                style: const TextStyle(
+                                                  color: Colors.white54,
+                                                  fontSize: 12,
+                                                ),
+                                                maxLines: 1,
+                                                overflow: TextOverflow.ellipsis,
+                                              ),
+                                            ],
+                                          ),
+                                        ),
+                                        if (item.synced)
+                                          Padding(
+                                            padding: const EdgeInsets.only(
+                                              left: 8.0,
+                                            ),
+                                            child: Container(
+                                              padding: const EdgeInsets.all(4),
+                                              decoration: const BoxDecoration(
+                                                color: Color(
+                                                  0xFF1DB954,
+                                                ), // Spotify Green ish
+                                                shape: BoxShape.circle,
+                                              ),
+                                              child: const Icon(
+                                                Icons.access_time,
+                                                color: Colors.black,
+                                                size: 14,
+                                              ),
+                                            ),
+                                          ),
+                                      ],
+                                    ),
+                                  ),
+                                );
+                              },
+                            ),
+                    ),
+                  ],
+                ),
+              ),
+            );
+          },
+        );
+      },
     );
   }
 }
