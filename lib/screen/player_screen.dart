@@ -23,7 +23,7 @@ import '../services/playlist_service.dart';
 import '../models/song_model.dart';
 import 'package:file_picker/file_picker.dart';
 import '../models/lyrics_search_result.dart';
-import '../services/lyrics_service.dart'; // Import LyricsService
+import '../services/lyrics_service.dart';
 
 typedef TextGetter = String Function(String key, {String? fallback});
 
@@ -1364,6 +1364,16 @@ class _PlayerScreenState extends State<PlayerScreen> with WindowListener {
                                                           PopupMenuButton<
                                                             String
                                                           >(
+                                                            color: const Color(
+                                                              0xFF2C2C2E,
+                                                            ),
+                                                            shape: RoundedRectangleBorder(
+                                                              borderRadius:
+                                                                  BorderRadius.circular(
+                                                                    15,
+                                                                  ),
+                                                            ),
+                                                            elevation: 4,
                                                             icon: Icon(
                                                               Icons.more_vert,
                                                               color: _adjustColorForControls(

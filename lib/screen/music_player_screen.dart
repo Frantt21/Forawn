@@ -63,6 +63,21 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen>
   int? _currentIndex;
   final Set<int> _playedIndices = {}; // Rastreo para shuffle inteligente
 
+  final TextEditingController _searchController = TextEditingController();
+
+  void _filterFiles(String query) {
+    setState(() {
+      if (query.isEmpty) {
+        _filteredFiles = _files;
+      } else {
+        _filteredFiles = _files.where((file) {
+          final name = p.basename(file.path).toLowerCase();
+          return name.contains(query.toLowerCase());
+        }).toList();
+      }
+    });
+  }
+
   // Cache de metadatos pre-cargados para evitar FutureBuilder en cada scroll
   final Map<String, SongMetadata?> _libraryMetadataCache = {};
 
@@ -963,6 +978,8 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen>
     return _buildLibraryView();
   }
 
+  bool _isSearching = false;
+
   Widget _buildLibraryView() {
     return Scaffold(
       backgroundColor: Colors.transparent,
@@ -970,44 +987,155 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen>
         children: [
           Column(
             children: [
-              // Custom Tab Bar
+              // Custom Tab Bar / Search Header
               Container(
                 margin: const EdgeInsets.only(top: 8, bottom: 8),
                 height: 40,
                 child: Row(
                   children: [
-                    Expanded(
-                      child: ListView(
-                        scrollDirection: Axis.horizontal,
-                        padding: const EdgeInsets.symmetric(horizontal: 16),
-                        children: [
-                          _buildTabButton(
-                            widget.getText('home', fallback: 'Home'),
-                            0,
+                    if (_isSearching)
+                      Expanded(
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 16),
+                          child: TextField(
+                            controller: _searchController,
+                            autofocus: true,
+                            style: const TextStyle(color: Colors.white),
+                            decoration: InputDecoration(
+                              hintText: widget.getText(
+                                'search_song',
+                                fallback: 'Search in list...',
+                              ),
+                              hintStyle: const TextStyle(color: Colors.white54),
+                              filled: true,
+                              fillColor: Colors.white.withOpacity(0.1),
+                              contentPadding: const EdgeInsets.symmetric(
+                                horizontal: 16,
+                                vertical: 8,
+                              ),
+                              border: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(20),
+                                borderSide: BorderSide.none,
+                              ),
+                              prefixIcon: const Icon(
+                                Icons.search,
+                                color: Colors.white54,
+                                size: 20,
+                              ),
+                              suffixIcon: IconButton(
+                                icon: const Icon(
+                                  Icons.close,
+                                  color: Colors.white54,
+                                  size: 20,
+                                ),
+                                onPressed: () {
+                                  setState(() {
+                                    _isSearching = false;
+                                    _searchController.clear();
+                                    _filterFiles('');
+                                  });
+                                },
+                              ),
+                            ),
+                            onChanged: _filterFiles,
                           ),
-                          const SizedBox(width: 8),
-                          _buildTabButton(
-                            widget.getText('library', fallback: 'Library'),
-                            1,
-                          ),
-                          const SizedBox(width: 8),
-                          _buildTabButton(
-                            widget.getText('playlists', fallback: 'Playlists'),
-                            2,
-                          ),
-                        ],
+                        ),
+                      )
+                    else
+                      Expanded(
+                        child: ListView(
+                          scrollDirection: Axis.horizontal,
+                          padding: const EdgeInsets.symmetric(horizontal: 16),
+                          children: [
+                            _buildTabButton(
+                              widget.getText('home', fallback: 'Home'),
+                              0,
+                            ),
+                            const SizedBox(width: 8),
+                            _buildTabButton(
+                              widget.getText('library', fallback: 'Library'),
+                              1,
+                            ),
+                            const SizedBox(width: 8),
+                            _buildTabButton(
+                              widget.getText(
+                                'playlists',
+                                fallback: 'Playlists',
+                              ),
+                              2,
+                            ),
+                          ],
+                        ),
                       ),
-                    ),
+
+                    // Search Button (only when not searching)
+                    if (!_isSearching)
+                      IconButton(
+                        icon: const Icon(Icons.search, color: Colors.white70),
+                        tooltip: widget.getText('search', fallback: 'Buscar'),
+                        onPressed: () {
+                          setState(() {
+                            _isSearching = true;
+                            // Switch to Library tab if not already there, as search applies to library usually
+                            if (_tabIndex != 1) _tabIndex = 1;
+                          });
+                        },
+                      ),
+
                     // Menu button
                     PopupMenuButton<String>(
                       icon: const Icon(Icons.more_vert, color: Colors.white70),
-                      color: const Color(0xFF1C1C1E),
-                      onSelected: (value) {
+                      color: const Color(0xFF2C2C2E),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(15),
+                      ),
+                      elevation: 4,
+                      onSelected: (value) async {
                         if (value == 'reload_colors') {
                           _reloadMissingColors();
+                        } else if (value == 'reload_library') {
+                          await _musicPlayer.loadLibraryIfNeeded();
+                          // Force state update
+                          if (mounted) {
+                            setState(() {
+                              _files = _musicPlayer.filesList.value;
+                              _filteredFiles = _files;
+                            });
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                content: Text(
+                                  widget.getText(
+                                    'library_reloaded',
+                                    fallback: 'Library reloaded',
+                                  ),
+                                ),
+                                backgroundColor: const Color(0xFF2C2C2E),
+                              ),
+                            );
+                          }
                         }
                       },
                       itemBuilder: (context) => [
+                        PopupMenuItem(
+                          value: 'reload_library',
+                          child: Row(
+                            children: [
+                              const Icon(
+                                Icons.refresh,
+                                color: Colors.white,
+                                size: 20,
+                              ),
+                              const SizedBox(width: 12),
+                              Text(
+                                widget.getText(
+                                  'reload_library',
+                                  fallback: 'Recargar lista',
+                                ),
+                                style: const TextStyle(color: Colors.white),
+                              ),
+                            ],
+                          ),
+                        ),
                         PopupMenuItem(
                           value: 'reload_colors',
                           child: Row(
@@ -1015,6 +1143,7 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen>
                               const Icon(
                                 Icons.palette,
                                 color: Colors.amberAccent,
+                                size: 20,
                               ),
                               const SizedBox(width: 12),
                               Text(
