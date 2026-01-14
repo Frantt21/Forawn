@@ -129,7 +129,7 @@ class _DownloadsScreenState extends State<DownloadsScreen>
         },
         child: Container(
           height: 42,
-          padding: const EdgeInsets.symmetric(horizontal: 12),
+          padding: const EdgeInsets.symmetric(horizontal: 10),
           color: Colors.transparent,
           child: Row(
             children: [
@@ -152,10 +152,9 @@ class _DownloadsScreenState extends State<DownloadsScreen>
               Expanded(
                 child: Text(
                   get('downloads_title', fallback: 'Downloads'),
-                  style: const TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w600,
-                  ),
+                  style: Theme.of(
+                    context,
+                  ).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w600),
                 ),
               ),
               IconButton(
