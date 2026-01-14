@@ -423,5 +423,15 @@
     "lyrics_cleared": "歌词已清除",
     "added": "已添加",
     "hide_lyrics": "隐藏歌词",
-    "show_lyrics": "显示歌词"
+    "show_lyrics": "显示歌词",
+    "confirm_update": "应用元数据？",
+    "apply": "应用",
+    "updating": "正在更新元数据...",
+    "updated": "元数据已更新！正在重新加载...",
+    "error_updating": "更新元数据时出错",
+    "no_metadata_found": "未找到元数据",
+    "metadata_title": "标题",
+    "metadata_artist": "艺术家",
+    "metadata_album": "专辑",
+    "search": "搜索"
 }

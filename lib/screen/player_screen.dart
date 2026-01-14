@@ -236,7 +236,7 @@ class _PlayerScreenState extends State<PlayerScreen> with WindowListener {
             TextField(
               controller: titleController,
               decoration: InputDecoration(
-                labelText: widget.getText('title', fallback: 'Title'),
+                labelText: widget.getText('metadata_title', fallback: 'Title'),
                 labelStyle: const TextStyle(color: Colors.white70),
                 enabledBorder: const UnderlineInputBorder(
                   borderSide: BorderSide(color: Colors.white24),
@@ -251,7 +251,10 @@ class _PlayerScreenState extends State<PlayerScreen> with WindowListener {
             TextField(
               controller: artistController,
               decoration: InputDecoration(
-                labelText: widget.getText('artist', fallback: 'Artist'),
+                labelText: widget.getText(
+                  'metadata_artist',
+                  fallback: 'Artist',
+                ),
                 labelStyle: const TextStyle(color: Colors.white70),
                 enabledBorder: const UnderlineInputBorder(
                   borderSide: BorderSide(color: Colors.white24),
@@ -313,7 +316,14 @@ class _PlayerScreenState extends State<PlayerScreen> with WindowListener {
                 }
               } else {
                 scaffoldMessenger.showSnackBar(
-                  SnackBar(content: Text('No metadata found')),
+                  SnackBar(
+                    content: Text(
+                      widget.getText(
+                        'no_metadata_found',
+                        fallback: 'No metadata found',
+                      ),
+                    ),
+                  ),
                 );
               }
             },
@@ -360,16 +370,18 @@ class _PlayerScreenState extends State<PlayerScreen> with WindowListener {
               text: TextSpan(
                 style: const TextStyle(color: Colors.white70),
                 children: [
-                  const TextSpan(
-                    text: 'Title: ',
+                  TextSpan(
+                    text:
+                        '${widget.getText('metadata_title', fallback: 'Title')}: ',
                     style: TextStyle(fontWeight: FontWeight.bold),
                   ),
                   TextSpan(
                     text: '${metadata.title}\n',
                     style: const TextStyle(color: Colors.white),
                   ),
-                  const TextSpan(
-                    text: 'Artist: ',
+                  TextSpan(
+                    text:
+                        '${widget.getText('metadata_artist', fallback: 'Artist')}: ',
                     style: TextStyle(fontWeight: FontWeight.bold),
                   ),
                   TextSpan(
@@ -377,8 +389,9 @@ class _PlayerScreenState extends State<PlayerScreen> with WindowListener {
                     style: const TextStyle(color: Colors.white),
                   ),
                   if (metadata.album.isNotEmpty) ...[
-                    const TextSpan(
-                      text: 'Album: ',
+                    TextSpan(
+                      text:
+                          '${widget.getText('metadata_album', fallback: 'Album')}: ',
                       style: TextStyle(fontWeight: FontWeight.bold),
                     ),
                     TextSpan(

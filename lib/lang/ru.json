@@ -423,5 +423,15 @@
     "lyrics_cleared": "Тексты песен очищены",
     "added": "Добавлено",
     "hide_lyrics": "Скрыть тексты",
-    "show_lyrics": "Показать тексты"
+    "show_lyrics": "Показать тексты",
+    "confirm_update": "Применить метаданные?",
+    "apply": "Применить",
+    "updating": "Обновление метаданных...",
+    "updated": "Метаданные обновлены! Перезагрузка...",
+    "error_updating": "Ошибка обновления метаданных",
+    "no_metadata_found": "Метаданные не найдены",
+    "metadata_title": "Название",
+    "metadata_artist": "Исполнитель",
+    "metadata_album": "Альбом",
+    "search": "Поиск"
 }

@@ -423,5 +423,15 @@
     "lyrics_cleared": "Teksty wyczyszczone",
     "added": "Dodano",
     "hide_lyrics": "Ukryj teksty",
-    "show_lyrics": "Pokaż teksty"
+    "show_lyrics": "Pokaż teksty",
+    "confirm_update": "Zastosować metadane?",
+    "apply": "Zastosuj",
+    "updating": "Aktualizowanie metadanych...",
+    "updated": "Metadane zaktualizowane! Przeładowywanie...",
+    "error_updating": "Błąd podczas aktualizacji metadanych",
+    "no_metadata_found": "Nie znaleziono metadanych",
+    "metadata_title": "Tytuł",
+    "metadata_artist": "Artysta",
+    "metadata_album": "Album",
+    "search": "Szukaj"
 }

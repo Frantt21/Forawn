@@ -423,5 +423,15 @@
     "lyrics_cleared": "Letras eliminadas",
     "added": "Añadido",
     "hide_lyrics": "Ocultar letras",
-    "show_lyrics": "Mostrar letras"
+    "show_lyrics": "Mostrar letras",
+    "confirm_update": "¿Aplicar Metadatos?",
+    "apply": "Aplicar",
+    "updating": "Actualizando metadatos...",
+    "updated": "¡Metadatos actualizados! Recargando...",
+    "error_updating": "Error al actualizar metadatos",
+    "no_metadata_found": "No se encontraron metadatos",
+    "metadata_title": "Título",
+    "metadata_artist": "Artista",
+    "metadata_album": "Álbum",
+    "search": "Buscar"
 }

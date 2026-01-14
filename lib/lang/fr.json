@@ -423,5 +423,15 @@
     "lyrics_cleared": "Paroles effacées",
     "added": "Ajouté",
     "hide_lyrics": "Masquer les paroles",
-    "show_lyrics": "Afficher les paroles"
+    "show_lyrics": "Afficher les paroles",
+    "confirm_update": "Appliquer les métadonnées ?",
+    "apply": "Appliquer",
+    "updating": "Mise à jour des métadonnées...",
+    "updated": "Métadonnées mises à jour ! Rechargement...",
+    "error_updating": "Erreur lors de la mise à jour des métadonnées",
+    "no_metadata_found": "Aucune métadonnée trouvée",
+    "metadata_title": "Titre",
+    "metadata_artist": "Artiste",
+    "metadata_album": "Album",
+    "search": "Rechercher"
 }

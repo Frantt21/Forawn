@@ -423,5 +423,15 @@
     "lyrics_cleared": "歌詞が消去されました",
     "added": "追加",
     "hide_lyrics": "歌詞を隠す",
-    "show_lyrics": "歌詞を表示"
+    "show_lyrics": "歌詞を表示",
+    "confirm_update": "メタデータを適用しますか？",
+    "apply": "適用",
+    "updating": "メタデータを更新中...",
+    "updated": "メタデータが更新されました！リロード中...",
+    "error_updating": "メタデータの更新エラー",
+    "no_metadata_found": "メタデータが見つかりません",
+    "metadata_title": "タイトル",
+    "metadata_artist": "アーティスト",
+    "metadata_album": "アルバム",
+    "search": "検索"
 }
