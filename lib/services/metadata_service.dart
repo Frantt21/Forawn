@@ -4,6 +4,7 @@ import 'dart:async';
 import 'dart:typed_data';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
+import 'package:path/path.dart' as p;
 import '../config/api_config.dart';
 
 class TrackMetadata {
@@ -160,4 +161,170 @@ class MetadataService {
     _cache.clear();
     debugPrint('[MetadataService] Local cache cleared');
   }
+
+  /// Actualiza los metadatos del archivo usando FFmpeg
+  Future<bool> updateFileMetadata(
+    String filePath,
+    TrackMetadata metadata,
+  ) async {
+    File? tempCoverFile;
+    try {
+      debugPrint('[MetadataService] Updating metadata for: $filePath');
+
+      // 1. Descargar cover si existe
+      String? coverPath;
+      if (metadata.albumArtUrl != null && metadata.albumArtUrl!.isNotEmpty) {
+        final coverBytes = await downloadAlbumArt(metadata.albumArtUrl);
+        if (coverBytes != null) {
+          final tempDir = Directory.systemTemp;
+          tempCoverFile = File(
+            '${tempDir.path}/cover_${DateTime.now().millisecondsSinceEpoch}.jpg',
+          );
+          await tempCoverFile.writeAsBytes(coverBytes);
+          coverPath = tempCoverFile.path;
+        }
+      }
+
+      // 2. Preparar archivo de salida temporal
+      final file = File(filePath);
+      if (!await file.exists()) {
+        debugPrint('[MetadataService] File does not exist: $filePath');
+        return false;
+      }
+
+      final extension = filePath.split('.').last;
+      final tempOutputPath = '${filePath}.temp.$extension';
+
+      // 3. Construir argumentos FFmpeg
+      List<String> args = ['-i', filePath];
+
+      if (coverPath != null) {
+        args.addAll(['-i', coverPath]);
+        args.addAll(['-map', '0:a', '-map', '1:0']);
+        args.addAll(['-c', 'copy']);
+        args.addAll(['-id3v2_version', '3']);
+        args.addAll([
+          '-metadata:s:v',
+          'title="Album cover"',
+          '-metadata:s:v',
+          'comment="Cover (front)"',
+        ]);
+      } else {
+        args.addAll(['-c', 'copy']);
+      }
+
+      // Añadir metadatos de texto
+      if (metadata.title.isNotEmpty)
+        args.addAll(['-metadata', 'title=${metadata.title}']);
+      if (metadata.artist.isNotEmpty)
+        args.addAll(['-metadata', 'artist=${metadata.artist}']);
+      if (metadata.album.isNotEmpty)
+        args.addAll(['-metadata', 'album=${metadata.album}']);
+      if (metadata.year != null)
+        args.addAll(['-metadata', 'date=${metadata.year}']);
+      if (metadata.trackNumber != null)
+        args.addAll(['-metadata', 'track=${metadata.trackNumber}']);
+
+      // Sobrescribir salida
+      args.addAll(['-y', tempOutputPath]);
+
+      debugPrint('[MetadataService] Running FFmpeg command logic');
+
+      // Localizar ffmpeg
+      final toolsDir = _findToolsDir();
+      debugPrint('[MetadataService] Tools dir found: "$toolsDir"');
+
+      var ffmpegExe = 'ffmpeg'; // Default global
+
+      if (toolsDir.isNotEmpty) {
+        var localFfmpeg = p.join(toolsDir, 'ffmpeg', 'bin', 'ffmpeg.exe');
+        if (!File(localFfmpeg).existsSync()) {
+          localFfmpeg = p.join(toolsDir, 'ffmpeg.exe');
+        }
+
+        debugPrint(
+          '[MetadataService] Checking local ffmpeg at: "$localFfmpeg"',
+        );
+        if (File(localFfmpeg).existsSync()) {
+          ffmpegExe = localFfmpeg;
+          debugPrint('[MetadataService] Found local ffmpeg: $ffmpegExe');
+        } else {
+          debugPrint(
+            '[MetadataService] Local ffmpeg NOT found at expected path.',
+          );
+        }
+      } else {
+        debugPrint('[MetadataService] Tools directory not found.');
+      }
+
+      debugPrint('[MetadataService] Executing: $ffmpegExe ...');
+
+      final result = await Process.run(ffmpegExe, args);
+
+      if (result.exitCode != 0) {
+        debugPrint('[MetadataService] FFmpeg error: ${result.stderr}');
+        // Si falla con map 0:a intentamos sin map específico (a veces 0:0 es audio)
+        if (coverPath != null) {
+          debugPrint('[MetadataService] Retrying without specific map...');
+          // Reintentar lógica simplificada si falla mapeo complejo
+          // ... Pendiente de implementación robusta, por ahora retornamos false
+        }
+        return false;
+      }
+
+      // 4. Reemplazar archivo original
+      final tempFile = File(tempOutputPath);
+      if (await tempFile.exists()) {
+        // Pequeña espera para liberar handles si es necesario
+        await Future.delayed(const Duration(milliseconds: 200));
+        try {
+          await file.delete();
+          await tempFile.rename(filePath);
+          debugPrint('[MetadataService] Metadata updated successfully');
+          return true;
+        } catch (e) {
+          debugPrint('[MetadataService] Error replacing file: $e');
+          // Intentar restaurar si es posible
+          return false;
+        }
+      } else {
+        debugPrint('[MetadataService] Temp file created by ffmpeg not found');
+        return false;
+      }
+    } catch (e) {
+      debugPrint('[MetadataService] Error updating metadata: $e');
+      return false;
+    } finally {
+      if (tempCoverFile != null && await tempCoverFile.exists()) {
+        try {
+          await tempCoverFile.delete();
+        } catch (_) {}
+      }
+    }
+  }
+
+  // --- Process runner / tools helpers ---
+  String _findBaseDir() {
+    try {
+      final exeDir = p.dirname(Platform.resolvedExecutable);
+      if (Directory(p.join(exeDir, 'tools')).existsSync()) return exeDir;
+    } catch (_) {}
+    final currentDir = Directory.current.path;
+    if (Directory(p.join(currentDir, 'tools')).existsSync()) return currentDir;
+
+    final candidates = <String>[
+      p.join(currentDir, 'build', 'windows', 'x64', 'runner', 'Debug'),
+      p.join(currentDir, 'build', 'windows', 'runner', 'Debug'),
+      p.join(currentDir, 'build', 'windows', 'x64', 'runner', 'Release'),
+      p.join(currentDir, 'build', 'windows', 'runner', 'Release'),
+      p.normalize(p.current),
+    ];
+    for (final base in candidates) {
+      if (Directory(p.join(base, 'tools')).existsSync()) return base;
+    }
+    return '';
+  }
+
+  String _findToolsDir() =>
+      _findBaseDir().isEmpty ? '' : p.join(_findBaseDir(), 'tools');
 }

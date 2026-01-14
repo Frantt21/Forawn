@@ -17,6 +17,11 @@ import '../models/synced_lyrics.dart';
 import 'lyrics_display_widget.dart';
 import 'package:window_manager/window_manager.dart';
 
+import '../services/metadata_service.dart';
+import '../services/playlist_service.dart';
+import '../models/song_model.dart';
+import 'package:file_picker/file_picker.dart';
+
 typedef TextGetter = String Function(String key, {String? fallback});
 
 class PlayerScreen extends StatefulWidget {
@@ -199,6 +204,626 @@ class _PlayerScreenState extends State<PlayerScreen> with WindowListener {
         }).toList();
       }
     });
+  }
+
+  // --- Metadata Editing ---
+  void _showEditMetadataDialog(BuildContext parentContext) {
+    final filePath = _musicPlayer.currentFilePath.value;
+    if (filePath.isEmpty) {
+      debugPrint('[PlayerScreen] No file selected to edit metadata');
+      return;
+    }
+
+    final titleController = TextEditingController(
+      text: _musicPlayer.currentTitle.value,
+    );
+    final artistController = TextEditingController(
+      text: _musicPlayer.currentArtist.value,
+    );
+
+    showDialog(
+      context: parentContext,
+      builder: (dialogContext) => AlertDialog(
+        backgroundColor: const Color(0xFF1E1E1E),
+        title: Text(
+          widget.getText('edit_metadata', fallback: 'Edit Metadata'),
+          style: const TextStyle(color: Colors.white),
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            TextField(
+              controller: titleController,
+              decoration: InputDecoration(
+                labelText: widget.getText('title', fallback: 'Title'),
+                labelStyle: const TextStyle(color: Colors.white70),
+                enabledBorder: const UnderlineInputBorder(
+                  borderSide: BorderSide(color: Colors.white24),
+                ),
+                focusedBorder: const UnderlineInputBorder(
+                  borderSide: BorderSide(color: Colors.purpleAccent),
+                ),
+              ),
+              style: const TextStyle(color: Colors.white),
+            ),
+            const SizedBox(height: 16),
+            TextField(
+              controller: artistController,
+              decoration: InputDecoration(
+                labelText: widget.getText('artist', fallback: 'Artist'),
+                labelStyle: const TextStyle(color: Colors.white70),
+                enabledBorder: const UnderlineInputBorder(
+                  borderSide: BorderSide(color: Colors.white24),
+                ),
+                focusedBorder: const UnderlineInputBorder(
+                  borderSide: BorderSide(color: Colors.purpleAccent),
+                ),
+              ),
+              style: const TextStyle(color: Colors.white),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            child: Text(
+              widget.getText('cancel', fallback: 'Cancel'),
+              style: const TextStyle(color: Colors.white70),
+            ),
+            onPressed: () => Navigator.pop(dialogContext),
+          ),
+          TextButton(
+            child: Text(
+              widget.getText('search', fallback: 'Search'),
+              style: const TextStyle(
+                color: Colors.purpleAccent,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            onPressed: () async {
+              final scaffoldMessenger = ScaffoldMessenger.of(parentContext);
+              final navigator = Navigator.of(dialogContext);
+
+              // Mostrar loading
+              scaffoldMessenger.showSnackBar(
+                SnackBar(
+                  content: Text(
+                    widget.getText(
+                      'searching',
+                      fallback: 'Searching metadata...',
+                    ),
+                  ),
+                  duration: const Duration(seconds: 1),
+                ),
+              );
+
+              final results = await MetadataService().searchMetadata(
+                titleController.text,
+                artistController.text,
+              );
+
+              if (results != null) {
+                navigator.pop(); // Cerrar diálogo inicial
+                if (mounted) {
+                  _showConfirmationDialog(
+                    parentContext,
+                    filePath,
+                    results,
+                  ); // Mostrar confirmación
+                }
+              } else {
+                scaffoldMessenger.showSnackBar(
+                  SnackBar(content: Text('No metadata found')),
+                );
+              }
+            },
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showConfirmationDialog(
+    BuildContext parentContext,
+    String filePath,
+    TrackMetadata metadata,
+  ) {
+    showDialog(
+      context: parentContext,
+      builder: (dialogContext) => AlertDialog(
+        backgroundColor: const Color(0xFF1E1E1E),
+        title: Text(
+          widget.getText('confirm_update', fallback: 'Apply Metadata?'),
+          style: const TextStyle(color: Colors.white),
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            if (metadata.albumArtUrl != null &&
+                metadata.albumArtUrl!.isNotEmpty)
+              Center(
+                child: Padding(
+                  padding: const EdgeInsets.only(bottom: 16.0),
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(8),
+                    child: Image.network(
+                      metadata.albumArtUrl!,
+                      height: 120,
+                      width: 120,
+                      fit: BoxFit.cover,
+                    ),
+                  ),
+                ),
+              ),
+            RichText(
+              text: TextSpan(
+                style: const TextStyle(color: Colors.white70),
+                children: [
+                  const TextSpan(
+                    text: 'Title: ',
+                    style: TextStyle(fontWeight: FontWeight.bold),
+                  ),
+                  TextSpan(
+                    text: '${metadata.title}\n',
+                    style: const TextStyle(color: Colors.white),
+                  ),
+                  const TextSpan(
+                    text: 'Artist: ',
+                    style: TextStyle(fontWeight: FontWeight.bold),
+                  ),
+                  TextSpan(
+                    text: '${metadata.artist}\n',
+                    style: const TextStyle(color: Colors.white),
+                  ),
+                  if (metadata.album.isNotEmpty) ...[
+                    const TextSpan(
+                      text: 'Album: ',
+                      style: TextStyle(fontWeight: FontWeight.bold),
+                    ),
+                    TextSpan(
+                      text: '${metadata.album}\n',
+                      style: const TextStyle(color: Colors.white),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            child: Text(
+              widget.getText('cancel', fallback: 'Cancel'),
+              style: const TextStyle(color: Colors.white70),
+            ),
+            onPressed: () => Navigator.pop(dialogContext),
+          ),
+          TextButton(
+            child: Text(
+              widget.getText('apply', fallback: 'Apply'),
+              style: const TextStyle(
+                color: Colors.purpleAccent,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            onPressed: () async {
+              // Capture scaffoldMessenger BEFORE popping the dialog
+              final scaffoldMessenger = ScaffoldMessenger.of(parentContext);
+              Navigator.pop(dialogContext);
+
+              scaffoldMessenger.showSnackBar(
+                SnackBar(
+                  content: Text(
+                    widget.getText(
+                      'updating',
+                      fallback: 'Updating metadata...',
+                    ),
+                  ),
+                ),
+              );
+
+              final success = await MetadataService().updateFileMetadata(
+                filePath,
+                metadata,
+              );
+
+              if (success) {
+                scaffoldMessenger.showSnackBar(
+                  SnackBar(
+                    content: Text(
+                      widget.getText(
+                        'updated',
+                        fallback: 'Metadata updated! Reloading...',
+                      ),
+                    ),
+                  ),
+                );
+                // Recargar solo la información visual por ahora o refrescar la lista
+                await GlobalMusicPlayer().refreshLibrary();
+              } else {
+                scaffoldMessenger.showSnackBar(
+                  SnackBar(
+                    content: Text(
+                      widget.getText(
+                        'error_updating',
+                        fallback: 'Error updating metadata',
+                      ),
+                    ),
+                  ),
+                );
+              }
+            },
+          ),
+        ],
+      ),
+    );
+  }
+
+  // --- Playlist Logic ---
+
+  Song _getCurrentSong() {
+    final path = _musicPlayer.currentFilePath.value;
+    try {
+      return _musicPlayer.songsList.value.firstWhere((s) => s.filePath == path);
+    } catch (_) {
+      // Fallback si no está en la lista cargada (ej. archivo externo)
+      return Song(
+        id: path.hashCode.toString(),
+        title: _musicPlayer.currentTitle.value,
+        artist: _musicPlayer.currentArtist.value,
+        filePath: path,
+        duration: Duration(seconds: _musicPlayer.duration.value.inSeconds),
+        album: "",
+      );
+    }
+  }
+
+  void _showAddToPlaylistDialog(BuildContext parentContext) {
+    final song = _getCurrentSong();
+    final playlists = PlaylistService().playlists;
+
+    showDialog(
+      context: parentContext,
+      builder: (context) => Dialog(
+        backgroundColor: const Color(0xFF1C1C1E),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        child: Container(
+          width: 350,
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                widget.getText('add_playlist', fallback: "Add to Playlist"),
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 20,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              const SizedBox(height: 20),
+              Material(
+                color: Colors.purpleAccent.withOpacity(0.1),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(10),
+                  side: BorderSide(
+                    color: Colors.purpleAccent.withOpacity(0.5),
+                    width: 1,
+                  ),
+                ),
+                child: InkWell(
+                  borderRadius: BorderRadius.circular(10),
+                  onTap: () {
+                    Navigator.pop(context);
+                    _showCreatePlaylistDialog();
+                  },
+                  child: Padding(
+                    padding: const EdgeInsets.all(16),
+                    child: Row(
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.all(8),
+                          decoration: BoxDecoration(
+                            color: Colors.purpleAccent.withOpacity(0.2),
+                            shape: BoxShape.circle,
+                          ),
+                          child: const Icon(
+                            Icons.add,
+                            color: Colors.purpleAccent,
+                            size: 20,
+                          ),
+                        ),
+                        const SizedBox(width: 16),
+                        Text(
+                          widget.getText(
+                            'create_playlist',
+                            fallback: "Create Playlist",
+                          ),
+                          style: const TextStyle(
+                            color: Colors.purpleAccent,
+                            fontWeight: FontWeight.bold,
+                            fontSize: 16,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 16),
+              ConstrainedBox(
+                constraints: const BoxConstraints(maxHeight: 300),
+                child: ListView.separated(
+                  shrinkWrap: true,
+                  itemCount: playlists.length,
+                  separatorBuilder: (_, __) => const SizedBox(height: 8),
+                  itemBuilder: (context, index) {
+                    final playlist = playlists[index];
+                    final alreadyIn = playlist.songs.any(
+                      (s) =>
+                          s.filePath == song.filePath, // Check by path is safer
+                    );
+
+                    return Material(
+                      color: Colors.white.withOpacity(0.05),
+                      borderRadius: BorderRadius.circular(10),
+                      child: InkWell(
+                        borderRadius: BorderRadius.circular(10),
+                        onTap: alreadyIn
+                            ? null
+                            : () {
+                                PlaylistService().addSongToPlaylist(
+                                  playlist.id,
+                                  song,
+                                );
+                                Navigator.pop(context);
+                                ScaffoldMessenger.of(
+                                  parentContext,
+                                ).showSnackBar(
+                                  // Use parentContext
+                                  SnackBar(
+                                    content: Text("Added to ${playlist.name}"),
+                                    behavior: SnackBarBehavior.floating,
+                                    shape: RoundedRectangleBorder(
+                                      borderRadius: BorderRadius.circular(10),
+                                    ),
+                                    backgroundColor: Colors.grey[900],
+                                  ),
+                                );
+                              },
+                        child: Padding(
+                          padding: const EdgeInsets.all(12),
+                          child: Row(
+                            children: [
+                              Container(
+                                width: 48,
+                                height: 48,
+                                decoration: BoxDecoration(
+                                  color: Colors.grey[850],
+                                  borderRadius: BorderRadius.circular(8),
+                                  image: playlist.imagePath != null
+                                      ? DecorationImage(
+                                          image: FileImage(
+                                            File(playlist.imagePath!),
+                                          ),
+                                          fit: BoxFit.cover,
+                                        )
+                                      : null,
+                                ),
+                                child: playlist.imagePath == null
+                                    ? const Icon(
+                                        Icons.queue_music,
+                                        color: Colors.white54,
+                                        size: 24,
+                                      )
+                                    : null,
+                              ),
+                              const SizedBox(width: 16),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      playlist.name,
+                                      style: const TextStyle(
+                                        color: Colors.white,
+                                        fontWeight: FontWeight.w500,
+                                        fontSize: 15,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 4),
+                                    Text(
+                                      '${playlist.songs.length} ${widget.getText('songs', fallback: 'songs')}',
+                                      style: TextStyle(
+                                        color: Colors.white.withOpacity(0.5),
+                                        fontSize: 12,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              if (alreadyIn)
+                                Container(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 12,
+                                    vertical: 6,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    color: const Color(0xFF1E3A25),
+                                    borderRadius: BorderRadius.circular(20),
+                                  ),
+                                  child: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      const Icon(
+                                        Icons.check_circle,
+                                        color: Color(0xFF4CAF50),
+                                        size: 14,
+                                      ),
+                                      const SizedBox(width: 4),
+                                      Text(
+                                        widget.getText(
+                                          'added',
+                                          fallback: "Added",
+                                        ),
+                                        style: const TextStyle(
+                                          color: Color(0xFF4CAF50),
+                                          fontSize: 12,
+                                          fontWeight: FontWeight.bold,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    );
+                  },
+                ),
+              ),
+              Align(
+                alignment: Alignment.centerRight,
+                child: Padding(
+                  padding: const EdgeInsets.only(top: 16),
+                  child: TextButton(
+                    onPressed: () => Navigator.pop(context),
+                    child: Text(
+                      widget.getText('cancel', fallback: "Cancel"),
+                      style: const TextStyle(color: Colors.grey, fontSize: 16),
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _showCreatePlaylistDialog() async {
+    final nameController = TextEditingController();
+    final descController = TextEditingController();
+    String? selectedImagePath;
+
+    await showDialog(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialogState) {
+          return AlertDialog(
+            backgroundColor: const Color(0xFF1C1C1E),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(16),
+            ),
+            title: Text(
+              widget.getText('create_playlist', fallback: "Create Playlist"),
+              style: const TextStyle(color: Colors.white),
+            ),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                GestureDetector(
+                  onTap: () async {
+                    FilePickerResult? result = await FilePicker.platform
+                        .pickFiles(type: FileType.image);
+                    if (result != null) {
+                      setDialogState(() {
+                        selectedImagePath = result.files.single.path;
+                      });
+                    }
+                  },
+                  child: Container(
+                    width: 100,
+                    height: 100,
+                    decoration: BoxDecoration(
+                      color: Colors.grey[800],
+                      borderRadius: BorderRadius.circular(12),
+                      image: selectedImagePath != null
+                          ? DecorationImage(
+                              image: FileImage(File(selectedImagePath!)),
+                              fit: BoxFit.cover,
+                            )
+                          : null,
+                    ),
+                    child: selectedImagePath == null
+                        ? const Icon(
+                            Icons.add_photo_alternate,
+                            color: Colors.white54,
+                            size: 40,
+                          )
+                        : null,
+                  ),
+                ),
+                const SizedBox(height: 16),
+                TextField(
+                  controller: nameController,
+                  cursorColor: Colors.purpleAccent,
+                  decoration: InputDecoration(
+                    labelText: widget.getText('name', fallback: "Name"),
+                    labelStyle: const TextStyle(color: Colors.grey),
+                    enabledBorder: const UnderlineInputBorder(
+                      borderSide: BorderSide(color: Colors.grey),
+                    ),
+                    focusedBorder: const UnderlineInputBorder(
+                      borderSide: BorderSide(color: Colors.purpleAccent),
+                    ),
+                  ),
+                  style: const TextStyle(color: Colors.white),
+                ),
+                TextField(
+                  controller: descController,
+                  cursorColor: Colors.purpleAccent,
+                  decoration: InputDecoration(
+                    labelText: widget.getText(
+                      'description',
+                      fallback: "Description",
+                    ),
+                    labelStyle: const TextStyle(color: Colors.grey),
+                    enabledBorder: const UnderlineInputBorder(
+                      borderSide: BorderSide(color: Colors.grey),
+                    ),
+                    focusedBorder: const UnderlineInputBorder(
+                      borderSide: BorderSide(color: Colors.purpleAccent),
+                    ),
+                  ),
+                  style: const TextStyle(color: Colors.white),
+                ),
+              ],
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: Text(
+                  widget.getText('cancel', fallback: "Cancel"),
+                  style: const TextStyle(color: Colors.grey),
+                ),
+              ),
+              TextButton(
+                onPressed: () {
+                  if (nameController.text.isNotEmpty) {
+                    PlaylistService().createPlaylist(
+                      nameController.text,
+                      description: descController.text,
+                      imagePath: selectedImagePath,
+                    );
+                    Navigator.pop(context);
+                    // Re-open add dialog? Maybe simpler to just close.
+                  }
+                },
+                child: Text(
+                  widget.getText('create', fallback: "Create"),
+                  style: const TextStyle(color: Colors.purpleAccent),
+                ),
+              ),
+            ],
+          );
+        },
+      ),
+    );
   }
 
   // --- Playback Logic (Simplified duplication of MusicPlayerScreen logic for robustness) ---
@@ -1141,89 +1766,175 @@ class _PlayerScreenState extends State<PlayerScreen> with WindowListener {
                                                     const SizedBox(width: 8),
 
                                                     // Gear / Settings Menu
-                                                    PopupMenuButton<String>(
-                                                      icon: Icon(
-                                                        Icons.settings_outlined,
-                                                        color:
-                                                            _adjustColorForControls(
-                                                              _dominantColor,
-                                                            ),
-                                                      ),
-                                                      onSelected: (value) {
-                                                        // TODO: Implement actions
+                                                    // Gear / Settings Menu
+                                                    AnimatedBuilder(
+                                                      animation:
+                                                          PlaylistService(),
+                                                      builder: (context, _) {
+                                                        final song =
+                                                            _getCurrentSong();
+                                                        final isLiked =
+                                                            PlaylistService()
+                                                                .isLiked(
+                                                                  song.id,
+                                                                );
+
+                                                        return PopupMenuButton<
+                                                          String
+                                                        >(
+                                                          color: const Color(
+                                                            0xFF1F1F1F,
+                                                          ),
+                                                          shape: RoundedRectangleBorder(
+                                                            borderRadius:
+                                                                BorderRadius.circular(
+                                                                  12,
+                                                                ),
+                                                          ),
+                                                          icon: Icon(
+                                                            Icons
+                                                                .settings_outlined,
+                                                            color:
+                                                                _adjustColorForControls(
+                                                                  _dominantColor,
+                                                                ),
+                                                          ),
+                                                          onSelected: (value) async {
+                                                            if (value ==
+                                                                'edit_metadata') {
+                                                              _showEditMetadataDialog(
+                                                                context,
+                                                              );
+                                                            } else if (value ==
+                                                                'add_playlist') {
+                                                              _showAddToPlaylistDialog(
+                                                                context,
+                                                              );
+                                                            } else if (value ==
+                                                                'add_favorites') {
+                                                              await PlaylistService()
+                                                                  .toggleLike(
+                                                                    song.id,
+                                                                  );
+                                                            }
+                                                          },
+                                                          itemBuilder: (BuildContext context) =>
+                                                              <
+                                                                PopupMenuEntry<
+                                                                  String
+                                                                >
+                                                              >[
+                                                                PopupMenuItem<
+                                                                  String
+                                                                >(
+                                                                  value:
+                                                                      'add_favorites',
+                                                                  child: Row(
+                                                                    children: [
+                                                                      Icon(
+                                                                        isLiked
+                                                                            ? Icons.favorite
+                                                                            : Icons.favorite_border,
+                                                                        color:
+                                                                            isLiked
+                                                                            ? Colors.purpleAccent
+                                                                            : Colors.white,
+                                                                        size:
+                                                                            20,
+                                                                      ),
+                                                                      const SizedBox(
+                                                                        width:
+                                                                            8,
+                                                                      ),
+                                                                      Text(
+                                                                        isLiked
+                                                                            ? widget.getText(
+                                                                                'remove_favorites',
+                                                                                fallback: 'Remove from favorites',
+                                                                              )
+                                                                            : widget.getText(
+                                                                                'add_favorites',
+                                                                                fallback: 'Add to favorites',
+                                                                              ),
+                                                                        style: TextStyle(
+                                                                          color:
+                                                                              isLiked
+                                                                              ? Colors.purpleAccent
+                                                                              : Colors.white,
+                                                                        ),
+                                                                      ),
+                                                                    ],
+                                                                  ),
+                                                                ),
+                                                                PopupMenuItem<
+                                                                  String
+                                                                >(
+                                                                  value:
+                                                                      'edit_metadata',
+                                                                  child: Row(
+                                                                    children: [
+                                                                      const Icon(
+                                                                        Icons
+                                                                            .edit,
+                                                                        color: Colors
+                                                                            .white,
+                                                                        size:
+                                                                            20,
+                                                                      ),
+                                                                      const SizedBox(
+                                                                        width:
+                                                                            8,
+                                                                      ),
+                                                                      Text(
+                                                                        widget.getText(
+                                                                          'edit_metadata',
+                                                                          fallback:
+                                                                              'Editar metadatos',
+                                                                        ),
+                                                                        style: const TextStyle(
+                                                                          color:
+                                                                              Colors.white,
+                                                                        ),
+                                                                      ),
+                                                                    ],
+                                                                  ),
+                                                                ),
+                                                                PopupMenuItem<
+                                                                  String
+                                                                >(
+                                                                  value:
+                                                                      'add_playlist',
+                                                                  child: Row(
+                                                                    children: [
+                                                                      const Icon(
+                                                                        Icons
+                                                                            .playlist_add,
+                                                                        color: Colors
+                                                                            .white,
+                                                                        size:
+                                                                            20,
+                                                                      ),
+                                                                      const SizedBox(
+                                                                        width:
+                                                                            8,
+                                                                      ),
+                                                                      Text(
+                                                                        widget.getText(
+                                                                          'add_playlist',
+                                                                          fallback:
+                                                                              'Añadir a playlist',
+                                                                        ),
+                                                                        style: const TextStyle(
+                                                                          color:
+                                                                              Colors.white,
+                                                                        ),
+                                                                      ),
+                                                                    ],
+                                                                  ),
+                                                                ),
+                                                              ],
+                                                        );
                                                       },
-                                                      itemBuilder: (BuildContext context) => <PopupMenuEntry<String>>[
-                                                        PopupMenuItem<String>(
-                                                          value:
-                                                              'add_favorites',
-                                                          child: Row(
-                                                            children: [
-                                                              const Icon(
-                                                                Icons
-                                                                    .favorite_border,
-                                                                color: Colors
-                                                                    .white70,
-                                                              ),
-                                                              const SizedBox(
-                                                                width: 8,
-                                                              ),
-                                                              Text(
-                                                                widget.getText(
-                                                                  'add_favorites',
-                                                                  fallback:
-                                                                      'Añadir a favoritos',
-                                                                ),
-                                                              ),
-                                                            ],
-                                                          ),
-                                                        ),
-                                                        PopupMenuItem<String>(
-                                                          value:
-                                                              'edit_metadata',
-                                                          child: Row(
-                                                            children: [
-                                                              const Icon(
-                                                                Icons.edit,
-                                                                color: Colors
-                                                                    .white70,
-                                                              ),
-                                                              const SizedBox(
-                                                                width: 8,
-                                                              ),
-                                                              Text(
-                                                                widget.getText(
-                                                                  'edit_metadata',
-                                                                  fallback:
-                                                                      'Editar metadatos',
-                                                                ),
-                                                              ),
-                                                            ],
-                                                          ),
-                                                        ),
-                                                        PopupMenuItem<String>(
-                                                          value: 'add_playlist',
-                                                          child: Row(
-                                                            children: [
-                                                              const Icon(
-                                                                Icons
-                                                                    .playlist_add,
-                                                                color: Colors
-                                                                    .white70,
-                                                              ),
-                                                              const SizedBox(
-                                                                width: 8,
-                                                              ),
-                                                              Text(
-                                                                widget.getText(
-                                                                  'add_playlist',
-                                                                  fallback:
-                                                                      'Añadir a playlist',
-                                                                ),
-                                                              ),
-                                                            ],
-                                                          ),
-                                                        ),
-                                                      ],
                                                     ),
 
                                                     const SizedBox(width: 16),

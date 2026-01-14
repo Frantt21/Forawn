@@ -1786,7 +1786,7 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen>
                 icon: const Icon(Icons.more_vert),
                 color: const Color(0xFF1C1C1E),
                 onSelected: (value) async {
-                  if (value == 'add_to_playlist') {
+                  if (value == 'add_playlist') {
                     await _showAddToPlaylistDialog(file);
                   } else if (value == 'toggle_favorite') {
                     final song = await Song.fromFile(file);
@@ -1804,7 +1804,7 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen>
                   final isLiked = PlaylistService().isLiked(songId);
                   return [
                     PopupMenuItem(
-                      value: 'add_to_playlist',
+                      value: 'add_playlist',
                       child: Row(
                         children: [
                           const Icon(
@@ -1815,7 +1815,7 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen>
                           const SizedBox(width: 12),
                           Text(
                             widget.getText(
-                              'add_to_playlist',
+                              'add_playlist',
                               fallback: "Add to Playlist",
                             ),
                             style: const TextStyle(color: Colors.white),
@@ -1951,8 +1951,8 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen>
                         const SizedBox(width: 16),
                         Text(
                           widget.getText(
-                            'new_playlist',
-                            fallback: "New Playlist",
+                            'create_playlist',
+                            fallback: "Create Playlist",
                           ),
                           style: const TextStyle(
                             color: Colors.purpleAccent,
@@ -2140,7 +2140,7 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen>
               borderRadius: BorderRadius.circular(16),
             ),
             title: Text(
-              widget.getText('new_playlist', fallback: "New Playlist"),
+              widget.getText('create_playlist', fallback: "Create Playlist"),
               style: const TextStyle(color: Colors.white),
             ),
             content: Column(
