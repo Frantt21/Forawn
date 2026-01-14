@@ -7,6 +7,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:audioplayers/audioplayers.dart';
 import 'package:path/path.dart' as p;
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../services/global_music_player.dart';
 import '../services/music_history.dart';
@@ -48,6 +49,10 @@ class _PlayerScreenState extends State<PlayerScreen> with WindowListener {
   Uint8List? _currentArt;
   String _currentTitle = '';
   String _currentArtist = '';
+
+  // Lyrics Sync
+  Duration _lyricsOffset = Duration.zero;
+  final ValueNotifier<int?> _lyricIndexNotifier = ValueNotifier(null);
 
   // Playlist management
   List<FileSystemEntity> _files = [];
@@ -103,6 +108,9 @@ class _PlayerScreenState extends State<PlayerScreen> with WindowListener {
     _musicPlayer.currentArt.addListener(_onArtChanged);
     _musicPlayer.currentTitle.addListener(_onTitleChanged);
     _musicPlayer.currentArtist.addListener(_onArtistChanged);
+    _musicPlayer.currentFilePath.addListener(_loadSavedOffset);
+    _musicPlayer.position.addListener(_updateLyricIndex);
+    _loadSavedOffset(); // Initial load
 
     // Keyboard listeners are handled by RawKeyboardListener in build
   }
@@ -114,7 +122,11 @@ class _PlayerScreenState extends State<PlayerScreen> with WindowListener {
     _musicPlayer.filesList.removeListener(_onFilesChanged);
     _musicPlayer.currentArt.removeListener(_onArtChanged);
     _musicPlayer.currentTitle.removeListener(_onTitleChanged);
+    _musicPlayer.currentTitle.removeListener(_onTitleChanged);
     _musicPlayer.currentArtist.removeListener(_onArtistChanged);
+    _musicPlayer.currentFilePath.removeListener(_loadSavedOffset);
+    _musicPlayer.position.removeListener(_updateLyricIndex);
+    _lyricIndexNotifier.dispose();
     _focusNode.dispose();
     _searchController.dispose();
     super.dispose();
@@ -223,112 +235,152 @@ class _PlayerScreenState extends State<PlayerScreen> with WindowListener {
 
     showDialog(
       context: parentContext,
-      builder: (dialogContext) => AlertDialog(
-        backgroundColor: const Color(0xFF1E1E1E),
-        title: Text(
-          widget.getText('edit_metadata', fallback: 'Edit Metadata'),
-          style: const TextStyle(color: Colors.white),
-        ),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            TextField(
-              controller: titleController,
-              decoration: InputDecoration(
-                labelText: widget.getText('metadata_title', fallback: 'Title'),
-                labelStyle: const TextStyle(color: Colors.white70),
-                enabledBorder: const UnderlineInputBorder(
-                  borderSide: BorderSide(color: Colors.white24),
-                ),
-                focusedBorder: const UnderlineInputBorder(
-                  borderSide: BorderSide(color: Colors.purpleAccent),
-                ),
-              ),
-              style: const TextStyle(color: Colors.white),
-            ),
-            const SizedBox(height: 16),
-            TextField(
-              controller: artistController,
-              decoration: InputDecoration(
-                labelText: widget.getText(
-                  'metadata_artist',
-                  fallback: 'Artist',
-                ),
-                labelStyle: const TextStyle(color: Colors.white70),
-                enabledBorder: const UnderlineInputBorder(
-                  borderSide: BorderSide(color: Colors.white24),
-                ),
-                focusedBorder: const UnderlineInputBorder(
-                  borderSide: BorderSide(color: Colors.purpleAccent),
-                ),
-              ),
-              style: const TextStyle(color: Colors.white),
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            child: Text(
-              widget.getText('cancel', fallback: 'Cancel'),
-              style: const TextStyle(color: Colors.white70),
-            ),
-            onPressed: () => Navigator.pop(dialogContext),
-          ),
-          TextButton(
-            child: Text(
-              widget.getText('search', fallback: 'Search'),
-              style: const TextStyle(
-                color: Colors.purpleAccent,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-            onPressed: () async {
-              final scaffoldMessenger = ScaffoldMessenger.of(parentContext);
-              final navigator = Navigator.of(dialogContext);
-
-              // Mostrar loading
-              scaffoldMessenger.showSnackBar(
-                SnackBar(
-                  content: Text(
-                    widget.getText(
-                      'searching',
-                      fallback: 'Searching metadata...',
+      barrierDismissible: true,
+      builder: (dialogContext) => Dialog(
+        backgroundColor: const Color(0xFF1C1C1E),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+        insetPadding: const EdgeInsets.all(24),
+        child: Container(
+          width: 400,
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(
+                    // If specific title "Update metadata" is preferred but localized:
+                    // sticking to original "edit_metadata" or switching if requested.
+                    // Image says "Update metadata"
+                    'Update metadata',
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 20,
+                      fontWeight: FontWeight.bold,
                     ),
                   ),
-                  duration: const Duration(seconds: 1),
-                ),
-              );
+                  IconButton(
+                    onPressed: () => Navigator.pop(dialogContext),
+                    icon: const Icon(Icons.close, color: Colors.grey),
+                    splashRadius: 20,
+                  ),
+                ],
+              ),
+              const SizedBox(height: 24),
+              _buildStyledTextField(
+                controller: titleController,
+                label: widget.getText('metadata_title', fallback: 'Title'),
+              ),
+              const SizedBox(height: 16),
+              _buildStyledTextField(
+                controller: artistController,
+                label: widget.getText('metadata_artist', fallback: 'Artist'),
+              ),
+              const SizedBox(height: 24),
+              SizedBox(
+                width: double.infinity,
+                height: 50,
+                child: ElevatedButton.icon(
+                  onPressed: () async {
+                    final scaffoldMessenger = ScaffoldMessenger.of(
+                      parentContext,
+                    );
+                    final navigator = Navigator.of(dialogContext);
 
-              final results = await MetadataService().searchMetadata(
-                titleController.text,
-                artistController.text,
-              );
-
-              if (results != null) {
-                navigator.pop(); // Cerrar diálogo inicial
-                if (mounted) {
-                  _showConfirmationDialog(
-                    parentContext,
-                    filePath,
-                    results,
-                  ); // Mostrar confirmación
-                }
-              } else {
-                scaffoldMessenger.showSnackBar(
-                  SnackBar(
-                    content: Text(
-                      widget.getText(
-                        'no_metadata_found',
-                        fallback: 'No metadata found',
+                    // Mostrar loading
+                    scaffoldMessenger.showSnackBar(
+                      SnackBar(
+                        content: Text(
+                          widget.getText(
+                            'searching',
+                            fallback: 'Searching metadata...',
+                          ),
+                        ),
+                        duration: const Duration(seconds: 1),
+                        backgroundColor: const Color(0xFF2C2C2E),
                       ),
+                    );
+
+                    final results = await MetadataService().searchMetadata(
+                      titleController.text,
+                      artistController.text,
+                    );
+
+                    if (results != null) {
+                      navigator.pop(); // Cerrar diálogo inicial
+                      if (mounted) {
+                        _showConfirmationDialog(
+                          parentContext,
+                          filePath,
+                          results,
+                        ); // Mostrar confirmación
+                      }
+                    } else {
+                      scaffoldMessenger.showSnackBar(
+                        SnackBar(
+                          content: Text(
+                            widget.getText(
+                              'no_metadata_found',
+                              fallback: 'No metadata found',
+                            ),
+                          ),
+                          backgroundColor: Colors.redAccent,
+                        ),
+                      );
+                    }
+                  },
+                  icon: const Icon(Icons.search, color: Colors.white),
+                  label: Text(
+                    widget.getText('search', fallback: 'Search'),
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
                     ),
                   ),
-                );
-              }
-            },
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(
+                      0xFFD046FF,
+                    ), // Voucher pink/purple
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    elevation: 0,
+                  ),
+                ),
+              ),
+            ],
           ),
-        ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildStyledTextField({
+    required TextEditingController controller,
+    required String label,
+  }) {
+    return TextField(
+      controller: controller,
+      style: const TextStyle(color: Colors.white),
+      decoration: InputDecoration(
+        labelText: label,
+        labelStyle: const TextStyle(color: Colors.grey),
+        floatingLabelStyle: const TextStyle(color: Color(0xFFD046FF)),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(10),
+          borderSide: const BorderSide(color: Colors.white24),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(10),
+          borderSide: const BorderSide(color: Color(0xFFD046FF)),
+        ),
+        contentPadding: const EdgeInsets.symmetric(
+          horizontal: 16,
+          vertical: 16,
+        ),
       ),
     );
   }
@@ -340,136 +392,218 @@ class _PlayerScreenState extends State<PlayerScreen> with WindowListener {
   ) {
     showDialog(
       context: parentContext,
-      builder: (dialogContext) => AlertDialog(
-        backgroundColor: const Color(0xFF1E1E1E),
-        title: Text(
-          widget.getText('confirm_update', fallback: 'Apply Metadata?'),
-          style: const TextStyle(color: Colors.white),
-        ),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            if (metadata.albumArtUrl != null &&
-                metadata.albumArtUrl!.isNotEmpty)
-              Center(
-                child: Padding(
-                  padding: const EdgeInsets.only(bottom: 16.0),
-                  child: ClipRRect(
-                    borderRadius: BorderRadius.circular(8),
-                    child: Image.network(
-                      metadata.albumArtUrl!,
-                      height: 120,
-                      width: 120,
-                      fit: BoxFit.cover,
-                    ),
-                  ),
-                ),
-              ),
-            RichText(
-              text: TextSpan(
-                style: const TextStyle(color: Colors.white70),
+      barrierDismissible: true,
+      builder: (dialogContext) => Dialog(
+        backgroundColor: const Color(0xFF1C1C1E),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+        insetPadding: const EdgeInsets.all(24),
+        child: Container(
+          width: 400,
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  TextSpan(
-                    text:
-                        '${widget.getText('metadata_title', fallback: 'Title')}: ',
-                    style: TextStyle(fontWeight: FontWeight.bold),
-                  ),
-                  TextSpan(
-                    text: '${metadata.title}\n',
-                    style: const TextStyle(color: Colors.white),
-                  ),
-                  TextSpan(
-                    text:
-                        '${widget.getText('metadata_artist', fallback: 'Artist')}: ',
-                    style: TextStyle(fontWeight: FontWeight.bold),
-                  ),
-                  TextSpan(
-                    text: '${metadata.artist}\n',
-                    style: const TextStyle(color: Colors.white),
-                  ),
-                  if (metadata.album.isNotEmpty) ...[
-                    TextSpan(
-                      text:
-                          '${widget.getText('metadata_album', fallback: 'Album')}: ',
-                      style: TextStyle(fontWeight: FontWeight.bold),
+                  Text(
+                    widget.getText(
+                      'confirm_update',
+                      fallback: 'Apply Metadata?',
                     ),
-                    TextSpan(
-                      text: '${metadata.album}\n',
-                      style: const TextStyle(color: Colors.white),
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 20,
+                      fontWeight: FontWeight.bold,
                     ),
-                  ],
+                  ),
+                  IconButton(
+                    onPressed: () => Navigator.pop(dialogContext),
+                    icon: const Icon(Icons.close, color: Colors.grey),
+                    splashRadius: 20,
+                  ),
                 ],
               ),
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            child: Text(
-              widget.getText('cancel', fallback: 'Cancel'),
-              style: const TextStyle(color: Colors.white70),
-            ),
-            onPressed: () => Navigator.pop(dialogContext),
-          ),
-          TextButton(
-            child: Text(
-              widget.getText('apply', fallback: 'Apply'),
-              style: const TextStyle(
-                color: Colors.purpleAccent,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-            onPressed: () async {
-              // Capture scaffoldMessenger BEFORE popping the dialog
-              final scaffoldMessenger = ScaffoldMessenger.of(parentContext);
-              Navigator.pop(dialogContext);
-
-              scaffoldMessenger.showSnackBar(
-                SnackBar(
-                  content: Text(
-                    widget.getText(
-                      'updating',
-                      fallback: 'Updating metadata...',
+              const SizedBox(height: 24),
+              if (metadata.albumArtUrl != null &&
+                  metadata.albumArtUrl!.isNotEmpty)
+                Center(
+                  child: Container(
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(16),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withOpacity(0.3),
+                          blurRadius: 10,
+                          offset: const Offset(0, 4),
+                        ),
+                      ],
+                    ),
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(16),
+                      child: Image.network(
+                        metadata.albumArtUrl!,
+                        height: 160,
+                        width: 160,
+                        fit: BoxFit.cover,
+                      ),
                     ),
                   ),
                 ),
-              );
+              const SizedBox(height: 24),
+              // Info container
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: Colors.white.withOpacity(0.05),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: Colors.white10),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    _buildInfoRow(
+                      widget.getText('metadata_title', fallback: 'Title'),
+                      metadata.title,
+                    ),
+                    const SizedBox(height: 8),
+                    _buildInfoRow(
+                      widget.getText('metadata_artist', fallback: 'Artist'),
+                      metadata.artist,
+                    ),
+                    if (metadata.album.isNotEmpty) ...[
+                      const SizedBox(height: 8),
+                      _buildInfoRow(
+                        widget.getText('metadata_album', fallback: 'Album'),
+                        metadata.album,
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+              const SizedBox(height: 24),
+              Row(
+                children: [
+                  Expanded(
+                    child: TextButton(
+                      onPressed: () => Navigator.pop(dialogContext),
+                      style: TextButton.styleFrom(
+                        foregroundColor: Colors.white70,
+                        padding: const EdgeInsets.symmetric(vertical: 16),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                          side: const BorderSide(color: Colors.white24),
+                        ),
+                      ),
+                      child: Text(widget.getText('cancel', fallback: 'Cancel')),
+                    ),
+                  ),
+                  const SizedBox(width: 16),
+                  Expanded(
+                    child: ElevatedButton(
+                      onPressed: () async {
+                        final scaffoldMessenger = ScaffoldMessenger.of(
+                          parentContext,
+                        );
+                        Navigator.pop(dialogContext);
 
-              final success = await MetadataService().updateFileMetadata(
-                filePath,
-                metadata,
-              );
+                        scaffoldMessenger.showSnackBar(
+                          SnackBar(
+                            content: Text(
+                              widget.getText(
+                                'updating',
+                                fallback: 'Updating metadata...',
+                              ),
+                            ),
+                            backgroundColor: const Color(0xFF2C2C2E),
+                          ),
+                        );
 
-              if (success) {
-                scaffoldMessenger.showSnackBar(
-                  SnackBar(
-                    content: Text(
-                      widget.getText(
-                        'updated',
-                        fallback: 'Metadata updated! Reloading...',
+                        final success = await MetadataService()
+                            .updateFileMetadata(filePath, metadata);
+
+                        if (success) {
+                          scaffoldMessenger.showSnackBar(
+                            SnackBar(
+                              content: Text(
+                                widget.getText(
+                                  'updated',
+                                  fallback: 'Metadata updated! Reloading...',
+                                ),
+                              ),
+                              backgroundColor: Colors.green,
+                            ),
+                          );
+                          await GlobalMusicPlayer().refreshLibrary();
+                        } else {
+                          scaffoldMessenger.showSnackBar(
+                            SnackBar(
+                              content: Text(
+                                widget.getText(
+                                  'error_updating',
+                                  fallback: 'Error updating metadata',
+                                ),
+                              ),
+                              backgroundColor: Colors.redAccent,
+                            ),
+                          );
+                        }
+                      },
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: const Color(0xFFD046FF),
+                        padding: const EdgeInsets.symmetric(vertical: 16),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        elevation: 0,
+                      ),
+                      child: Text(
+                        widget.getText('apply', fallback: 'Apply'),
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.bold,
+                          fontSize: 16,
+                        ),
                       ),
                     ),
                   ),
-                );
-                // Recargar solo la información visual por ahora o refrescar la lista
-                await GlobalMusicPlayer().refreshLibrary();
-              } else {
-                scaffoldMessenger.showSnackBar(
-                  SnackBar(
-                    content: Text(
-                      widget.getText(
-                        'error_updating',
-                        fallback: 'Error updating metadata',
-                      ),
-                    ),
-                  ),
-                );
-              }
-            },
+                ],
+              ),
+            ],
           ),
-        ],
+        ),
       ),
+    );
+  }
+
+  Widget _buildInfoRow(String label, String value) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        SizedBox(
+          width: 60,
+          child: Text(
+            '$label:',
+            style: const TextStyle(
+              color: Colors.grey,
+              fontSize: 12,
+              fontWeight: FontWeight.w500,
+            ),
+          ),
+        ),
+        Expanded(
+          child: Text(
+            value,
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 14,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ),
+      ],
     );
   }
 
@@ -1235,7 +1369,10 @@ class _PlayerScreenState extends State<PlayerScreen> with WindowListener {
                                                               ),
                                                             ),
                                                             onSelected: (value) {
-                                                              // Implement actions later
+                                                              if (value ==
+                                                                  'synchronize') {
+                                                                _showSyncDialog();
+                                                              }
                                                             },
                                                             itemBuilder:
                                                                 (
@@ -1362,8 +1499,7 @@ class _PlayerScreenState extends State<PlayerScreen> with WindowListener {
                                                         ),
                                                         lyrics: lyrics,
                                                         currentIndexNotifier:
-                                                            _musicPlayer
-                                                                .currentLyricIndex,
+                                                            _lyricIndexNotifier,
                                                         positionNotifier:
                                                             _musicPlayer
                                                                 .position,
@@ -1372,7 +1508,8 @@ class _PlayerScreenState extends State<PlayerScreen> with WindowListener {
                                                             TextAlign.start,
                                                         onTap: (timestamp) {
                                                           _player.seek(
-                                                            timestamp,
+                                                            timestamp +
+                                                                _lyricsOffset,
                                                           );
                                                         },
                                                       );
@@ -1883,39 +2020,6 @@ class _PlayerScreenState extends State<PlayerScreen> with WindowListener {
                                                                   String
                                                                 >(
                                                                   value:
-                                                                      'edit_metadata',
-                                                                  child: Row(
-                                                                    children: [
-                                                                      const Icon(
-                                                                        Icons
-                                                                            .edit,
-                                                                        color: Colors
-                                                                            .white,
-                                                                        size:
-                                                                            20,
-                                                                      ),
-                                                                      const SizedBox(
-                                                                        width:
-                                                                            8,
-                                                                      ),
-                                                                      Text(
-                                                                        widget.getText(
-                                                                          'edit_metadata',
-                                                                          fallback:
-                                                                              'Editar metadatos',
-                                                                        ),
-                                                                        style: const TextStyle(
-                                                                          color:
-                                                                              Colors.white,
-                                                                        ),
-                                                                      ),
-                                                                    ],
-                                                                  ),
-                                                                ),
-                                                                PopupMenuItem<
-                                                                  String
-                                                                >(
-                                                                  value:
                                                                       'add_playlist',
                                                                   child: Row(
                                                                     children: [
@@ -1936,6 +2040,39 @@ class _PlayerScreenState extends State<PlayerScreen> with WindowListener {
                                                                           'add_playlist',
                                                                           fallback:
                                                                               'Añadir a playlist',
+                                                                        ),
+                                                                        style: const TextStyle(
+                                                                          color:
+                                                                              Colors.white,
+                                                                        ),
+                                                                      ),
+                                                                    ],
+                                                                  ),
+                                                                ),
+                                                                PopupMenuItem<
+                                                                  String
+                                                                >(
+                                                                  value:
+                                                                      'edit_metadata',
+                                                                  child: Row(
+                                                                    children: [
+                                                                      const Icon(
+                                                                        Icons
+                                                                            .edit,
+                                                                        color: Colors
+                                                                            .white,
+                                                                        size:
+                                                                            20,
+                                                                      ),
+                                                                      const SizedBox(
+                                                                        width:
+                                                                            8,
+                                                                      ),
+                                                                      Text(
+                                                                        widget.getText(
+                                                                          'edit_metadata',
+                                                                          fallback:
+                                                                              'Editar metadatos',
                                                                         ),
                                                                         style: const TextStyle(
                                                                           color:
@@ -2383,6 +2520,116 @@ class _PlayerScreenState extends State<PlayerScreen> with WindowListener {
             ),
           ],
         ),
+      ),
+    );
+  }
+
+  // --- Lyrics Synchronization Logic ---
+
+  Future<void> _loadSavedOffset() async {
+    final path = _musicPlayer.currentFilePath.value;
+    if (path.isEmpty) return;
+
+    final songId = path.hashCode.toString();
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final savedOffsetMs = prefs.getInt('lyrics_offset_$songId') ?? 0;
+      if (mounted) {
+        setState(() {
+          _lyricsOffset = Duration(milliseconds: savedOffsetMs);
+        });
+        _updateLyricIndex();
+      }
+    } catch (e) {
+      debugPrint('[PlayerScreen] Error loading lyrics offset: $e');
+    }
+  }
+
+  void _updateLyricIndex() {
+    final lyrics = _musicPlayer.currentLyrics.value;
+    if (lyrics == null || !lyrics.hasLyrics) {
+      if (_lyricIndexNotifier.value != null && lyrics == null) {
+        _lyricIndexNotifier.value = null;
+      }
+      return;
+    }
+    final pos = _musicPlayer.position.value;
+    final effectivePos = pos - _lyricsOffset;
+    final index = lyrics.getCurrentLineIndex(effectivePos);
+
+    if (index != _lyricIndexNotifier.value) {
+      _lyricIndexNotifier.value = index;
+    }
+  }
+
+  Future<void> _adjustOffset(int milliseconds) async {
+    setState(() {
+      _lyricsOffset += Duration(milliseconds: milliseconds);
+    });
+    _updateLyricIndex();
+
+    final path = _musicPlayer.currentFilePath.value;
+    if (path.isEmpty) return;
+    final songId = path.hashCode.toString();
+
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setInt('lyrics_offset_$songId', _lyricsOffset.inMilliseconds);
+    } catch (e) {
+      debugPrint('[PlayerScreen] Error saving lyrics offset: $e');
+    }
+  }
+
+  Widget _buildSyncButton(String label, int ms) {
+    return ElevatedButton(
+      onPressed: () {
+        _adjustOffset(ms);
+        Navigator.pop(context);
+        _showSyncDialog();
+      },
+      style: ElevatedButton.styleFrom(
+        backgroundColor: Colors.white10,
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 0),
+        minimumSize: const Size(60, 36),
+      ),
+      child: Text(label, style: const TextStyle(fontSize: 12)),
+    );
+  }
+
+  void _showSyncDialog() {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: const Color(0xFF2C2C2E),
+        title: Text(
+          widget.getText('synchronize', fallback: 'Sincronizar'),
+          style: const TextStyle(color: Colors.white),
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              '${widget.getText('offset', fallback: 'Desfase')}: ${_lyricsOffset.inMilliseconds}ms',
+              style: const TextStyle(color: Colors.white70),
+            ),
+            const SizedBox(height: 20),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+              children: [
+                _buildSyncButton('-500ms', -500),
+                _buildSyncButton('-100ms', -100),
+                _buildSyncButton('+100ms', 100),
+                _buildSyncButton('+500ms', 500),
+              ],
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: Text(widget.getText('done', fallback: 'Listo')),
+          ),
+        ],
       ),
     );
   }

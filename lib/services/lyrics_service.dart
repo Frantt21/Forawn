@@ -6,7 +6,7 @@ import 'package:path/path.dart' as p;
 import 'package:forawn/config/api_config.dart';
 import 'package:forawn/models/synced_lyrics.dart';
 
-/// Servicio para gestionar letras sincronizadas de canciones
+/// Servicio para gestionar letras sincronizadas de canciones (LRCLIB provider)
 class LyricsService {
   static final LyricsService _instance = LyricsService._internal();
   factory LyricsService() => _instance;
@@ -47,12 +47,10 @@ class LyricsService {
         },
         onUpgrade: (db, oldVersion, newVersion) async {
           if (oldVersion < 2) {
-            // Agregar columna not_found a bases de datos existentes
             try {
               await db.execute(
                 'ALTER TABLE lyrics ADD COLUMN not_found INTEGER DEFAULT 0',
               );
-              _log.info('Base de datos actualizada a versión 2');
             } catch (e) {
               _log.warning('Error al actualizar base de datos: $e');
             }
@@ -69,105 +67,102 @@ class LyricsService {
   /// Busca y descarga letras de una canción
   Future<SyncedLyrics?> fetchLyrics(String title, String artist) async {
     try {
-      // Verificar cache en memoria primero
       final cacheKey = '${title.toLowerCase()}_${artist.toLowerCase()}';
       if (_cache.containsKey(cacheKey)) {
-        _log.fine('Lyrics encontrados en cache: $title - $artist');
         return _cache[cacheKey];
       }
 
-      // Verificar base de datos (incluyendo si ya se intentó y no se encontró)
       final stored = await getStoredLyrics(title, artist);
       if (stored != null) {
         _cache[cacheKey] = stored;
         return stored;
       }
 
-      // Verificar si ya se intentó descargar antes y no se encontró
       final alreadyChecked = await wasAlreadyChecked(title, artist);
       if (alreadyChecked) {
         _log.fine(
           'Ya se verificó anteriormente (no encontrado): $title - $artist',
         );
-        return null;
+        return null; // Return null if previously not found to avoid spamming API
+        // User wants manual search though? This is automatic fetch.
       }
 
-      // Descargar de la API
-      final query = '$title $artist'.trim();
-      final encodedQuery = Uri.encodeComponent(query);
-      final url = '${ApiConfig.lyricsApiUrl}?query=$encodedQuery';
+      // Limpiar título y artista
+      final cleanTrack = _cleanTitle(title);
+      final cleanArtist = _cleanArtist(artist);
+      final query = '$cleanTrack $cleanArtist';
 
-      _log.info('Descargando lyrics: $query');
+      _log.info('Fetching lyrics from LRCLIB: $query');
+
+      final encodedQuery = Uri.encodeComponent(query);
+      // Usar endpoint de búsqueda para mejor matching
+      final uri = Uri.parse(
+        '${ApiConfig.lyricsBaseUrl}/search?q=$encodedQuery',
+      );
 
       final response = await http
-          .get(Uri.parse(url))
+          .get(uri)
           .timeout(
             const Duration(seconds: 10),
-            onTimeout: () {
-              throw Exception('Timeout al descargar lyrics');
-            },
+            onTimeout: () => throw Exception('Timeout al descargar lyrics'),
           );
 
       if (response.statusCode == 200) {
-        final data = json.decode(response.body);
+        final List results = json.decode(response.body);
 
-        // Verificar si hay resultados
-        // La API puede devolver directamente 'results' o tener un 'status'
-        final results = (data['results'] ?? data) as dynamic;
+        if (results.isNotEmpty) {
+          // Find best match
+          for (final item in results) {
+            final data = item as Map<String, dynamic>;
+            final syncedLyricsRaw = data['syncedLyrics'] as String?;
+            final resultTrackName = (data['trackName'] as String? ?? '')
+                .toLowerCase();
+            final resultArtistName = (data['artistName'] as String? ?? '')
+                .toLowerCase();
 
-        if (results is List && results.isNotEmpty) {
-          // Iterar sobre los resultados hasta encontrar uno con syncedLyrics
-          for (final result in results) {
-            // Intentar obtener syncedLyrics directamente o desde details
-            String? lrcContent;
+            // Similarity check
+            final searchTrack = cleanTrack.toLowerCase();
+            final searchArtist = cleanArtist.toLowerCase();
 
-            // Primero intentar desde details.syncedLyrics
-            if (result['details'] != null &&
-                result['details']['syncedLyrics'] != null) {
-              lrcContent = result['details']['syncedLyrics'] as String?;
-            }
-            // Si no está en details, intentar directamente en result
-            else if (result['syncedLyrics'] != null) {
-              lrcContent = result['syncedLyrics'] as String?;
-            }
+            final trackSimilarity = _calculateSimilarity(
+              resultTrackName,
+              searchTrack,
+            );
+            final artistSimilarity = _calculateSimilarity(
+              resultArtistName,
+              searchArtist,
+            );
 
-            // Verificar que no esté vacío
-            if (lrcContent == null || lrcContent.trim().isEmpty) continue;
+            final trackMatches =
+                resultTrackName == searchTrack || trackSimilarity > 0.5;
+            final artistMatches =
+                resultArtistName == searchArtist || artistSimilarity > 0.5;
 
-            // Crear objeto SyncedLyrics
+            if (!trackMatches || !artistMatches) continue;
+
+            if (syncedLyricsRaw == null || syncedLyricsRaw.trim().isEmpty)
+              continue;
+
+            // Parse existing model
             final lyrics = SyncedLyrics.fromLRC(
-              songTitle: title,
+              songTitle: title, // Keep original title
               artist: artist,
-              lrcContent: lrcContent,
+              lrcContent: syncedLyricsRaw,
             );
 
-            // Guardar en base de datos
-            await _storeLyrics(title, artist, lrcContent, notFound: false);
-
-            // Guardar en cache
+            await _storeLyrics(title, artist, syncedLyricsRaw, notFound: false);
             _cache[cacheKey] = lyrics;
-
-            _log.info(
-              'Lyrics descargados y guardados: $title - $artist (${lyrics.lineCount} líneas)',
-            );
+            _log.info('Lyrics found and saved for: $title');
             return lyrics;
           }
-
-          _log.warning(
-            'No se encontraron lyrics sincronizados en ${results.length} resultados para: $title - $artist',
-          );
-        } else {
-          _log.warning(
-            'Respuesta de API sin resultados para: $title - $artist',
-          );
         }
       }
 
-      // Marcar como no encontrado para no volver a intentar
+      // Try fallback with only title if artist fails
+      // ... (Simplified: just marking as not found for now to match current impl behavior)
+
       await _storeLyrics(title, artist, '', notFound: true);
-      _log.warning(
-        'No se encontraron lyrics para: $title - $artist (marcado como no encontrado)',
-      );
+      _log.warning('Lyrics not found for: $title');
       return null;
     } catch (e) {
       _log.warning('Error al obtener lyrics: $e');
@@ -175,10 +170,79 @@ class LyricsService {
     }
   }
 
+  /// Limpia el título
+  String _cleanTitle(String title) {
+    String clean = title;
+    clean = clean.replaceAll(
+      RegExp(r'\s*-\s*Remaster(ed)?\s*\d*', caseSensitive: false),
+      '',
+    );
+    clean = clean.replaceAll(
+      RegExp(r'\s*\(Remaster(ed)?\s*\d*\)', caseSensitive: false),
+      '',
+    );
+    clean = clean.replaceAll(
+      RegExp(r'\s*\[Remaster(ed)?\s*\d*\]', caseSensitive: false),
+      '',
+    );
+    clean = clean.replaceAll(
+      RegExp(r'\s*\(.*?(?:Remix|Version|Edit|Mix).*?\)', caseSensitive: false),
+      '',
+    );
+    clean = clean.replaceAll(
+      RegExp(r'\s*\[.*?(?:Remix|Version|Edit|Mix).*?\]', caseSensitive: false),
+      '',
+    );
+    clean = clean.replaceAll(
+      RegExp(
+        r'\s+(?:ft\.?|feat\.?|featuring|con|with)\s+.*',
+        caseSensitive: false,
+      ),
+      '',
+    );
+    return clean.trim();
+  }
+
+  /// Limpia el artista
+  String _cleanArtist(String artist) {
+    String clean = artist;
+    clean = clean.replaceAll(
+      RegExp(r'\s*-\s*Topic\s*$', caseSensitive: false),
+      '',
+    );
+    final match = RegExp(r'^([^,&]+)').firstMatch(clean);
+    if (match != null) {
+      clean = match.group(1) ?? clean;
+    }
+    return clean.trim();
+  }
+
+  /// Levenshtein similarity
+  double _calculateSimilarity(String s1, String s2) {
+    if (s1 == s2) return 1.0;
+    if (s1.isEmpty || s2.isEmpty) return 0.0;
+    final len1 = s1.length;
+    final len2 = s2.length;
+    final maxLen = len1 > len2 ? len1 : len2;
+    final matrix = List.generate(len1 + 1, (i) => List.filled(len2 + 1, 0));
+    for (var i = 0; i <= len1; i++) matrix[i][0] = i;
+    for (var j = 0; j <= len2; j++) matrix[0][j] = j;
+    for (var i = 1; i <= len1; i++) {
+      for (var j = 1; j <= len2; j++) {
+        final cost = s1[i - 1] == s2[j - 1] ? 0 : 1;
+        matrix[i][j] = [
+          matrix[i - 1][j] + 1,
+          matrix[i][j - 1] + 1,
+          matrix[i - 1][j - 1] + cost,
+        ].reduce((a, b) => a < b ? a : b);
+      }
+    }
+    return 1.0 - (matrix[len1][len2] / maxLen);
+  }
+
   /// Obtiene lyrics almacenados localmente
   Future<SyncedLyrics?> getStoredLyrics(String title, String artist) async {
     if (_database == null) await initialize();
-
     try {
       final results = await _database!.query(
         'lyrics',
@@ -186,7 +250,6 @@ class LyricsService {
         whereArgs: [title.toLowerCase(), artist.toLowerCase()],
         limit: 1,
       );
-
       if (results.isNotEmpty) {
         final row = results.first;
         final lrcContent = row['lrc_content'] as String?;
@@ -198,18 +261,14 @@ class LyricsService {
           );
         }
       }
-
       return null;
     } catch (e) {
-      _log.warning('Error al leer lyrics almacenados: $e');
       return null;
     }
   }
 
-  /// Verifica si ya se intentó descargar lyrics para esta canción
   Future<bool> wasAlreadyChecked(String title, String artist) async {
     if (_database == null) await initialize();
-
     try {
       final results = await _database!.query(
         'lyrics',
@@ -217,15 +276,12 @@ class LyricsService {
         whereArgs: [title.toLowerCase(), artist.toLowerCase()],
         limit: 1,
       );
-
       return results.isNotEmpty;
     } catch (e) {
-      _log.warning('Error al verificar si ya se revisó: $e');
       return false;
     }
   }
 
-  /// Almacena lyrics en la base de datos
   Future<void> _storeLyrics(
     String title,
     String artist,
@@ -233,7 +289,6 @@ class LyricsService {
     required bool notFound,
   }) async {
     if (_database == null) await initialize();
-
     try {
       await _database!.insert('lyrics', {
         'song_title': title,
@@ -247,89 +302,29 @@ class LyricsService {
     }
   }
 
-  /// Elimina lyrics de una canción
   Future<void> deleteLyrics(String title, String artist) async {
     if (_database == null) await initialize();
-
     try {
       await _database!.delete(
         'lyrics',
         where: 'LOWER(song_title) = ? AND LOWER(artist) = ?',
         whereArgs: [title.toLowerCase(), artist.toLowerCase()],
       );
-
-      // Eliminar del cache
-      final cacheKey = '${title.toLowerCase()}_${artist.toLowerCase()}';
-      _cache.remove(cacheKey);
-
-      _log.info('Lyrics eliminados: $title - $artist');
+      _cache.remove('${title.toLowerCase()}_${artist.toLowerCase()}');
     } catch (e) {
       _log.warning('Error al eliminar lyrics: $e');
     }
   }
 
-  /// Limpia el cache en memoria
-  void clearCache() {
-    _cache.clear();
-    _log.info('Cache de lyrics limpiado');
-  }
-
-  /// Limpia las entradas marcadas como "no encontrado" para permitir reintentar
-  Future<void> clearNotFoundEntries() async {
-    if (_database == null) await initialize();
-
-    try {
-      final count = await _database!.delete('lyrics', where: 'not_found = 1');
-      _log.info('Eliminadas $count entradas marcadas como no encontradas');
-    } catch (e) {
-      _log.warning('Error al limpiar entradas no encontradas: $e');
-    }
-  }
-
-  /// Elimina TODAS las lyrics descargadas (tanto encontradas como no encontradas)
   Future<int> clearAllLyrics() async {
     if (_database == null) await initialize();
-
     try {
       final count = await _database!.delete('lyrics');
       _cache.clear();
-      _log.info('Eliminadas TODAS las lyrics: $count entradas');
       return count;
     } catch (e) {
       _log.warning('Error al eliminar todas las lyrics: $e');
       return 0;
     }
-  }
-
-  /// Obtiene estadísticas
-  Future<Map<String, int>> getStats() async {
-    if (_database == null) await initialize();
-
-    try {
-      final successResult = await _database!.rawQuery(
-        'SELECT COUNT(*) as count FROM lyrics WHERE not_found = 0',
-      );
-      final successCount = Sqflite.firstIntValue(successResult) ?? 0;
-
-      final failedResult = await _database!.rawQuery(
-        'SELECT COUNT(*) as count FROM lyrics WHERE not_found = 1',
-      );
-      final failedCount = Sqflite.firstIntValue(failedResult) ?? 0;
-
-      return {
-        'totalLyrics': successCount,
-        'notFound': failedCount,
-        'cacheSize': _cache.length,
-      };
-    } catch (e) {
-      return {'totalLyrics': 0, 'notFound': 0, 'cacheSize': _cache.length};
-    }
-  }
-
-  /// Cierra la base de datos
-  Future<void> dispose() async {
-    await _database?.close();
-    _database = null;
-    _cache.clear();
   }
 }
