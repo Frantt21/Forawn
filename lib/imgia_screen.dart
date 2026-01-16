@@ -40,6 +40,7 @@ class ImageMessage {
   ImageMessage copyWith({
     String? prompt,
     String? ratio,
+    String? model,
     String? imageUrl,
     Uint8List? imageBytes,
     bool? isGenerating,
@@ -106,6 +107,7 @@ class _AiImageScreenState extends State<AiImageScreen> with WindowListener {
   final TextEditingController _promptController = TextEditingController();
   final ScrollController _scrollController = ScrollController();
   String _ratio = '16:9';
+  String _model = 'zimage';
   bool _loading = false;
   String? _saveFolder;
   SharedPreferences? _prefs;
@@ -118,10 +120,11 @@ class _AiImageScreenState extends State<AiImageScreen> with WindowListener {
   // Helper: GET seguro (similar a Spotify screen)
   Future<http.Response?> _safeGet(
     Uri uri, {
+    Map<String, String>? headers,
     Duration timeout = const Duration(seconds: 60),
   }) async {
     try {
-      final res = await _http.get(uri).timeout(timeout);
+      final res = await _http.get(uri, headers: headers).timeout(timeout);
       return res;
     } on TimeoutException catch (e, st) {
       debugPrint('[AiImageScreen] Timeout GET $uri: $e\n$st');
@@ -248,27 +251,27 @@ class _AiImageScreenState extends State<AiImageScreen> with WindowListener {
     );
   }
 
-  String _buildApiUrl(String prompt, String ratio) {
+  String _buildApiUrl(String prompt, String ratio, String model) {
     // Map ratio to dimensions
     int width = 1024;
     int height = 1024;
 
     switch (ratio) {
       case '16:9':
-        width = 1280;
-        height = 720;
+        width = 1920;
+        height = 1080;
         break;
       case '9:16':
-        width = 720;
-        height = 1280;
+        width = 1080;
+        height = 1920;
         break;
       case '4:3':
-        width = 1024;
-        height = 768;
+        width = 1536;
+        height = 2048;
         break;
       case '3:4':
-        width = 768;
-        height = 1024;
+        width = 2048;
+        height = 1536;
         break;
       case '9:19':
         width = 720;
@@ -283,7 +286,16 @@ class _AiImageScreenState extends State<AiImageScreen> with WindowListener {
 
     final encoded = Uri.encodeComponent(prompt);
     // Pollinations with zimage model and enhance=true for better quality
-    return '${ApiConfig.pollinationBaseUrl}/prompt/$encoded?width=$width&height=$height&nologo=true&model=zimage&enhance=true';
+    // Default model if unknown
+    String finalModel =
+        'flux'; // Default to flux if all else fails or unspecified
+    if (model == 'zimage') {
+      finalModel = 'zimage';
+    } else if (model == 'flux') {
+      finalModel = 'flux';
+    }
+
+    return '${ApiConfig.pollinationBaseUrl}/prompt/$encoded?width=$width&height=$height&nologo=true&model=$finalModel&seed=${DateTime.now().millisecondsSinceEpoch}&enhance=true&quality=hd';
   }
 
   Future<void> _generateImage() async {
@@ -323,7 +335,7 @@ class _AiImageScreenState extends State<AiImageScreen> with WindowListener {
 
     try {
       debugPrint('[AiImageScreen] Starting image generation...');
-      final url = _buildApiUrl(prompt, _ratio);
+      final url = _buildApiUrl(prompt, _ratio, _model);
       debugPrint('[AiImageScreen] Requesting: $url');
 
       // Pollinations returns the image bytes directly
@@ -778,53 +790,111 @@ class _AiImageScreenState extends State<AiImageScreen> with WindowListener {
                               ),
                               const SizedBox(height: 12),
                               // Selector de Aspect Ratio (Estilo Dropdown como en Translate)
-                              Container(
-                                height: 24,
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 8,
-                                ),
-                                decoration: BoxDecoration(
-                                  color: Colors.white.withOpacity(0.05),
-                                  borderRadius: BorderRadius.circular(10),
-                                ),
-                                child: DropdownButtonHideUnderline(
-                                  child: DropdownButton<String>(
-                                    value: _ratio,
-                                    dropdownColor: const Color(0xFF333333),
-                                    borderRadius: BorderRadius.circular(10),
-                                    focusColor: Colors.transparent,
-                                    icon: Padding(
-                                      padding: const EdgeInsets.only(left: 4),
-                                      child: Icon(
-                                        Icons.keyboard_arrow_down,
-                                        size: 14,
-                                        color: Colors.white.withOpacity(0.54),
+                              // Row container for Selectors
+                              Row(
+                                children: [
+                                  // Selector de Aspect Ratio
+                                  Container(
+                                    height: 24,
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 8,
+                                    ),
+                                    decoration: BoxDecoration(
+                                      color: Colors.white.withOpacity(0.05),
+                                      borderRadius: BorderRadius.circular(10),
+                                    ),
+                                    child: DropdownButtonHideUnderline(
+                                      child: DropdownButton<String>(
+                                        value: _ratio,
+                                        dropdownColor: const Color(0xFF333333),
+                                        borderRadius: BorderRadius.circular(10),
+                                        focusColor: Colors.transparent,
+                                        icon: Padding(
+                                          padding: const EdgeInsets.only(
+                                            left: 4,
+                                          ),
+                                          child: Icon(
+                                            Icons.keyboard_arrow_down,
+                                            size: 14,
+                                            color: Colors.white.withOpacity(
+                                              0.54,
+                                            ),
+                                          ),
+                                        ),
+                                        isDense: true,
+                                        style: const TextStyle(
+                                          color: Colors.white,
+                                          fontSize: 11,
+                                        ),
+                                        items:
+                                            [
+                                              '16:9',
+                                              '9:16',
+                                              '4:3',
+                                              '3:4',
+                                              '1:1',
+                                              '9:19',
+                                            ].map((r) {
+                                              return DropdownMenuItem<String>(
+                                                value: r,
+                                                child: Text(r),
+                                              );
+                                            }).toList(),
+                                        onChanged: (v) {
+                                          if (v != null)
+                                            setState(() => _ratio = v);
+                                        },
                                       ),
                                     ),
-                                    isDense: true,
-                                    style: const TextStyle(
-                                      color: Colors.white,
-                                      fontSize: 11,
+                                  ),
+                                  const SizedBox(width: 8),
+                                  // Model Selector
+                                  Container(
+                                    height: 24,
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 8,
                                     ),
-                                    items:
-                                        [
-                                          '16:9',
-                                          '9:16',
-                                          '4:3',
-                                          '3:4',
-                                          '1:1',
-                                          '9:19',
-                                        ].map((r) {
+                                    decoration: BoxDecoration(
+                                      color: Colors.white.withOpacity(0.05),
+                                      borderRadius: BorderRadius.circular(10),
+                                    ),
+                                    child: DropdownButtonHideUnderline(
+                                      child: DropdownButton<String>(
+                                        value: _model,
+                                        dropdownColor: const Color(0xFF333333),
+                                        borderRadius: BorderRadius.circular(10),
+                                        focusColor: Colors.transparent,
+                                        icon: Padding(
+                                          padding: const EdgeInsets.only(
+                                            left: 4,
+                                          ),
+                                          child: Icon(
+                                            Icons.keyboard_arrow_down,
+                                            size: 14,
+                                            color: Colors.white.withOpacity(
+                                              0.54,
+                                            ),
+                                          ),
+                                        ),
+                                        isDense: true,
+                                        style: const TextStyle(
+                                          color: Colors.white,
+                                          fontSize: 11,
+                                        ),
+                                        items: ['zimage', 'flux'].map((m) {
                                           return DropdownMenuItem<String>(
-                                            value: r,
-                                            child: Text(r),
+                                            value: m,
+                                            child: Text(m.toUpperCase()),
                                           );
                                         }).toList(),
-                                    onChanged: (v) {
-                                      if (v != null) setState(() => _ratio = v);
-                                    },
+                                        onChanged: (v) {
+                                          if (v != null)
+                                            setState(() => _model = v);
+                                        },
+                                      ),
+                                    ),
                                   ),
-                                ),
+                                ],
                               ),
                             ],
                           ),
