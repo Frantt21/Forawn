@@ -3,12 +3,12 @@ import 'dart:async';
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show Clipboard, ClipboardData;
-import 'package:http/http.dart' as http;
+
+import 'package:translator/translator.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:path/path.dart' as p;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:window_manager/window_manager.dart';
-import 'config/api_config.dart';
 
 typedef TextGetter = String Function(String key, {String? fallback});
 
@@ -92,9 +92,6 @@ class _TranslateScreenState extends State<TranslateScreen> with WindowListener {
   bool _isDraggingHandle = false;
   Timer? _debounce;
 
-  // Lightweight http client reuse
-  final http.Client _http = http.Client();
-
   @override
   void initState() {
     super.initState();
@@ -157,15 +154,6 @@ class _TranslateScreenState extends State<TranslateScreen> with WindowListener {
     return 'usa'; // Default to English
   }
 
-  // Build API URI using selected country key
-  Uri _buildApiUri(String text, String countryKey) {
-    final encoded = Uri.encodeComponent(text);
-    final c = Uri.encodeComponent(countryKey);
-    return Uri.parse(
-      '${ApiConfig.dorratzBaseUrl}/v3/translate?text=$encoded&country=$c',
-    );
-  }
-
   // Build localized labels map from keys using widget.getText with a 'country_' prefix
   void _buildCountryLabels() {
     final get = widget.getText;
@@ -199,6 +187,8 @@ class _TranslateScreenState extends State<TranslateScreen> with WindowListener {
         .join(' ');
   }
 
+  final _translator = GoogleTranslator();
+
   Future<void> _translate() async {
     final input = _inputController.text.trim();
     if (input.isEmpty) {
@@ -212,31 +202,62 @@ class _TranslateScreenState extends State<TranslateScreen> with WindowListener {
     });
 
     try {
-      final uri = _buildApiUri(input, _selectedCountryKey);
-      final res = await _http.get(uri).timeout(const Duration(seconds: 12));
-      if (res.statusCode != 200) throw Exception('HTTP ${res.statusCode}');
-      final text = res.body.trim();
+      // Map country keys to language codes if necessary, or use a better mapping
+      // For now, mapping known keys or using 'auto' for source
+      // If _selectedCountryKey corresponds to target language
+
+      String targetLang;
+      switch (_selectedCountryKey) {
+        case 'spain':
+          targetLang = 'es';
+          break;
+        case 'usa':
+          targetLang = 'en';
+          break;
+        case 'france':
+          targetLang = 'fr';
+          break;
+        case 'germany':
+          targetLang = 'de';
+          break;
+        case 'italy':
+          targetLang = 'it';
+          break;
+        case 'japan':
+          targetLang = 'ja';
+          break;
+        case 'korea':
+          targetLang = 'ko';
+          break;
+        case 'russia':
+          targetLang = 'ru';
+          break;
+        case 'china':
+          targetLang = 'zh-cn';
+          break;
+        case 'portuguese':
+          targetLang = 'pt';
+          break;
+        // Add other mappings as needed, default to english if unknown
+        default:
+          targetLang = 'en';
+      }
+
+      final translation = await _translator.translate(input, to: targetLang);
+
       if (!mounted) return;
       setState(() {
-        _translated = text;
+        _translated = translation.text;
       });
-    } on SocketException catch (e) {
-      debugPrint('[TranslateScreen] SocketException: $e');
-      // Silently handle network errors
-    } on HttpException catch (e) {
-      debugPrint('[TranslateScreen] HttpException: $e');
-      // Silently handle HTTP errors
     } catch (e) {
-      // Silently ignore connection closed errors during dispose
-      if (e.toString().contains('Connection closed') ||
-          e.toString().contains('Socket is closed')) {
-        debugPrint(
-          '[TranslateScreen] Connection closed (widget likely disposed)',
-        );
-        return;
-      }
+      debugPrint('[TranslateScreen] Error: $e');
       if (!mounted) return;
-      // Silently handle other errors
+      setState(() {
+        _translated = widget.getText(
+          'translate_error',
+          fallback: 'Translation error',
+        );
+      });
     } finally {
       if (!mounted) return;
       setState(() => _loading = false);

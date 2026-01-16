@@ -10,8 +10,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:typed_data';
 import 'package:window_manager/window_manager.dart';
 import 'package:uuid/uuid.dart';
-import 'config/api_config.dart';
 import 'widgets/elegant_notification.dart';
+import '../config/api_config.dart';
 
 typedef TextGetter = String Function(String key, {String? fallback});
 
@@ -249,9 +249,41 @@ class _AiImageScreenState extends State<AiImageScreen> with WindowListener {
   }
 
   String _buildApiUrl(String prompt, String ratio) {
+    // Map ratio to dimensions
+    int width = 1024;
+    int height = 1024;
+
+    switch (ratio) {
+      case '16:9':
+        width = 1280;
+        height = 720;
+        break;
+      case '9:16':
+        width = 720;
+        height = 1280;
+        break;
+      case '4:3':
+        width = 1024;
+        height = 768;
+        break;
+      case '3:4':
+        width = 768;
+        height = 1024;
+        break;
+      case '9:19':
+        width = 720;
+        height = 1520; // Approx
+        break;
+      case '1:1':
+      default:
+        width = 1024;
+        height = 1024;
+        break;
+    }
+
     final encoded = Uri.encodeComponent(prompt);
-    final r = Uri.encodeComponent(ratio);
-    return '${ApiConfig.dorratzBaseUrl}/v3/ai-image?prompt=$encoded&ratio=$r';
+    // Pollinations with zimage model and enhance=true for better quality
+    return '${ApiConfig.pollinationBaseUrl}/prompt/$encoded?width=$width&height=$height&nologo=true&model=zimage&enhance=true';
   }
 
   Future<void> _generateImage() async {
@@ -294,155 +326,43 @@ class _AiImageScreenState extends State<AiImageScreen> with WindowListener {
       final url = _buildApiUrl(prompt, _ratio);
       debugPrint('[AiImageScreen] Requesting: $url');
 
+      // Pollinations returns the image bytes directly
       final res = await _safeGet(Uri.parse(url));
 
       if (res == null) {
         throw Exception('Failed to connect to API');
       }
 
-      debugPrint('[AiImageScreen] Response status: ${res.statusCode}');
-      debugPrint('[AiImageScreen] Response body: ${res.body}');
-
       if (res.statusCode != 200) {
         throw Exception('HTTP ${res.statusCode}');
       }
 
-      // Parse JSON safely
-      final dynamic parsedJson = jsonDecode(res.body);
-      if (parsedJson is! Map<String, dynamic>) {
-        throw Exception(
-          'Invalid JSON structure: expected Map, got ${parsedJson.runtimeType}',
-        );
-      }
+      final imageBytes = res.bodyBytes;
+      // The URL IS the image source for Pollinations usually, but since we have the bytes we can save them
+      // For display, we can use the URL or the memory bytes.
+      // Using memory bytes ensures consistency with what was downloaded.
 
-      final parsed = parsedJson;
-
-      // Check for data field
-      if (!parsed.containsKey('data')) {
-        throw Exception('Missing "data" field in response');
-      }
-
-      final dynamic dataField = parsed['data'];
-      if (dataField is! Map<String, dynamic>) {
-        throw Exception(
-          'Invalid "data" field: expected Map, got ${dataField.runtimeType}',
-        );
-      }
-
-      final data = dataField;
-      final imageLink = data['image_link'] as String?;
-      final status = data['status'] as String?;
-
-      debugPrint('[AiImageScreen] Status: $status, Image link: $imageLink');
-
-      if (status != 'success' || imageLink == null || imageLink.isEmpty) {
-        throw Exception('API error: status=$status, imageLink=$imageLink');
-      }
-
-      // Download image bytes using safe GET
-      debugPrint('[AiImageScreen] Downloading image from: $imageLink');
-      final imgRes = await _safeGet(Uri.parse(imageLink));
-
-      if (imgRes == null) {
-        throw Exception('Failed to download image: network error');
-      }
-
-      if (imgRes.statusCode != 200) {
-        throw Exception('Image download failed: HTTP ${imgRes.statusCode}');
-      }
-
-      final imageBytes = imgRes.bodyBytes;
       debugPrint(
         '[AiImageScreen] Image downloaded successfully, size: ${imageBytes.length} bytes',
       );
 
-      if (!mounted) {
-        debugPrint('[AiImageScreen] Widget unmounted, aborting');
-        return;
-      }
-
-      try {
-        debugPrint('[AiImageScreen] Updating message state...');
-        setState(() {
-          final index = _messages.indexWhere((m) => m.id == messageId);
-          debugPrint('[AiImageScreen] Message index: $index');
-          if (index != -1) {
-            _messages[index] = _messages[index].copyWith(
-              imageUrl: imageLink,
-              imageBytes: imageBytes,
-              isGenerating: false,
-            );
-            debugPrint('[AiImageScreen] Message updated successfully');
-          }
-          _loading = false;
-        });
-
-        debugPrint('[AiImageScreen] State updated, scrolling...');
-        _scrollToBottom();
-
-        debugPrint('[AiImageScreen] Saving messages...');
-        await _saveMessages();
-        debugPrint('[AiImageScreen] Generation completed successfully!');
-      } catch (e, stackTrace) {
-        debugPrint('[AiImageScreen] Error in setState/save: $e');
-        debugPrint('[AiImageScreen] Stack trace: $stackTrace');
-        rethrow;
-      }
-    } on SocketException catch (e) {
-      debugPrint('[AiImageScreen] SocketException: $e');
       if (!mounted) return;
+
       setState(() {
         final index = _messages.indexWhere((m) => m.id == messageId);
         if (index != -1) {
           _messages[index] = _messages[index].copyWith(
+            imageUrl: url, // Save URL for reference or "open in browser"
+            imageBytes: imageBytes,
             isGenerating: false,
-            error: widget.getText('network_error', fallback: 'Network error'),
           );
         }
         _loading = false;
       });
-      _saveMessages();
-    } on HttpException catch (e) {
-      debugPrint('[AiImageScreen] HttpException: $e');
-      if (!mounted) return;
-      setState(() {
-        final index = _messages.indexWhere((m) => m.id == messageId);
-        if (index != -1) {
-          _messages[index] = _messages[index].copyWith(
-            isGenerating: false,
-            error: widget.getText('network_error', fallback: 'Network error'),
-          );
-        }
-        _loading = false;
-      });
-      _saveMessages();
-    } on TimeoutException catch (e) {
-      debugPrint('[AiImageScreen] TimeoutException: $e');
-      if (!mounted) return;
-      setState(() {
-        final index = _messages.indexWhere((m) => m.id == messageId);
-        if (index != -1) {
-          _messages[index] = _messages[index].copyWith(
-            isGenerating: false,
-            error: widget.getText(
-              'timeout_error',
-              fallback: 'La generación tardó demasiado. Intenta de nuevo.',
-            ),
-          );
-        }
-        _loading = false;
-      });
-      _saveMessages();
+
+      _scrollToBottom();
+      await _saveMessages();
     } catch (e) {
-      // Silently ignore connection closed errors during dispose
-      if (e.toString().contains('Connection closed') ||
-          e.toString().contains('Socket is closed')) {
-        debugPrint(
-          '[AiImageScreen] Connection closed (widget likely disposed)',
-        );
-        return;
-      }
-
       debugPrint('[AiImageScreen] Error: $e');
       if (!mounted) return;
 
@@ -820,34 +740,34 @@ class _AiImageScreenState extends State<AiImageScreen> with WindowListener {
                   // Input container with styled input
                   Container(
                     decoration: BoxDecoration(
-                      color: Theme.of(context).cardTheme.color,
-                      borderRadius: BorderRadius.circular(16),
-                      border: Border.all(color: Theme.of(context).dividerColor),
+                      color: const Color(0xFF2C2C2C), // Darker background
+                      borderRadius: BorderRadius.circular(24),
+                      border: Border.all(color: Colors.white.withOpacity(0.1)),
                     ),
-                    padding: const EdgeInsets.all(8),
-                    child: Column(
+                    padding: const EdgeInsets.fromLTRB(20, 10, 10, 10),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.end,
                       children: [
-                        Row(
-                          crossAxisAlignment: CrossAxisAlignment.end,
-                          children: [
-                            // Input de texto
-                            Expanded(
-                              child: TextField(
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              TextField(
                                 controller: _promptController,
-                                style: const TextStyle(fontSize: 15),
+                                style: const TextStyle(
+                                  fontSize: 15,
+                                  color: Colors.white,
+                                ),
                                 decoration: InputDecoration(
                                   hintText: get(
                                     'prompt_hint',
                                     fallback: 'Describe the image you want...',
                                   ),
-                                  hintStyle: Theme.of(
-                                    context,
-                                  ).inputDecorationTheme.hintStyle,
-                                  border: InputBorder.none,
-                                  contentPadding: const EdgeInsets.symmetric(
-                                    horizontal: 16,
-                                    vertical: 12,
+                                  hintStyle: TextStyle(
+                                    color: Colors.white.withOpacity(0.3),
                                   ),
+                                  border: InputBorder.none,
+                                  contentPadding: EdgeInsets.zero,
                                   isDense: true,
                                 ),
                                 minLines: 1,
@@ -856,107 +776,84 @@ class _AiImageScreenState extends State<AiImageScreen> with WindowListener {
                                   if (!_loading) _generateImage();
                                 },
                               ),
-                            ),
-
-                            // Botón enviar
-                            IconButton(
-                              onPressed: _loading
-                                  ? null
-                                  : () => _generateImage(),
-                              icon: _loading
-                                  ? const SizedBox(
-                                      width: 20,
-                                      height: 20,
-                                      child: CircularProgressIndicator(
-                                        strokeWidth: 2,
-                                        color: Colors.white,
-                                      ),
-                                    )
-                                  : const Icon(Icons.arrow_upward, size: 20),
-                              style: IconButton.styleFrom(
-                                backgroundColor: _loading
-                                    ? Colors.grey
-                                    : const Color.fromARGB(255, 255, 251, 18),
-                                foregroundColor: Colors.black87,
-                                padding: const EdgeInsets.all(8),
-                                minimumSize: const Size(36, 36),
-                                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                              ),
-                            ),
-                          ],
-                        ),
-
-                        // Barra inferior con selector de ratio
-                        Padding(
-                          padding: const EdgeInsets.only(
-                            top: 8,
-                            left: 8,
-                            right: 8,
-                          ),
-                          child: Row(
-                            children: [
+                              const SizedBox(height: 12),
+                              // Selector de Aspect Ratio (Estilo Dropdown como en Translate)
                               Container(
                                 height: 24,
                                 padding: const EdgeInsets.symmetric(
                                   horizontal: 8,
                                 ),
                                 decoration: BoxDecoration(
-                                  color: Theme.of(context).cardTheme.color,
+                                  color: Colors.white.withOpacity(0.05),
                                   borderRadius: BorderRadius.circular(10),
                                 ),
-                                child: Row(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    DropdownButton<String>(
-                                      value: _ratio,
-                                      underline: const SizedBox.shrink(),
-                                      dropdownColor:
-                                          Theme.of(context).brightness ==
-                                              Brightness.dark
-                                          ? const Color(0xFF1E1E1E)
-                                          : const Color(0xFFEEEEEE),
-                                      borderRadius: BorderRadius.circular(10),
-                                      focusColor: Colors
-                                          .transparent, // Evita el resaltado persistente
-                                      icon: Icon(
+                                child: DropdownButtonHideUnderline(
+                                  child: DropdownButton<String>(
+                                    value: _ratio,
+                                    dropdownColor: const Color(0xFF333333),
+                                    borderRadius: BorderRadius.circular(10),
+                                    focusColor: Colors.transparent,
+                                    icon: Padding(
+                                      padding: const EdgeInsets.only(left: 4),
+                                      child: Icon(
                                         Icons.keyboard_arrow_down,
                                         size: 14,
-                                        color: Theme.of(
-                                          context,
-                                        ).iconTheme.color?.withOpacity(0.54),
+                                        color: Colors.white.withOpacity(0.54),
                                       ),
-                                      isDense: true,
-                                      style: TextStyle(
-                                        color: Theme.of(
-                                          context,
-                                        ).textTheme.bodyLarge?.color,
-                                        fontSize: 11,
-                                      ),
-                                      items:
-                                          <String>[
-                                                '16:9',
-                                                '9:16',
-                                                '1:1',
-                                                '4:3',
-                                                '3:4',
-                                                '9:19',
-                                              ]
-                                              .map(
-                                                (r) => DropdownMenuItem(
-                                                  value: r,
-                                                  child: Text(r),
-                                                ),
-                                              )
-                                              .toList(),
-                                      onChanged: (v) {
-                                        if (v == null) return;
-                                        setState(() => _ratio = v);
-                                      },
                                     ),
-                                  ],
+                                    isDense: true,
+                                    style: const TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 11,
+                                    ),
+                                    items:
+                                        [
+                                          '16:9',
+                                          '9:16',
+                                          '4:3',
+                                          '3:4',
+                                          '1:1',
+                                          '9:19',
+                                        ].map((r) {
+                                          return DropdownMenuItem<String>(
+                                            value: r,
+                                            child: Text(r),
+                                          );
+                                        }).toList(),
+                                    onChanged: (v) {
+                                      if (v != null) setState(() => _ratio = v);
+                                    },
+                                  ),
                                 ),
                               ),
                             ],
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        // Botón enviar
+                        Container(
+                          margin: const EdgeInsets.only(bottom: 4),
+                          decoration: const BoxDecoration(
+                            color: Color(0xFFFFFF00), // Yellow
+                            shape: BoxShape.circle,
+                          ),
+                          child: IconButton(
+                            onPressed: _loading ? null : () => _generateImage(),
+                            icon: _loading
+                                ? const SizedBox(
+                                    width: 20,
+                                    height: 20,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                      color: Colors.black,
+                                    ),
+                                  )
+                                : const Icon(Icons.arrow_upward, size: 20),
+                            color: Colors.black,
+                            tooltip: widget.getText(
+                              'generate_button',
+                              fallback: 'Generate',
+                            ),
                           ),
                         ),
                       ],
