@@ -13,7 +13,6 @@ import 'screen/music_downloader_screen.dart';
 import 'screen/music_player_screen.dart';
 import 'settings.dart';
 import 'imgia_screen.dart';
-import 'r34.dart';
 import 'translate.dart';
 import 'package:path/path.dart' as p;
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
@@ -27,7 +26,7 @@ import 'screen/video_downloader.dart';
 import 'widgets/sidebar_navigation.dart';
 
 import 'screen/home_content.dart';
-import 'screen/foraai_screen.dart';
+
 import 'services/discord_service.dart';
 import 'services/global_music_player.dart';
 import 'services/local_music_database.dart';
@@ -452,7 +451,6 @@ class _HomeScreenState extends State<HomeScreen> with WindowListener {
   VoidCallback? _onFolderAction;
   List<String> _screenKeys = [];
   Map<String, Widget> _cachedScreens = {};
-  final GlobalKey<R34ScreenState> _r34Key = GlobalKey();
 
   @override
   void initState() {
@@ -471,11 +469,6 @@ class _HomeScreenState extends State<HomeScreen> with WindowListener {
       final enabled = prefs.getBool('nsfw_enabled') ?? false;
       if (!mounted) return;
 
-      if (!enabled && _recentScreens.contains('r34')) {
-        _recentScreens.remove('r34');
-        _saveRecentScreens(); // Async save
-      }
-
       setState(() {
         _nsfwEnabled = enabled;
         // Reinitialize screens with correct NSFW setting
@@ -488,11 +481,6 @@ class _HomeScreenState extends State<HomeScreen> with WindowListener {
     try {
       final prefs = await SharedPreferences.getInstance();
       final recents = prefs.getStringList('recent_screens') ?? [];
-      // Clean up recents if NSFW is disabled
-      final enabled = prefs.getBool('nsfw_enabled') ?? false;
-      if (!enabled) {
-        recents.remove('r34');
-      }
 
       if (!mounted) return;
       setState(() {
@@ -535,15 +523,6 @@ class _HomeScreenState extends State<HomeScreen> with WindowListener {
     // Actualizar Discord Rich Presence si está conectado
     if (DiscordService().isConnected) {
       DiscordService().updateScreenPresence(screenId);
-    }
-
-    if (screenId == 'r34') {
-      // Trigger check slightly after navigation to ensure view is ready
-      Future.delayed(const Duration(milliseconds: 300), () {
-        if (mounted && _currentScreen == 'r34') {
-          _r34Key.currentState?.checkWarning();
-        }
-      });
     }
   }
 
@@ -663,8 +642,6 @@ class _HomeScreenState extends State<HomeScreen> with WindowListener {
       'images',
       'translate',
       'qr',
-      'foraai',
-      'r34',
     ];
 
     _cachedScreens = {
@@ -708,24 +685,6 @@ class _HomeScreenState extends State<HomeScreen> with WindowListener {
         currentLang: widget.currentLangCode,
         onRegisterFolderAction: (action) => _registerFolderAction(action, 'qr'),
       ),
-      'foraai': ForaaiScreen(
-        getText: widget.getText,
-        currentLang: widget.currentLangCode,
-      ),
-      'r34': _nsfwEnabled
-          ? R34Screen(
-              key: _r34Key,
-              getText: widget.getText,
-              currentLang: widget.currentLangCode,
-              onRegisterFolderAction: (action) =>
-                  _registerFolderAction(action, 'r34'),
-              onNavigate: _handleNavigation,
-            )
-          : HomeContent(
-              getText: widget.getText,
-              recentScreens: _recentScreens,
-              onNavigate: _handleNavigation,
-            ),
     };
   }
 
@@ -788,10 +747,6 @@ class _HomeScreenState extends State<HomeScreen> with WindowListener {
         return widget.getText('translate_title', fallback: 'Traductor');
       case 'qr':
         return widget.getText('qr_title', fallback: 'Generador QR');
-      case 'foraai':
-        return widget.getText('foraai_title', fallback: 'ForaAI');
-      case 'r34':
-        return widget.getText('r34_title', fallback: 'R34 Buscador');
       default:
         return widget.getText('title', fallback: 'Forawn');
     }

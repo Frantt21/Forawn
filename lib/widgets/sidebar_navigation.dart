@@ -63,11 +63,6 @@ class _SidebarNavigationState extends State<SidebarNavigation> {
 
     _categories[widget.getText('ias_title', fallback: 'IAs')] = [
       NavigationItem(
-        id: 'foraai',
-        icon: Icons.auto_awesome,
-        label: widget.getText('foraai_title', fallback: 'ForaAI'),
-      ),
-      NavigationItem(
         id: 'images',
         icon: Icons.image,
         label: widget.getText('ai_image_title', fallback: 'Imágenes'),
@@ -96,16 +91,6 @@ class _SidebarNavigationState extends State<SidebarNavigation> {
         label: widget.getText('qr_title', fallback: 'Generador QR'),
       ),
     ];
-
-    if (widget.nsfwEnabled) {
-      _categories[widget.getText('others_title', fallback: 'Otros')] = [
-        NavigationItem(
-          id: 'r34',
-          icon: Icons.image_search,
-          label: widget.getText('r34_title', fallback: 'R34 Buscador'),
-        ),
-      ];
-    }
   }
 
   @override

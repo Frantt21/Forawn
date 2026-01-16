@@ -293,7 +293,6 @@ class DiscordService {
     // OPCIÓN 1: Nombres de Discord Developer Portal (Actual)
     final icons = {
       'Inicio': 'home_icon',
-      'ForaAI': 'ai_icon',
       'ImagesIA': 'image_icon',
       'Música': 'music_icon',
       'Reproductor': 'player_icon',
@@ -393,7 +392,6 @@ class DiscordService {
   Future<void> updateScreenPresence(String screenId) async {
     final screenNames = {
       'home': 'Inicio',
-      'foraai': 'ForaAI',
       'images': 'ImagesIA',
       'music': 'Música',
       'player': 'Reproductor',
@@ -401,7 +399,6 @@ class DiscordService {
       'notes': 'Notas',
       'translate': 'Traductor',
       'qr': 'Generador QR',
-      'r34': 'R34',
     };
 
     final screenName = screenNames[screenId] ?? screenId;
@@ -411,10 +408,6 @@ class DiscordService {
 
     // Personaliza el mensaje según la pantalla
     switch (screenId) {
-      case 'foraai':
-        details = 'Chateando con IA';
-        state = 'ForaAI';
-        break;
       case 'images':
         details = 'Generando imagenes';
         state = 'ImagesIA';
@@ -441,10 +434,6 @@ class DiscordService {
       case 'qr':
         details = 'Generando codigos QR';
         state = 'Generador QR';
-        break;
-      case 'r34':
-        details = 'Viendo cosas';
-        state = 'R34';
         break;
     }
 
