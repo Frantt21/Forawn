@@ -2731,9 +2731,12 @@ class _PlayerScreenState extends State<PlayerScreen> with WindowListener {
                     Stack(
                       alignment: Alignment.center,
                       children: [
-                        const Text(
-                          'Buscar Letra',
-                          style: TextStyle(
+                        Text(
+                          widget.getText(
+                            'search_lyrics_title',
+                            fallback: 'Buscar Letra',
+                          ),
+                          style: const TextStyle(
                             color: Colors.white,
                             fontSize: 18,
                             fontWeight: FontWeight.bold,
@@ -2761,7 +2764,10 @@ class _PlayerScreenState extends State<PlayerScreen> with WindowListener {
                         isDense: true,
                         filled: true,
                         fillColor: const Color(0xFF2C2C2E),
-                        hintText: 'Canción Artista...',
+                        hintText: widget.getText(
+                          'song_artist_hint',
+                          fallback: 'Canción Artista...',
+                        ),
                         hintStyle: const TextStyle(color: Colors.white38),
                         suffixIcon: IconButton(
                           icon: const Icon(
@@ -2798,17 +2804,23 @@ class _PlayerScreenState extends State<PlayerScreen> with WindowListener {
                               ),
                             )
                           : results == null
-                          ? const Center(
+                          ? Center(
                               child: Text(
-                                'Busca para ver resultados',
-                                style: TextStyle(color: Colors.white38),
+                                widget.getText(
+                                  'search_results_placeholder',
+                                  fallback: 'Busca para ver resultados',
+                                ),
+                                style: const TextStyle(color: Colors.white38),
                               ),
                             )
                           : results!.isEmpty
-                          ? const Center(
+                          ? Center(
                               child: Text(
-                                'No se encontraron resultados',
-                                style: TextStyle(color: Colors.white38),
+                                widget.getText(
+                                  'no_results_found',
+                                  fallback: 'No se encontraron resultados',
+                                ),
+                                style: const TextStyle(color: Colors.white38),
                               ),
                             )
                           : ListView.separated(

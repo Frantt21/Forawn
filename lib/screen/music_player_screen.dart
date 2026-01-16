@@ -66,13 +66,18 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen>
   final TextEditingController _searchController = TextEditingController();
 
   void _filterFiles(String query) {
+    final lowerQuery = query.toLowerCase().trim();
     setState(() {
-      if (query.isEmpty) {
+      if (lowerQuery.isEmpty) {
         _filteredFiles = _files;
       } else {
+        final tokens = lowerQuery
+            .split(RegExp(r'\s+'))
+            .where((t) => t.isNotEmpty);
         _filteredFiles = _files.where((file) {
           final name = p.basename(file.path).toLowerCase();
-          return name.contains(query.toLowerCase());
+          // Check if ALL tokens are present in the filename
+          return tokens.every((token) => name.contains(token));
         }).toList();
       }
     });
@@ -1165,13 +1170,18 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen>
 
               // Content
               Expanded(
-                child: IndexedStack(
-                  index: _tabIndex,
-                  children: [
-                    _buildHomeTab(),
-                    _buildLibraryTab(),
-                    _buildPlaylistsTab(),
-                  ],
+                child: AnimatedBuilder(
+                  animation: PlaylistService(),
+                  builder: (context, _) {
+                    return IndexedStack(
+                      index: _tabIndex,
+                      children: [
+                        _buildHomeTab(),
+                        _buildLibraryTab(),
+                        _buildPlaylistsTab(),
+                      ],
+                    );
+                  },
                 ),
               ),
               // Spacing for MiniPlayer removed to allow content to scroll behind

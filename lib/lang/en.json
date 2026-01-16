@@ -433,5 +433,11 @@
     "metadata_title": "Title",
     "metadata_artist": "Artist",
     "metadata_album": "Album",
-    "search": "Search"
+    "search": "Search",
+    "search_lyrics_title": "Search Lyrics",
+    "song_artist_hint": "Song Artist...",
+    "search_results_placeholder": "Search to see results",
+    "reload_library": "Reload library",
+    "library_reloaded": "Library reloaded",
+    "cancel_search": "Cancel"
 }
