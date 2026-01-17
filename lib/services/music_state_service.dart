@@ -65,9 +65,15 @@ class MusicStateService {
     _currentTitle = null;
     _currentArtist = null;
     _currentArtwork = null;
+    _thumbnailUrl = null;
     _isPlaying = false;
     _duration = null;
     _position = null;
+  }
+
+  /// Reinicia solo la URL del thumbnail (útil al cambiar de canción)
+  void resetThumbnailUrl() {
+    _thumbnailUrl = null;
   }
 
   /// Obtiene un texto formateado para mostrar en Discord

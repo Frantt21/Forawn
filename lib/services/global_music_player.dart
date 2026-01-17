@@ -9,6 +9,8 @@ import '../services/lyrics_service.dart';
 import '../models/synced_lyrics.dart';
 import '../models/song_model.dart';
 import 'local_music_database.dart';
+import 'music_state_service.dart';
+import 'discord_service.dart';
 
 enum LoopMode { off, all, one }
 
@@ -36,9 +38,31 @@ class GlobalMusicPlayer {
   Function(String filePath)? onMetadataNeeded;
 
   void _initGlobalListeners() {
+    // Escuchar cambios en metadatos para actualizar estado global y Discord
+    currentTitle.addListener(() {
+      MusicStateService().resetThumbnailUrl(); // Resetear thumbnail anterior
+      MusicStateService().updateMusicState(title: currentTitle.value);
+      DiscordService().updateMusicPresence();
+    });
+
+    currentArtist.addListener(() {
+      MusicStateService().updateMusicState(artist: currentArtist.value);
+      // No llamamos updateMusicPresence aquí porque suele cambiar junto con titulo
+    });
+
+    currentArt.addListener(() {
+      MusicStateService().updateMusicState(artwork: currentArt.value);
+    });
+
+    isPlaying.addListener(() {
+      MusicStateService().updateMusicState(isPlaying: isPlaying.value);
+      DiscordService().updateMusicPresence();
+    });
+
     // Estos listeners NUNCA se cancelan - son globales y persisten
     player.onPositionChanged.listen((pos) {
       position.value = pos;
+      MusicStateService().updateMusicState(position: pos);
 
       // NO guardar estado continuamente - solo en eventos importantes
       // (pausa, cambio de canción, cierre de app)
@@ -46,10 +70,12 @@ class GlobalMusicPlayer {
 
     player.onDurationChanged.listen((dur) {
       duration.value = dur;
+      MusicStateService().updateMusicState(duration: dur);
     });
 
     player.onPlayerStateChanged.listen((state) {
       final wasPlaying = isPlaying.value;
+      // isPlaying ValueNotifier se actualiza aquí, lo que disparará el listener de arriba
       isPlaying.value = state == PlayerState.playing;
 
       // Guardar estado SOLO cuando se pausa o detiene (eventos importantes)
