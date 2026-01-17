@@ -474,6 +474,16 @@ class _HomeScreenState extends State<HomeScreen> with WindowListener {
     });
   }
 
+  @override
+  void didUpdateWidget(HomeScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.currentLangCode != oldWidget.currentLangCode) {
+      setState(() {
+        _initializeScreens();
+      });
+    }
+  }
+
   Future<void> _loadNsfwPref() async {
     try {
       final prefs = await SharedPreferences.getInstance();

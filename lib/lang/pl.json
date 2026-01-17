@@ -377,6 +377,7 @@
     "no_song":  "Obecnie nie odtwarza się żadnych utworów.",
     "no_lyrics":  "Nie znaleziono tekstów utworu",
     "synchronize": "Synchronizuj",
+    "sync_lyrics": "Synchronizuj",
     "search_lyrics": "Szukaj tekstów",
     "remove_lyrics": "Usuń teksty",
     "add_favorites": "Dodaj do ulubionych",

@@ -377,6 +377,7 @@
     "no_song":  "Aucune chanson en cours de lecture",
     "no_lyrics":  "Aucune paroles trouvées",
     "synchronize": "Synchroniser",
+    "sync_lyrics": "Synchroniser",
     "search_lyrics": "Rechercher des paroles",
     "remove_lyrics": "Supprimer les paroles",
     "add_favorites": "Ajouter aux favoris",

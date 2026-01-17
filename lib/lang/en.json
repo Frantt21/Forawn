@@ -376,6 +376,7 @@
     "no_song":  "No Song Playing",
     "no_lyrics":  "No Lyrics Found",
     "synchronize": "Synchronize",
+    "sync_lyrics": "Synchronize",
     "search_lyrics": "Search lyrics",
     "remove_lyrics": "Remove lyrics",
     "add_favorites": "Add to favorites",

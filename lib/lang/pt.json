@@ -377,6 +377,7 @@
     "no_song":  "Nenhuma música selecionada",
     "no_lyrics":  "Nenhuma letra encontrada",
     "synchronize": "Sincronizar",
+    "sync_lyrics": "Sincronizar",
     "search_lyrics": "Pesquisar letras",
     "remove_lyrics": "Remover letras",
     "add_favorites": "Adicionar aos favoritos",

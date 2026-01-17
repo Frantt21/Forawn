@@ -377,6 +377,7 @@
     "no_song":  "曲が選択されていません",
     "no_lyrics":  "Lyricsが見つかりません",
     "synchronize": "同期",
+    "sync_lyrics": "同期",
     "search_lyrics": "歌詞を検索",
     "remove_lyrics": "歌詞を削除",
     "add_favorites": "お気に入りに追加",

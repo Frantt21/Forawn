@@ -377,6 +377,7 @@
     "no_song":  "현재 노래가 없습니다",
     "no_lyrics":  "가사가 없습니다",
     "synchronize": "동기화",
+    "sync_lyrics": "동기화",
     "search_lyrics": "가사 검색",
     "remove_lyrics": "가사 삭제",
     "add_favorites": "즐겨찾기에 추가",

@@ -376,6 +376,7 @@
     "no_song":  "当前没有歌曲",
     "no_lyrics":  "未找到歌词",
     "synchronize": "同步",
+    "sync_lyrics": "同步",
     "search_lyrics": "搜索歌词",
     "remove_lyrics": "删除歌词",
     "add_favorites": "添加到收藏",
