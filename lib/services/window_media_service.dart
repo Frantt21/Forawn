@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:smtc_windows/smtc_windows.dart';
@@ -18,6 +19,7 @@ class WindowMediaService {
   SMTCWindows? _smtc;
   final GlobalMusicPlayer _player = GlobalMusicPlayer();
   bool _initialized = false;
+  Timer? _debounceTimer; // Timer for debouncing metadata updates
 
   Future<void> initialize() async {
     debugPrint('[WindowMediaService] initialize() called');
@@ -124,9 +126,12 @@ class WindowMediaService {
     _updatePlaybackStatus();
   }
 
-  // Wrapper to handle async void listener
+  // Wrapper to handle async void listener with debounce
   void _onMetadataChanged() {
-    _updateMetadata();
+    _debounceTimer?.cancel();
+    _debounceTimer = Timer(const Duration(milliseconds: 100), () {
+      _updateMetadata();
+    });
   }
 
   Future<void> _updateMetadata() async {
@@ -214,6 +219,7 @@ class WindowMediaService {
   }
 
   void dispose() {
+    _debounceTimer?.cancel();
     if (_smtc != null) {
       _smtc!.dispose();
       _smtc = null;
