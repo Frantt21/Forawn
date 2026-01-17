@@ -3,6 +3,7 @@ import 'package:flutter/foundation.dart';
 import 'package:smtc_windows/smtc_windows.dart';
 import 'package:forawn/services/global_music_player.dart';
 import 'package:forawn/services/local_music_database.dart';
+import 'package:forawn/services/metadata_service.dart';
 import 'package:path/path.dart' as p;
 
 class WindowMediaService {
@@ -163,6 +164,16 @@ class WindowMediaService {
           finalThumbnailUri = Uri.file(thumbnailPath).toString();
         }
       }
+    }
+
+    // Try to fetch online artwork (Discord style)
+    try {
+      final metadata = await MetadataService().searchMetadata(title, artist);
+      if (metadata?.albumArtUrl != null && metadata!.albumArtUrl!.isNotEmpty) {
+        finalThumbnailUri = metadata.albumArtUrl;
+      }
+    } catch (e) {
+      debugPrint('[WindowMediaService] Error fetching online artwork: $e');
     }
 
     debugPrint(
