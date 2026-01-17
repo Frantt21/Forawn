@@ -570,6 +570,27 @@ class _SettingsScreenState extends State<SettingsScreen> with WindowListener {
                             },
                           ),
                         ),
+                        Divider(height: 1, color: currentTheme.dividerColor),
+                        _SettingsTile(
+                          leadingIcon: Icons.delete_forever,
+                          leadingColor: Colors.orangeAccent,
+                          title: get(
+                            'reset_app_data',
+                            fallback: 'Restablecer datos de la App',
+                          ),
+                          subtitle: get(
+                            'reset_app_data_sub',
+                            fallback:
+                                'Borra configuraciones y preferencias (requiere reinicio)',
+                          ),
+                          trailing: IconButton(
+                            icon: const Icon(
+                              Icons.restore_page,
+                              color: Colors.orangeAccent,
+                            ),
+                            onPressed: _resetAppData,
+                          ),
+                        ),
                       ],
                     ),
 
@@ -670,6 +691,72 @@ class _SettingsScreenState extends State<SettingsScreen> with WindowListener {
         showElegantNotification(
           context,
           widget.getText('error', fallback: 'Error al borrar lyrics'),
+          backgroundColor: Colors.red,
+          textColor: Colors.white,
+          icon: Icons.error,
+        );
+      }
+    }
+  }
+
+  Future<void> _resetAppData() async {
+    // Confirm with user
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: const Color(0xFF1C1C1E),
+        title: Text(
+          widget.getText('confirm_reset_data', fallback: 'Restablecer Datos'),
+          style: const TextStyle(color: Colors.white),
+        ),
+        content: Text(
+          widget.getText(
+            'confirm_reset_data_desc',
+            fallback:
+                'Esta acción borrará todas las configuraciones, historial y preferencias. ¿Estás seguro?',
+          ),
+          style: const TextStyle(color: Colors.white70),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: Text(widget.getText('cancel', fallback: 'Cancelar')),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.orangeAccent,
+            ),
+            onPressed: () => Navigator.pop(context, true),
+            child: Text(widget.getText('reset', fallback: 'Restablecer')),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true) return;
+
+    try {
+      _prefs ??= await SharedPreferences.getInstance();
+      await _prefs!.clear();
+
+      if (mounted) {
+        showElegantNotification(
+          context,
+          widget.getText(
+            'data_reset_success',
+            fallback: 'Datos borrados. Reinicia la aplicación.',
+          ),
+          backgroundColor: Colors.green,
+          textColor: Colors.white,
+          icon: Icons.check,
+          duration: const Duration(seconds: 5),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        showElegantNotification(
+          context,
+          widget.getText('error', fallback: 'Error al borrar datos'),
           backgroundColor: Colors.red,
           textColor: Colors.white,
           icon: Icons.error,

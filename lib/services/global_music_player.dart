@@ -70,9 +70,14 @@ class GlobalMusicPlayer {
     });
   }
 
+  SharedPreferences? _prefs;
+
   Future<void> _loadPreferences() async {
     try {
-      final prefs = await SharedPreferences.getInstance();
+      _prefs = await SharedPreferences.getInstance();
+      // Usar _prefs! es seguro aquí
+      final prefs = _prefs!;
+
       final savedLoopMode = prefs.getString('loopMode') ?? 'off';
       final savedShuffle = prefs.getBool('isShuffle') ?? false;
       final savedVolume = prefs.getDouble('volume') ?? 1.0;
@@ -94,7 +99,7 @@ class GlobalMusicPlayer {
 
   Future<void> saveLoopMode(LoopMode mode) async {
     try {
-      final prefs = await SharedPreferences.getInstance();
+      final prefs = _prefs ?? await SharedPreferences.getInstance();
       await prefs.setString('loopMode', mode.toString().split('.').last);
     } catch (e) {
       debugPrint('[GlobalMusicPlayer] Error saving loopMode: $e');
@@ -103,7 +108,7 @@ class GlobalMusicPlayer {
 
   Future<void> saveShuffle(bool value) async {
     try {
-      final prefs = await SharedPreferences.getInstance();
+      final prefs = _prefs ?? await SharedPreferences.getInstance();
       await prefs.setBool('isShuffle', value);
     } catch (e) {
       debugPrint('[GlobalMusicPlayer] Error saving shuffle: $e');
@@ -112,7 +117,7 @@ class GlobalMusicPlayer {
 
   Future<void> saveVolume(double value) async {
     try {
-      final prefs = await SharedPreferences.getInstance();
+      final prefs = _prefs ?? await SharedPreferences.getInstance();
       await prefs.setDouble('volume', value);
     } catch (e) {
       debugPrint('[GlobalMusicPlayer] Error saving volume: $e');
@@ -168,7 +173,7 @@ class GlobalMusicPlayer {
     }
 
     try {
-      final prefs = await SharedPreferences.getInstance();
+      final prefs = _prefs ?? await SharedPreferences.getInstance();
       final folder = prefs.getString('download_folder');
 
       if (folder == null || folder.isEmpty) {
@@ -264,7 +269,10 @@ class GlobalMusicPlayer {
     _hasPendingSave = false;
 
     try {
-      final prefs = await SharedPreferences.getInstance();
+      // Usar instancia cacheada o obtener una nueva si es necesario
+      final prefs = _prefs ?? await SharedPreferences.getInstance();
+      _prefs = prefs; // Actualizar cache
+
       final currentPosition = position.value;
 
       final batch = <String, dynamic>{
@@ -307,7 +315,8 @@ class GlobalMusicPlayer {
   /// Cargar estado guardado del reproductor
   Future<void> loadPlayerState() async {
     try {
-      final prefs = await SharedPreferences.getInstance();
+      final prefs = _prefs ?? await SharedPreferences.getInstance();
+      _prefs = prefs;
 
       final savedIndex = prefs.getInt('player_current_index') ?? -1;
       final savedPath = prefs.getString('player_current_path') ?? '';
@@ -422,7 +431,7 @@ class GlobalMusicPlayer {
     // Guardar preferencia de showLyrics
     showLyrics.addListener(() async {
       try {
-        final prefs = await SharedPreferences.getInstance();
+        final prefs = _prefs ?? await SharedPreferences.getInstance();
         await prefs.setBool('lyricsVisible', showLyrics.value);
       } catch (e) {
         debugPrint('[GlobalMusicPlayer] Error saving lyrics visible: $e');

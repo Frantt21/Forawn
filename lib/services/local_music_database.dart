@@ -31,7 +31,7 @@ class LocalMusicDatabase extends ChangeNotifier {
 
       _database = await openDatabase(
         path,
-        version: 1,
+        version: 2,
         onCreate: (db, version) async {
           // Tabla de metadatos
           await db.execute('''
@@ -69,10 +69,37 @@ class LocalMusicDatabase extends ChangeNotifier {
             )
           ''');
 
+          // Tabla de historial de reproducción
+          await db.execute('''
+            CREATE TABLE play_history (
+              id INTEGER PRIMARY KEY AUTOINCREMENT,
+              file_path TEXT NOT NULL,
+              played_at INTEGER NOT NULL
+            )
+          ''');
+
           // Índices para búsquedas rápidas
           await db.execute('CREATE INDEX idx_title ON metadata(title)');
           await db.execute('CREATE INDEX idx_artist ON metadata(artist)');
           await db.execute('CREATE INDEX idx_album ON metadata(album)');
+          await db.execute(
+            'CREATE INDEX idx_history_time ON play_history(played_at DESC)',
+          );
+        },
+        onUpgrade: (db, oldVersion, newVersion) async {
+          if (oldVersion < 2) {
+            // Migración a v2: Crear tabla de historial
+            await db.execute('''
+              CREATE TABLE play_history (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                file_path TEXT NOT NULL,
+                played_at INTEGER NOT NULL
+              )
+            ''');
+            await db.execute(
+              'CREATE INDEX idx_history_time ON play_history(played_at DESC)',
+            );
+          }
         },
       );
 
@@ -411,6 +438,88 @@ class LocalMusicDatabase extends ChangeNotifier {
     } catch (e) {
       debugPrint('[LocalMusicDB] Error getting stats: $e');
       return {};
+    }
+  }
+
+  /// --- HISTORY MANAGEMENT ---
+
+  /// Agregar canción al historial
+  Future<void> addToHistory(String filePath) async {
+    if (!_isInitialized) await initialize();
+    try {
+      // Eliminar si ya existe recientemente (para evitar duplicados inmediatos)
+      // Opcional: Podríamos dejar duplicados si queremos historial exacto
+      // Vamos a eliminar duplicados de la misma canción para no saturar
+      /*
+      await _database!.delete(
+        'play_history',
+        where: 'file_path = ?',
+        whereArgs: [filePath],
+      );
+      */
+
+      await _database!.insert('play_history', {
+        'file_path': filePath,
+        'played_at': DateTime.now().millisecondsSinceEpoch,
+      });
+
+      // Limpieza automática: Mantener solo últimos 1000
+      // Se puede ejecutar periódicamente o aquí
+      // _trimHistory();
+    } catch (e) {
+      debugPrint('[LocalMusicDB] Error adding to history: $e');
+    }
+  }
+
+  /// Obtener historial completo (o paginado)
+  Future<List<String>> getHistory({int limit = 50}) async {
+    if (!_isInitialized) await initialize();
+    try {
+      final results = await _database!.query(
+        'play_history',
+        orderBy: 'played_at DESC',
+        limit: limit,
+      );
+
+      return results.map((e) => e['file_path'] as String).toList();
+    } catch (e) {
+      debugPrint('[LocalMusicDB] Error getting history: $e');
+      return [];
+    }
+  }
+
+  /// Borrar canción específica del historial (usado al retroceder)
+  Future<void> removeFromHistory(String filePath) async {
+    if (!_isInitialized) await initialize();
+    try {
+      // Borrar la entrada más reciente de esa canción
+      // Esto es un poco complejo en SQL puro sin ID, pero podemos usar subquery
+      // DELETE FROM play_history WHERE id = (SELECT id FROM play_history WHERE file_path = ? ORDER BY played_at DESC LIMIT 1)
+
+      await _database!.rawDelete(
+        '''
+        DELETE FROM play_history 
+        WHERE id = (
+          SELECT id FROM play_history 
+          WHERE file_path = ? 
+          ORDER BY played_at DESC 
+          LIMIT 1
+        )
+      ''',
+        [filePath],
+      );
+    } catch (e) {
+      debugPrint('[LocalMusicDB] Error removing from history: $e');
+    }
+  }
+
+  /// Limpiar historial
+  Future<void> clearHistoryOnly() async {
+    if (!_isInitialized) await initialize();
+    try {
+      await _database!.delete('play_history');
+    } catch (e) {
+      debugPrint('[LocalMusicDB] Error clearing history: $e');
     }
   }
 

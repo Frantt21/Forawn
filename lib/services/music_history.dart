@@ -1,6 +1,5 @@
 import 'dart:io';
-import 'dart:convert';
-import 'package:shared_preferences/shared_preferences.dart';
+import 'local_music_database.dart';
 
 class MusicHistory {
   static final MusicHistory _instance = MusicHistory._internal();
@@ -13,35 +12,21 @@ class MusicHistory {
     _loadHistory();
   }
 
-  final List<String> _history = []; // Lista de rutas de archivos
-  static const int maxHistorySize = 20;
-  static const String _prefsKey = 'music_history';
+  // Mantenemos una copia en memoria para acceso síncrono rápido (ej. botón 'atrás')
+  final List<String> _history = [];
+  static const int maxHistorySize = 50; // Aumentado ya que SQL aguanta más
 
-  /// Cargar historial desde SharedPreferences
+  /// Cargar historial desde Base de Datos Local (SQLite)
   Future<void> _loadHistory() async {
     try {
-      final prefs = await SharedPreferences.getInstance();
-      final historyJson = prefs.getString(_prefsKey);
-      if (historyJson != null) {
-        final decoded = jsonDecode(historyJson) as List;
-        _history.clear();
-        _history.addAll(decoded.cast<String>());
-        print('[MusicHistory] Loaded history: ${_history.length} songs');
-      }
+      final dbHistory = await LocalMusicDatabase().getHistory(
+        limit: maxHistorySize,
+      );
+      _history.clear();
+      _history.addAll(dbHistory);
+      print('[MusicHistory] Loaded history from DB: ${_history.length} songs');
     } catch (e) {
       print('[MusicHistory] Error loading history: $e');
-    }
-  }
-
-  /// Guardar historial en SharedPreferences
-  Future<void> _saveHistory() async {
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      final encoded = jsonEncode(_history);
-      await prefs.setString(_prefsKey, encoded);
-      print('[MusicHistory] Saved history: ${_history.length} songs');
-    } catch (e) {
-      print('[MusicHistory] Error saving history: $e');
     }
   }
 
@@ -49,29 +34,23 @@ class MusicHistory {
   /// Se llama cuando se EMPIEZA a reproducir (desde _playFile)
   void addToHistory(File file) {
     final path = file.path;
-    
-    // Si la canción ya está al principio, no hacer nada
+
+    // Si la canción ya está al principio, no hacer nada (evita duplicados consecutivos)
     if (_history.isNotEmpty && _history.first == path) {
-      print('[MusicHistory] Song already at top of history');
       return;
     }
 
-    // Remover duplicados del historial
+    // En memoria: Remover si ya existe para moverlo al principio
     _history.removeWhere((p) => p == path);
-
-    // Agregar al inicio (más reciente)
     _history.insert(0, path);
-    
-    print('[MusicHistory] Added to history: $path');
-    print('[MusicHistory] History: ${_history.take(3).toList()}');
 
-    // Mantener máximo de 20 canciones
+    // Mantener límite en memoria
     if (_history.length > maxHistorySize) {
       _history.removeLast();
     }
-    
-    // Guardar en persistencia
-    _saveHistory();
+
+    // Persistencia: Guardar en SQLite (Fire & Forget)
+    LocalMusicDatabase().addToHistory(path);
   }
 
   /// Obtener la canción anterior en el historial y eliminarla
@@ -82,22 +61,21 @@ class MusicHistory {
       return null;
     }
 
-    // La canción actual es la primera, eliminarla
+    // 1. La "actual" es la primera (índice 0). La eliminamos del historial
+    // porque estamos yendo "hacia atrás", es decir, deshaciendo la navegación.
+    final currentPath = _history[0];
     _history.removeAt(0);
-    print('[MusicHistory] Removed current from history');
-    
-    // La nueva canción actual es la que está ahora al frente
+
+    // Eliminar de DB también
+    LocalMusicDatabase().removeFromHistory(currentPath);
+
+    // 2. La "anterior" es ahora la nueva primera (índice 0)
     if (_history.isNotEmpty) {
       final previousPath = _history.first;
       print('[MusicHistory] Going back to: $previousPath');
-      print('[MusicHistory] History after go back: ${_history.take(3).toList()}');
-      
-      // Guardar cambios
-      _saveHistory();
-      
       return File(previousPath);
     }
-    
+
     return null;
   }
 
@@ -109,8 +87,7 @@ class MusicHistory {
   /// Limpiar historial
   Future<void> clearHistory() async {
     _history.clear();
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.remove(_prefsKey);
+    await LocalMusicDatabase().clearHistoryOnly();
     print('[MusicHistory] History cleared');
   }
 
