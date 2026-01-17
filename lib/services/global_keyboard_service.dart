@@ -208,11 +208,9 @@ class GlobalKeyboardService {
     // Media Previous (tecla multimedia nativa) o F9
     if (physicalKey == PhysicalKeyboardKey.mediaTrackPrevious ||
         logicalKey == LogicalKeyboardKey.f9) {
-      // Si hay callback registrado, usarlo (primeros music_player_screen)
       if (_playPreviousCallback != null) {
         _playPreviousCallback!.call();
       } else {
-        // Fallback: usar lógica de GlobalKeyboardService
         _handlePreviousTrack();
       }
       return;
@@ -221,11 +219,9 @@ class GlobalKeyboardService {
     // Media Play/Pause (tecla multimedia nativa) o F10
     if (physicalKey == PhysicalKeyboardKey.mediaPlayPause ||
         logicalKey == LogicalKeyboardKey.f10) {
-      // Si hay callback registrado, usarlo
       if (_togglePlayPauseCallback != null) {
         _togglePlayPauseCallback!.call();
       } else {
-        // Fallback: usar lógica de GlobalKeyboardService
         _handlePlayPause();
       }
       return;
@@ -234,11 +230,9 @@ class GlobalKeyboardService {
     // Media Next (tecla multimedia nativa) o F11
     if (physicalKey == PhysicalKeyboardKey.mediaTrackNext ||
         logicalKey == LogicalKeyboardKey.f11) {
-      // Si hay callback registrado, usarlo
       if (_playNextCallback != null) {
         _playNextCallback!.call();
       } else {
-        // Fallback: usar lógica de GlobalKeyboardService
         _handleNextTrack();
       }
       return;

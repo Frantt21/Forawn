@@ -430,6 +430,21 @@ class LocalMusicDatabase extends ChangeNotifier {
     return artworksDir;
   }
 
+  /// Obtener ruta del archivo de artwork en disco (si existe)
+  Future<String?> getCachedArtworkPath(String filePath) async {
+    final metadata = await getMetadata(filePath);
+    if (metadata?.artworkHash != null) {
+      final artworksDir = await _getArtworksDirectory();
+      final file = File(
+        p.join(artworksDir.path, '${metadata!.artworkHash}.jpg'),
+      );
+      if (await file.exists()) {
+        return file.path;
+      }
+    }
+    return null;
+  }
+
   /// Precargar metadatos de múltiples archivos en batch
   Future<void> preloadBatch(
     List<String> filePaths, {

@@ -30,6 +30,7 @@ import 'screen/home_content.dart';
 import 'services/discord_service.dart';
 import 'services/global_music_player.dart';
 import 'services/local_music_database.dart';
+import 'services/window_media_service.dart';
 
 const String kDefaultLangCode = 'en';
 const _prefEffectKey = 'window_effect';
@@ -131,6 +132,16 @@ Future<void> main() async {
     debugPrint('[Main] LocalMusicDatabase initialized');
   } catch (e) {
     debugPrint('[Main] Error initializing LocalMusicDatabase: $e');
+  }
+
+  // Inicializar servicio SMTC de Windows
+  if (Platform.isWindows) {
+    try {
+      await WindowMediaService().initialize();
+      debugPrint('[Main] WindowMediaService (SMTC) initialized');
+    } catch (e) {
+      debugPrint('[Main] Error initializing WindowMediaService: $e');
+    }
   }
 
   runApp(ForawnAppRoot(initialLangCode: currentLang, initialLangMap: lang));
