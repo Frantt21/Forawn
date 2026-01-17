@@ -213,6 +213,18 @@ class GlobalMusicPlayer {
     }
   }
 
+  /// Refrescar metadatos de la canción actual (usado tras editar tags)
+  Future<void> verifyCurrentSongMetadata() async {
+    if (currentFilePath.value.isEmpty) return;
+
+    debugPrint('[GlobalMusicPlayer] Verifying current song metadata...');
+
+    // Forzamos la recarga usando el callback si existe (MusicPlayerScreen lo setea)
+    if (onMetadataNeeded != null) {
+      onMetadataNeeded!(currentFilePath.value);
+    }
+  }
+
   /// Cargar librería desde una carpeta específica
   Future<void> loadLibraryFromFolder(String folderPath) async {
     debugPrint('[GlobalMusicPlayer] Loading library from: $folderPath');

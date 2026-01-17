@@ -19,6 +19,10 @@ class LocalMusicDatabase extends ChangeNotifier {
   final Map<String, SongMetadata> _metadataCache = {};
   final Map<String, Color> _colorCache = {};
 
+  // Mapas para deduplicación de solicitudes concurrentes
+  final Map<String, Future<SongMetadata?>> _pendingMetadataRequests = {};
+  final Map<String, Future<Color?>> _pendingColorRequests = {};
+
   bool _isInitialized = false;
 
   /// Inicializar la base de datos
@@ -121,32 +125,84 @@ class LocalMusicDatabase extends ChangeNotifier {
       return _metadataCache[filePath];
     }
 
-    // 2. Verificar base de datos
+    // 2. Deduplicación de solicitudes pendientes
+    if (_pendingMetadataRequests.containsKey(filePath)) {
+      return _pendingMetadataRequests[filePath];
+    }
+
+    // 3. Crear Future para DB y File
+    final future = () async {
+      // Verificar base de datos
+      try {
+        final result = await _database!.query(
+          'metadata',
+          where: 'file_path = ?',
+          whereArgs: [filePath],
+          limit: 1,
+        );
+
+        if (result.isNotEmpty) {
+          final metadata = SongMetadata.fromMap(result.first);
+
+          // Cargar artwork si existe
+          if (metadata.artworkHash != null) {
+            metadata.artwork = await _loadArtwork(metadata.artworkHash!);
+          }
+
+          _metadataCache[filePath] = metadata;
+          return metadata;
+        }
+      } catch (e) {
+        debugPrint('[LocalMusicDB] Error reading from database: $e');
+      }
+
+      // Cargar desde archivo (si no estaba en DB)
+      return await _loadAndCacheMetadata(filePath);
+    }();
+
+    _pendingMetadataRequests[filePath] = future;
+
     try {
-      final result = await _database!.query(
+      return await future;
+    } finally {
+      _pendingMetadataRequests.remove(filePath);
+    }
+  }
+
+  /// Invalidar metadatos de un archivo (caché y DB)
+  /// Usar cuando se actualizan los tags del archivo
+  Future<void> invalidateMetadata(String filePath) async {
+    if (!_isInitialized) await initialize();
+
+    // 1. Limpiar caché en memoria
+    _metadataCache.remove(filePath);
+    _colorCache.remove(filePath);
+
+    // 2. Eliminar de la base de datos para forzar recarga
+    try {
+      await _database!.delete(
         'metadata',
         where: 'file_path = ?',
         whereArgs: [filePath],
-        limit: 1,
       );
 
-      if (result.isNotEmpty) {
-        final metadata = SongMetadata.fromMap(result.first);
+      // También podríamos querer eliminar de 'colors' si se usa FK cascade
+      // Pero si no, asegurarse de borrar
+      await _database!.delete(
+        'colors',
+        where: 'file_path = ?',
+        whereArgs: [filePath],
+      );
 
-        // Cargar artwork si existe
-        if (metadata.artworkHash != null) {
-          metadata.artwork = await _loadArtwork(metadata.artworkHash!);
-        }
+      debugPrint(
+        '[LocalMusicDB] Metadata invalidated for: ${p.basename(filePath)}',
+      );
 
-        _metadataCache[filePath] = metadata;
-        return metadata;
-      }
+      // 3. Notificar cambios para que UI reactiva se actualice
+      notifyListeners();
     } catch (e) {
-      debugPrint('[LocalMusicDB] Error reading from database: $e');
+      debugPrint('[LocalMusicDB] Error invalidating metadata: $e');
     }
-
-    // 3. Cargar desde archivo (primera vez)
-    return await _loadAndCacheMetadata(filePath);
   }
 
   /// Obtener color dominante de una canción
@@ -159,32 +215,48 @@ class LocalMusicDatabase extends ChangeNotifier {
       return _colorCache[filePath];
     }
 
-    // 2. Verificar base de datos
-    try {
-      final result = await _database!.query(
-        'colors',
-        where: 'file_path = ?',
-        whereArgs: [filePath],
-        limit: 1,
-      );
+    // 2. Deduplicación de solicitudes pendientes
+    if (_pendingColorRequests.containsKey(filePath)) {
+      return _pendingColorRequests[filePath];
+    }
 
-      if (result.isNotEmpty) {
-        final colorValue = result.first['dominant_color'] as int;
-        final color = Color(colorValue);
-        _colorCache[filePath] = color;
-        return color;
+    // 3. Crear Future para DB y Extracción
+    final future = () async {
+      // Verificar base de datos
+      try {
+        final result = await _database!.query(
+          'colors',
+          where: 'file_path = ?',
+          whereArgs: [filePath],
+          limit: 1,
+        );
+
+        if (result.isNotEmpty) {
+          final colorValue = result.first['dominant_color'] as int;
+          final color = Color(colorValue);
+          _colorCache[filePath] = color;
+          return color;
+        }
+      } catch (e) {
+        debugPrint('[LocalMusicDB] Error reading color from database: $e');
       }
-    } catch (e) {
-      debugPrint('[LocalMusicDB] Error reading color from database: $e');
-    }
 
-    // 3. Extraer del artwork (primera vez)
-    final metadata = await getMetadata(filePath);
-    if (metadata?.artwork != null) {
-      return await _extractAndCacheColor(filePath, metadata!.artwork!);
-    }
+      // Extraer del artwork (si no estaba en DB)
+      final metadata = await getMetadata(filePath);
+      if (metadata?.artwork != null) {
+        return await _extractAndCacheColor(filePath, metadata!.artwork!);
+      }
 
-    return null;
+      return null;
+    }();
+
+    _pendingColorRequests[filePath] = future;
+
+    try {
+      return await future;
+    } finally {
+      _pendingColorRequests.remove(filePath);
+    }
   }
 
   /// Cargar metadatos desde el archivo y guardarlos en la DB

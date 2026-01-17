@@ -13,6 +13,7 @@ import '../services/global_music_player.dart';
 import '../services/music_history.dart';
 
 import '../services/global_theme_service.dart';
+import '../services/local_music_database.dart';
 import '../models/synced_lyrics.dart';
 
 import 'lyrics_display_widget.dart';
@@ -538,7 +539,18 @@ class _PlayerScreenState extends State<PlayerScreen> with WindowListener {
                               backgroundColor: Colors.green,
                             ),
                           );
+
+                          // Invalidar caché de BD local para obligar a leer cambios del archivo
+                          await LocalMusicDatabase().invalidateMetadata(
+                            filePath,
+                          );
+
                           await GlobalMusicPlayer().refreshLibrary();
+                          // Forzar actualización de UI para la canción actual
+                          if (mounted) {
+                            await GlobalMusicPlayer()
+                                .verifyCurrentSongMetadata();
+                          }
                         } else {
                           scaffoldMessenger.showSnackBar(
                             SnackBar(

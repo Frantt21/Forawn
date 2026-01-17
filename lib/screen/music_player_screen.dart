@@ -162,6 +162,16 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen>
     if (widget.onRegisterFolderAction != null) {
       widget.onRegisterFolderAction!(_selectFolder);
     }
+
+    // Escuchar cambios en la base de datos (ej. edición de tags)
+    LocalMusicDatabase().addListener(_onDatabaseChanged);
+  }
+
+  void _onDatabaseChanged() {
+    // Si la base de datos cambió, limpiar nuestro caché local de UI
+    // para obligar a los FutureBuilder a volver a pedir los datos frescos
+    _libraryMetadataCache.clear();
+    if (mounted) setState(() {});
   }
 
   void _onMetadataChanged() {
@@ -416,6 +426,9 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen>
   void dispose() {
     // Desregistrar callbacks del servicio de teclado global
     GlobalKeyboardService().unregisterCallbacks();
+
+    // Dejar de escuchar cambios en la BD
+    LocalMusicDatabase().removeListener(_onDatabaseChanged);
 
     // Remover listeners de sincronización
     // Remover listeners de sincronización
