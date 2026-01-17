@@ -1061,26 +1061,8 @@ class _PlayerScreenState extends State<PlayerScreen> with WindowListener {
   }
 
   void _playPrevious() {
-    // 1. Try History logic
-    final prevFile = MusicHistory().getPreviousTrack();
-    if (prevFile != null) {
-      final index = _files.indexWhere((f) => f.path == prevFile.path);
-      if (index != -1) {
-        _playFile(index, transitionDirection: -1);
-        return;
-      }
-    }
-
-    // 2. Fallback
-    final currentIndex = _musicPlayer.currentIndex.value ?? 0;
-    if (_files.isEmpty) return;
-    int newIndex;
-
-    // Linear back (ignoring shuffle for fallback)
-    newIndex = currentIndex - 1;
-    if (newIndex < 0) newIndex = _files.length - 1;
-
-    _playFile(newIndex, transitionDirection: -1);
+    // Delegate to GlobalMusicPlayer which handles SQL history and consistent Shuffle logic
+    _musicPlayer.playPrevious();
   }
 
   void _playNext() {

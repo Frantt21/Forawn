@@ -422,13 +422,14 @@ class GlobalMusicPlayer {
     // Update global list
     filesList.value = files;
 
+    // Reset history
     // Play selected song
     if (initialIndex >= 0 && initialIndex < files.length) {
       await _playFileAtIndex(initialIndex);
     }
   }
 
-  // Historial de reproducción para shuffle
+  // Historial de reproducción para shuffle (set para evitar repeticiones)
   final Set<int> playedIndices = {};
 
   Future<void> playNext() async {
@@ -440,7 +441,6 @@ class GlobalMusicPlayer {
     if (loopMode.value == LoopMode.one) {
       // Si está en loop one, playNext manual debería ir al siguiente o repetir?
       // Comportamiento estándar: PlayNext fuerza ir al siguiente, ignorando loop one.
-      // O repetimos la misma? Depende UX. Vamos a ir a la siguiente para botones Next.
     }
 
     if (isShuffle.value) {
@@ -474,9 +474,31 @@ class GlobalMusicPlayer {
     final current = currentIndex.value ?? 0;
 
     if (isShuffle.value) {
-      // Shuffle anterior es complejo sin pila de historia estricta.
-      // Por simplicidad, vamos al anterior en la lista o random?
-      // Mejor: ir al anterior numérico si no tenemos historial pila.
+      // Usar historial SQL para consistencia entre Windows y App
+      final history = await LocalMusicDatabase().getHistory(limit: 5);
+      debugPrint('[GlobalMusicPlayer] SQL History Back: $history');
+
+      if (history.length >= 2) {
+        final currentInHistory = history[0];
+        final previousPath = history[1];
+
+        // Remover la canción actual del historial (pop)
+        await LocalMusicDatabase().removeFromHistory(currentInHistory);
+        debugPrint('🎵 GlobalMusicPlayer: Going back to (SQL): $previousPath');
+
+        // Buscar índice de la canción anterior
+        final idx = filesList.value.indexWhere((f) => f.path == previousPath);
+        if (idx != -1) {
+          await _playFileAtIndex(idx, addToHistory: false);
+          return;
+        } else {
+          debugPrint(
+            '[GlobalMusicPlayer] Path not found in current list: $previousPath',
+          );
+        }
+      }
+
+      // Fallback si no hay historial suficiente
       prevIdx = current - 1;
     } else {
       prevIdx = current - 1;
@@ -505,19 +527,25 @@ class GlobalMusicPlayer {
     int attempts = 0;
     do {
       index = DateTime.now().millisecond % list.length; // Simple random hook
-      // Mejor usar Random real pero no importamos dart:math arriba?
-      // Vamos a asumir random simple o agregar import si falta.
-      // DateTime usage is a bit hacky, let's use Random() if we have import.
-      // GlobalMusicPlayer no tiene dart:math importado en header? checkeo.
     } while (playedIndices.contains(index) && attempts++ < 20);
 
     return index;
   }
 
-  Future<void> _playFileAtIndex(int index) async {
+  Future<void> _playFileAtIndex(int index, {bool addToHistory = true}) async {
     final file = filesList.value[index] as File;
 
     playedIndices.add(index);
+
+    if (addToHistory) {
+      debugPrint('[GlobalMusicPlayer] Adding to history: ${file.path}');
+      // Guardar en SQL en lugar de memoria
+      await LocalMusicDatabase().addToHistory(file.path);
+    } else {
+      debugPrint(
+        '[GlobalMusicPlayer] Skipped adding to history (Back navigation)',
+      );
+    }
 
     // Determinar dirección de transición ANTES de actualizar currentIndex
     final previousIdx = currentIndex.value;
@@ -646,11 +674,13 @@ class GlobalMusicPlayer {
     // Guardar automáticamente cambios en loopMode
     loopMode.addListener(() {
       saveLoopMode(loopMode.value);
+      playedIndices.clear();
     });
 
     // Guardar automáticamente cambios en shuffle
     isShuffle.addListener(() {
       saveShuffle(isShuffle.value);
+      playedIndices.clear();
     });
   }
 

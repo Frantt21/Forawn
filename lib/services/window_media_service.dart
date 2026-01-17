@@ -82,10 +82,19 @@ class WindowMediaService {
     }
   }
 
+  DateTime _lastButtonPress = DateTime.fromMillisecondsSinceEpoch(0);
+
   void _initListeners() {
     if (_smtc == null) return;
 
     _smtc!.buttonPressStream.listen((event) {
+      // Simple debounce (300ms) to prevent accidental double-triggers or loops
+      final now = DateTime.now();
+      if (now.difference(_lastButtonPress).inMilliseconds < 300) {
+        return;
+      }
+      _lastButtonPress = now;
+
       switch (event) {
         case PressedButton.play:
           _player.player.resume();
@@ -171,14 +180,32 @@ class WindowMediaService {
       }
     }
 
-    // Try to fetch online artwork (Discord style)
-    try {
-      final metadata = await MetadataService().searchMetadata(title, artist);
-      if (metadata?.albumArtUrl != null && metadata!.albumArtUrl!.isNotEmpty) {
-        finalThumbnailUri = metadata.albumArtUrl;
+    // Check if we have a locally cached online URL first
+    if (finalThumbnailUri == null || finalThumbnailUri.startsWith('file')) {
+      final cachedMeta = await LocalMusicDatabase().getMetadata(
+        currentFilePath,
+      );
+      if (cachedMeta?.onlineArtworkUrl != null) {
+        finalThumbnailUri = cachedMeta!.onlineArtworkUrl;
       }
-    } catch (e) {
-      debugPrint('[WindowMediaService] Error fetching online artwork: $e');
+    }
+
+    // Try to fetch online artwork (Discord style) if still no good URL
+    if (finalThumbnailUri == null || finalThumbnailUri.startsWith('file')) {
+      try {
+        final metadata = await MetadataService().searchMetadata(title, artist);
+        if (metadata?.albumArtUrl != null &&
+            metadata!.albumArtUrl!.isNotEmpty) {
+          finalThumbnailUri = metadata!.albumArtUrl;
+          // Cache it!
+          await LocalMusicDatabase().updateOnlineArtworkUrl(
+            currentFilePath,
+            finalThumbnailUri!,
+          );
+        }
+      } catch (e) {
+        debugPrint('[WindowMediaService] Error fetching online artwork: $e');
+      }
     }
 
     debugPrint(

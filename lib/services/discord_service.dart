@@ -4,6 +4,8 @@ import 'package:logging/logging.dart';
 import 'package:forawn/config/api_config.dart';
 import 'package:forawn/services/music_state_service.dart';
 import 'package:forawn/services/metadata_service.dart';
+import 'package:forawn/services/local_music_database.dart';
+import 'package:forawn/services/global_music_player.dart';
 
 /// Servicio para gestionar la integración con Discord Rich Presence
 class DiscordService {
@@ -332,27 +334,38 @@ class DiscordService {
     if (musicState.hasActiveSong &&
         (musicState.thumbnailUrl == null ||
             !musicState.thumbnailUrl!.startsWith('http'))) {
-      try {
-        // Usar MetadataService para buscar metadatos que incluyan cover URL
-        // Limitamos la búsqueda a título + artista para mayor precisión
-        if (musicState.currentTitle != null) {
-          final metadata = await MetadataService().searchMetadata(
-            musicState.currentTitle!,
-            musicState.currentArtist,
-          );
+      // 1. Check Local DB
+      final db = LocalMusicDatabase();
+      final currentPath = GlobalMusicPlayer().currentFilePath.value;
+      final meta = await db.getMetadata(currentPath);
 
-          if (metadata?.albumArtUrl != null &&
-              metadata!.albumArtUrl!.isNotEmpty) {
-            // Actualizamos el estado musical con la nueva URL encontrada
-            // Esto es temporal en memoria para que Discord lo pueda usar
-            musicState.updateMusicState(thumbnailUrl: metadata.albumArtUrl);
-            _log.fine(
-              'Thumbnail encontrado para Discord: ${metadata.albumArtUrl}',
+      if (meta?.onlineArtworkUrl != null) {
+        musicState.updateMusicState(thumbnailUrl: meta!.onlineArtworkUrl);
+      } else {
+        // 2. Fetch from API
+        try {
+          // Limitamos la búsqueda a título + artista para mayor precisión
+          if (musicState.currentTitle != null) {
+            final metadata = await MetadataService().searchMetadata(
+              musicState.currentTitle!,
+              musicState.currentArtist,
             );
+
+            if (metadata?.albumArtUrl != null &&
+                metadata!.albumArtUrl!.isNotEmpty) {
+              final url = metadata.albumArtUrl!;
+              // Actualizamos el estado musical
+              musicState.updateMusicState(thumbnailUrl: url);
+
+              // Guardar en cache DB
+              await db.updateOnlineArtworkUrl(currentPath, url);
+
+              _log.fine('Thumbnail encontrado y cacheado para Discord: $url');
+            }
           }
+        } catch (e) {
+          _log.warning('Error buscando thumbnail para Discord: $e');
         }
-      } catch (e) {
-        _log.warning('Error buscando thumbnail para Discord: $e');
       }
     }
 

@@ -35,7 +35,7 @@ class LocalMusicDatabase extends ChangeNotifier {
 
       _database = await openDatabase(
         path,
-        version: 2,
+        version: 3,
         onCreate: (db, version) async {
           // Tabla de metadatos
           await db.execute('''
@@ -104,6 +104,11 @@ class LocalMusicDatabase extends ChangeNotifier {
               'CREATE INDEX idx_history_time ON play_history(played_at DESC)',
             );
           }
+          if (oldVersion < 3) {
+            await db.execute(
+              'ALTER TABLE metadata ADD COLUMN online_artwork_url TEXT',
+            );
+          }
         },
       );
 
@@ -112,6 +117,38 @@ class LocalMusicDatabase extends ChangeNotifier {
     } catch (e) {
       debugPrint('[LocalMusicDB] Error initializing database: $e');
       rethrow;
+    }
+  }
+
+  /// Update online artwork URL for a song
+  Future<void> updateOnlineArtworkUrl(String filePath, String url) async {
+    if (!_isInitialized) await initialize();
+    try {
+      await _database!.update(
+        'metadata',
+        {'online_artwork_url': url},
+        where: 'file_path = ?',
+        whereArgs: [filePath],
+      );
+
+      // Update cache
+      if (_metadataCache.containsKey(filePath)) {
+        // Create new object with updated url because fields are final
+        final old = _metadataCache[filePath]!;
+        _metadataCache[filePath] = SongMetadata(
+          filePath: old.filePath,
+          title: old.title,
+          artist: old.artist,
+          album: old.album,
+          durationMs: old.durationMs,
+          artworkHash: old.artworkHash,
+          artwork: old.artwork,
+          onlineArtworkUrl: url,
+        );
+      }
+      notifyListeners();
+    } catch (e) {
+      debugPrint('[LocalMusicDB] Error updating online artwork: $e');
     }
   }
 
@@ -662,6 +699,7 @@ class SongMetadata {
   final String? album;
   final int? durationMs;
   final String? artworkHash;
+  final String? onlineArtworkUrl; // New field
   Uint8List? artwork;
 
   SongMetadata({
@@ -671,6 +709,7 @@ class SongMetadata {
     this.album,
     this.durationMs,
     this.artworkHash,
+    this.onlineArtworkUrl,
     this.artwork,
   });
 
@@ -682,6 +721,7 @@ class SongMetadata {
       album: map['album'] as String?,
       durationMs: map['duration_ms'] as int?,
       artworkHash: map['artwork_hash'] as String?,
+      onlineArtworkUrl: map['online_artwork_url'] as String?,
     );
   }
 
@@ -693,6 +733,7 @@ class SongMetadata {
       'album': album,
       'duration_ms': durationMs,
       'artwork_hash': artworkHash,
+      'online_artwork_url': onlineArtworkUrl,
     };
   }
 }
