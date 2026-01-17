@@ -433,5 +433,15 @@
     "metadata_title": "Название",
     "metadata_artist": "Исполнитель",
     "metadata_album": "Альбом",
-    "search": "Поиск"
+    "search": "Поиск",
+    "version_title": "Версия",
+    "version_subtitle": "Текущая:",
+    "reset_app_data": "Сброс данных приложения",
+    "reset_app_data_sub": "Очищает настройки и предпочтения (требуется перезапуск)",
+    "confirm_reset_data": "Сброс данных",
+    "confirm_reset_data_desc": "Это удалит все настройки, историю и предпочтения. Вы уверены?",
+    "reset": "Сброс",
+    "data_reset_success": "Данные очищены. Пожалуйста, перезапустите приложение.",
+    "general": "Общие",
+    "language": "Язык"
 }

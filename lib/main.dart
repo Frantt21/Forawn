@@ -161,7 +161,7 @@ Future<Map<String, String>> loadLanguageFromExeOrAssets(String code) async {
   } catch (_) {}
 
   try {
-    final content = await rootBundle.loadString('lang/$code.json');
+    final content = await rootBundle.loadString('assets/lang/$code.json');
     final Map<String, dynamic> parsed = jsonDecode(content);
     return parsed.map((k, v) => MapEntry(k, v.toString()));
   } catch (_) {}

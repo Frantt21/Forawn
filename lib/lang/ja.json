@@ -433,5 +433,15 @@
     "metadata_title": "タイトル",
     "metadata_artist": "アーティスト",
     "metadata_album": "アルバム",
-    "search": "検索"
+    "search": "検索",
+    "version_title": "バージョン",
+    "version_subtitle": "現在:",
+    "reset_app_data": "アプリデータをリセット",
+    "reset_app_data_sub": "設定と設定をクリアします（再起動が必要）",
+    "confirm_reset_data": "データをリセット",
+    "confirm_reset_data_desc": "これにより、すべての設定、履歴、設定が削除されます。よろしいですか？",
+    "reset": "リセット",
+    "data_reset_success": "データがクリアされました。アプリを再起動してください。",
+    "general": "一般",
+    "language": "言語"
 }

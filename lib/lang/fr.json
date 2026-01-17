@@ -433,5 +433,15 @@
     "metadata_title": "Titre",
     "metadata_artist": "Artiste",
     "metadata_album": "Album",
-    "search": "Rechercher"
+    "search": "Rechercher",
+    "version_title": "Version",
+    "version_subtitle": "Actuelle :",
+    "reset_app_data": "Réinitialiser les données",
+    "reset_app_data_sub": "Efface les paramètres et préférences (redémarrage requis)",
+    "confirm_reset_data": "Réinitialiser",
+    "confirm_reset_data_desc": "Cela effacera tous les paramètres, l'historique et les préférences. Êtes-vous sûr ?",
+    "reset": "Réinitialiser",
+    "data_reset_success": "Données effacées. Veuillez redémarrer l'application.",
+    "general": "Général",
+    "language": "Langue"
 }

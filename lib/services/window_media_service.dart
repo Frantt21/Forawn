@@ -1,7 +1,6 @@
 import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:smtc_windows/smtc_windows.dart';
-import 'package:smtc_windows/src/rust/frb_generated.dart';
 import 'package:forawn/services/global_music_player.dart';
 import 'package:forawn/services/local_music_database.dart';
 import 'package:path/path.dart' as p;
@@ -21,21 +20,34 @@ class WindowMediaService {
 
   Future<void> initialize() async {
     debugPrint('[WindowMediaService] initialize() called');
-    if (_initialized) {
-      debugPrint('[WindowMediaService] Already initialized');
-      return;
-    }
-    if (!Platform.isWindows) {
-      debugPrint('[WindowMediaService] Not Windows');
-      return;
-    }
+    if (_initialized) return;
+    if (!Platform.isWindows) return;
 
     try {
-      debugPrint('[WindowMediaService] Initializing RustLib...');
-      await RustLib.init();
-      debugPrint('[WindowMediaService] Creating SMTCWindows instance...');
+      debugPrint('[WindowMediaService] Initializing SMTCWindows...');
+      await SMTCWindows.initialize();
+
+      final title = _player.currentTitle.value;
+      final artist = _player.currentArtist.value;
+      final duration = _player.duration.value;
+
+      // Prepare initial thumbnail if available
+      String? initialThumbnail;
+      final currentPath = _player.currentFilePath.value;
+      if (currentPath.isNotEmpty) {
+        final cachedPath = await LocalMusicDatabase().getCachedArtworkPath(
+          currentPath,
+        );
+        if (cachedPath != null) {
+          initialThumbnail = Uri.file(cachedPath).toString();
+        }
+      }
+
+      debugPrint(
+        '[WindowMediaService] Creating instance with initial metadata',
+      );
       _smtc = SMTCWindows(
-        config: SMTCConfig(
+        config: const SMTCConfig(
           fastForwardEnabled: true,
           nextEnabled: true,
           pauseEnabled: true,
@@ -44,8 +56,19 @@ class WindowMediaService {
           rewindEnabled: true,
           stopEnabled: true,
         ),
+        metadata: MusicMetadata(
+          title: title.isNotEmpty ? title : 'Forawn',
+          artist: artist.isNotEmpty ? artist : 'Forawn Music',
+          album: 'Forawn Music',
+          albumArtist: artist,
+          thumbnail: initialThumbnail,
+        ),
+        timeline: PlaybackTimeline(
+          startTimeMs: 0,
+          endTimeMs: duration.inMilliseconds,
+          positionMs: 0,
+        ),
       );
-      debugPrint('[WindowMediaService] SMTCWindows instance created');
 
       _initListeners();
       _initialized = true;
@@ -59,17 +82,19 @@ class WindowMediaService {
   void _initListeners() {
     if (_smtc == null) return;
 
-    // Listen to SMTC buttons
     _smtc!.buttonPressStream.listen((event) {
       switch (event) {
         case PressedButton.play:
           _player.player.resume();
+          _smtc?.setPlaybackStatus(PlaybackStatus.playing);
           break;
         case PressedButton.pause:
           _player.player.pause();
+          _smtc?.setPlaybackStatus(PlaybackStatus.paused);
           break;
         case PressedButton.stop:
           _player.player.stop();
+          _smtc?.setPlaybackStatus(PlaybackStatus.stopped);
           break;
         case PressedButton.next:
           _player.playNext();
@@ -94,8 +119,7 @@ class WindowMediaService {
     _player.position.addListener(_updateTimeline);
     _player.duration.addListener(_updateTimeline);
 
-    // Initial update
-    _onMetadataChanged();
+    // Initial update verified in constructor, but update status again
     _updatePlaybackStatus();
   }
 
@@ -111,60 +135,38 @@ class WindowMediaService {
     final album = 'Forawn Music';
     final currentFilePath = _player.currentFilePath.value;
 
-    String? thumbnailPath;
+    String? finalThumbnailUri;
+
+    // Use cached/temp artwork logic, but ensure it ends up as URI
     if (currentFilePath.isNotEmpty) {
-      // Try to get cached jpg artwork first
-      thumbnailPath = await LocalMusicDatabase().getCachedArtworkPath(
+      final thumbnailPath = await LocalMusicDatabase().getCachedArtworkPath(
         currentFilePath,
       );
-
       if (thumbnailPath != null) {
-        debugPrint('[WindowMediaService] Found cached artwork: $thumbnailPath');
-        debugPrint(
-          '[WindowMediaService] File exists: ${File(thumbnailPath).existsSync()}',
-        );
-      } else {
-        debugPrint(
-          '[WindowMediaService] No cached artwork found for: $currentFilePath',
-        );
-        // Fallback to file path if no cached art
-        thumbnailPath = currentFilePath;
-      }
-    }
+        try {
+          // Use temp copy logic
+          final fileName = p.basename(thumbnailPath);
+          final tempDir = Directory.systemTemp;
+          final tempFile = File(p.join(tempDir.path, 'forawn_smtc_$fileName'));
 
-    // SMTC issue: Windows sometimes fails to load images from deep/hidden paths or .dart_tool
-    // Strategy: Copy the artwork to a known accessible temporary location with a hash-based name.
-    String? finalThumbnailPath;
-
-    if (thumbnailPath != null) {
-      try {
-        // Create a name based on the file name or hash to reuse it
-        final fileName = p.basename(thumbnailPath);
-        final tempDir = Directory.systemTemp;
-        final tempFile = File(p.join(tempDir.path, 'forawn_smtc_$fileName'));
-
-        if (!await tempFile.exists()) {
-          // Only copy if it doesn't exist yet (avoids locks and redundant writes)
-          await File(thumbnailPath).copy(tempFile.path);
-          debugPrint(
-            '[WindowMediaService] Copied new artwork to temp: ${tempFile.path}',
-          );
-        } else {
-          debugPrint(
-            '[WindowMediaService] Using existing temp artwork: ${tempFile.path}',
-          );
+          if (!await tempFile.exists()) {
+            await File(thumbnailPath).copy(tempFile.path);
+            debugPrint(
+              '[WindowMediaService] Copied art to temp: ${tempFile.path}',
+            );
+          }
+          // Convert to URI
+          finalThumbnailUri = Uri.file(tempFile.path).toString();
+        } catch (e) {
+          debugPrint('[WindowMediaService] Art copy error: $e');
+          // Fallback to original path as URI
+          finalThumbnailUri = Uri.file(thumbnailPath).toString();
         }
-
-        finalThumbnailPath = tempFile.path;
-      } catch (e) {
-        debugPrint('[WindowMediaService] Error handling temp artwork: $e');
-        // Fallback to original path
-        finalThumbnailPath = thumbnailPath;
       }
     }
 
     debugPrint(
-      '[WindowMediaService] Updating SMTC: $title - $artist, Art: $finalThumbnailPath',
+      '[WindowMediaService] Updating Metadata: $title, Art: $finalThumbnailUri',
     );
 
     _smtc!.updateMetadata(
@@ -172,7 +174,8 @@ class WindowMediaService {
         title: title,
         artist: artist,
         album: album,
-        thumbnail: finalThumbnailPath,
+        albumArtist: artist,
+        thumbnail: finalThumbnailUri,
       ),
     );
   }

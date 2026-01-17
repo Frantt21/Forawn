@@ -439,5 +439,15 @@
     "search_results_placeholder": "Busca para ver resultados",
     "reload_library": "Recargar lista",
     "library_reloaded": "Lista recargada",
-    "cancel_search": "Cancelar"
+    "cancel_search": "Cancelar",
+    "version_title": "Versión",
+    "version_subtitle": "Actual:",
+    "reset_app_data": "Restablecer datos de la App",
+    "reset_app_data_sub": "Borra configuraciones y preferencias (requiere reinicio)",
+    "confirm_reset_data": "Restablecer Datos",
+    "confirm_reset_data_desc": "Esta acción borrará todas las configuraciones, historial y preferencias. ¿Estás seguro?",
+    "reset": "Restablecer",
+    "data_reset_success": "Datos borrados. Reinicia la aplicación.",
+    "general": "General",
+    "language": "Idioma"
 }

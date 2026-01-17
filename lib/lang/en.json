@@ -108,7 +108,6 @@
     "adult_warning_title":  "Adult content",
     "adult_warning_message":  "This section may display explicit adult images. You must be of legal age in your jurisdiction to proceed.",
     "adult_warning_confirm":  "Search results may include explicit images. Do you wish to continue?",
-    "cancel":  "Cancel",
     "accept":  "I am 18+",
     "continue":  "Continue",
     "nsfw_toggle":  "Enable NSFW section",
@@ -439,5 +438,15 @@
     "search_results_placeholder": "Search to see results",
     "reload_library": "Reload library",
     "library_reloaded": "Library reloaded",
-    "cancel_search": "Cancel"
+    "version_title": "Version",
+    "version_subtitle": "Current:",
+    "reset_app_data": "Reset App Data",
+    "reset_app_data_sub": "Clears settings and preferences (restart required)",
+    "confirm_reset_data": "Reset Data",
+    "confirm_reset_data_desc": "This will delete all settings, history, and preferences. Are you sure?",
+    "cancel": "Cancel",
+    "reset": "Reset",
+    "data_reset_success": "Data cleared. Please restart the app.",
+    "general": "General",
+    "language": "Language"
 }

@@ -11,6 +11,7 @@ import 'services/discord_service.dart';
 import 'services/lyrics_service.dart';
 import 'services/local_music_database.dart';
 import 'services/global_theme_service.dart';
+import 'package:forawn/version.dart';
 
 typedef TextGetter = String Function(String key, {String? fallback});
 typedef LanguageSelector = Future<void> Function(String code);
@@ -63,8 +64,6 @@ class _SettingsScreenState extends State<SettingsScreen> with WindowListener {
   };
 
   String? _saving;
-  bool _nsfw = false;
-  static const _nsfwKey = 'nsfw_enabled';
   static const _preferredLangKey = 'preferred_lang';
   String? _selectedLang;
   SharedPreferences? _prefs;
@@ -170,14 +169,12 @@ class _SettingsScreenState extends State<SettingsScreen> with WindowListener {
   Future<void> _loadPrefs() async {
     try {
       _prefs ??= await SharedPreferences.getInstance();
-      final enabled = _prefs!.getBool(_nsfwKey) ?? false;
       final savedLang = _prefs!.getString(_preferredLangKey);
       final discordEnabled = _prefs!.getBool(_discordEnabledKey) ?? false;
       final blurBg = _prefs!.getBool('use_blur_background') ?? false;
 
       if (!mounted) return;
       setState(() {
-        _nsfw = enabled;
         _discordEnabled = discordEnabled;
         _discordConnected = DiscordService().isConnected;
         _useBlurBackground = blurBg;
@@ -197,15 +194,6 @@ class _SettingsScreenState extends State<SettingsScreen> with WindowListener {
 
     final effect = effects[label] ?? acrylic.WindowEffect.solid;
     await widget.onChangeWindowEffect(effect, color, dark: _darkMode);
-  }
-
-  Future<void> _toggleNsfw(bool value) async {
-    try {
-      _prefs ??= await SharedPreferences.getInstance();
-      await _prefs!.setBool(_nsfwKey, value);
-      if (!mounted) return;
-      setState(() => _nsfw = value);
-    } catch (_) {}
   }
 
   Future<void> _toggleDiscord(bool value) async {
@@ -440,18 +428,12 @@ class _SettingsScreenState extends State<SettingsScreen> with WindowListener {
                         ),
                         Divider(height: 1, color: currentTheme.dividerColor),
                         _SettingsTile(
-                          leadingIcon: Icons.explicit,
-                          leadingColor: Colors.redAccent,
-                          title: get('nsfw_toggle', fallback: 'NSFW Content'),
-                          subtitle: get(
-                            'nsfw_desc',
-                            fallback: 'Show adult content',
-                          ),
-                          trailing: Switch(
-                            value: _nsfw,
-                            onChanged: _toggleNsfw,
-                            activeColor: Colors.redAccent,
-                          ),
+                          leadingIcon: Icons.info_outline,
+                          leadingColor: Colors.blueGrey,
+                          title: get('version_title', fallback: 'Version'),
+                          subtitle:
+                              '${get('version_subtitle', fallback: 'Current: ')} $currentVersion',
+                          trailing: const SizedBox(),
                         ),
                       ],
                     ),

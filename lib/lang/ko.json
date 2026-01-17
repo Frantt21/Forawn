@@ -433,5 +433,15 @@
     "metadata_title": "제목",
     "metadata_artist": "아티스트",
     "metadata_album": "앨범",
-    "search": "검색"
+    "search": "검색",
+    "version_title": "버전",
+    "version_subtitle": "현재:",
+    "reset_app_data": "앱 데이터 재설정",
+    "reset_app_data_sub": "설정 및 기본 설정 지우기 (재시작 필요)",
+    "confirm_reset_data": "데이터 재설정",
+    "confirm_reset_data_desc": "모든 설정, 기록 및 기본 설정이 삭제됩니다. 계속하시겠습니까?",
+    "reset": "재설정",
+    "data_reset_success": "데이터가 지워졌습니다. 앱을 다시 시작하십시오.",
+    "general": "일반",
+    "language": "언어"
 }
