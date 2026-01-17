@@ -87,7 +87,7 @@ class _MusicDownloaderScreenState extends State<MusicDownloaderScreen>
           final map = <String, DownloadTask>{};
           for (final t in tasks) {
             if (t.sourceUrl.isNotEmpty) map[t.sourceUrl] = t;
-            map[t.title] = t;
+            // Removed mapping by title to avoid false positives on duplicates
           }
           _dmTasksBySource = map;
           if (!mounted) return;
@@ -533,13 +533,21 @@ class _MusicDownloaderScreenState extends State<MusicDownloaderScreen>
     }
 
     final title = (c['title'] ?? 'Unknown').toString();
-    String artista = widget.getText(
-      'unknown_artist',
-      fallback: 'Unknown artist',
-    );
-    if (title.contains(' - ')) {
+
+    // Prioritizar el artista que ya viene en los metadatos procesados
+    String artista = (c['artist'] != null && c['artist'].toString().isNotEmpty)
+        ? c['artist'].toString()
+        : widget.getText('unknown_artist', fallback: 'Unknown artist');
+
+    // Solo intentar parsear del título si realmente no tenemos artista
+    if ((artista == 'Unknown artist' ||
+            artista == 'Artista desconocido' ||
+            artista == 'Unknown') &&
+        title.contains(' - ')) {
       final partes = title.split(' - ');
-      artista = partes.isNotEmpty ? partes[0] : artista;
+      if (partes.isNotEmpty && partes[0].trim().isNotEmpty) {
+        artista = partes[0].trim();
+      }
     }
     final nombre = title;
     final imageUrl = (c['image'] ?? '').toString();
@@ -762,7 +770,7 @@ class _MusicDownloaderScreenState extends State<MusicDownloaderScreen>
                             DownloadTask? task;
                             final src = (c['url'] ?? '').toString();
                             if (src.isNotEmpty) task = _dmTasksBySource[src];
-                            task ??= _dmTasksBySource[title];
+                            // Do not fallback to title lookup
 
                             Widget statusChip() {
                               if (task == null) return const SizedBox.shrink();
