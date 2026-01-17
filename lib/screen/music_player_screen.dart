@@ -1139,7 +1139,7 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen>
                         if (value == 'reload_colors') {
                           _reloadMissingColors();
                         } else if (value == 'reload_library') {
-                          await _musicPlayer.loadLibraryIfNeeded();
+                          await _musicPlayer.refreshLibrary();
                           // Force state update
                           if (mounted) {
                             setState(() {
