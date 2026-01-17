@@ -4,6 +4,7 @@ import 'package:smtc_windows/smtc_windows.dart';
 import 'package:smtc_windows/src/rust/frb_generated.dart';
 import 'package:forawn/services/global_music_player.dart';
 import 'package:forawn/services/local_music_database.dart';
+import 'package:path/path.dart' as p;
 
 class WindowMediaService {
   static final WindowMediaService _instance = WindowMediaService._internal();
@@ -131,10 +132,39 @@ class WindowMediaService {
       }
     }
 
-    // Ensure we are passing a valid absolute path or URI if required
-    // For now, just logging.
+    // SMTC issue: Windows sometimes fails to load images from deep/hidden paths or .dart_tool
+    // Strategy: Copy the artwork to a known accessible temporary location with a hash-based name.
+    String? finalThumbnailPath;
+
+    if (thumbnailPath != null) {
+      try {
+        // Create a name based on the file name or hash to reuse it
+        final fileName = p.basename(thumbnailPath);
+        final tempDir = Directory.systemTemp;
+        final tempFile = File(p.join(tempDir.path, 'forawn_smtc_$fileName'));
+
+        if (!await tempFile.exists()) {
+          // Only copy if it doesn't exist yet (avoids locks and redundant writes)
+          await File(thumbnailPath).copy(tempFile.path);
+          debugPrint(
+            '[WindowMediaService] Copied new artwork to temp: ${tempFile.path}',
+          );
+        } else {
+          debugPrint(
+            '[WindowMediaService] Using existing temp artwork: ${tempFile.path}',
+          );
+        }
+
+        finalThumbnailPath = tempFile.path;
+      } catch (e) {
+        debugPrint('[WindowMediaService] Error handling temp artwork: $e');
+        // Fallback to original path
+        finalThumbnailPath = thumbnailPath;
+      }
+    }
+
     debugPrint(
-      '[WindowMediaService] Updating SMTC: $title - $artist, Art: $thumbnailPath',
+      '[WindowMediaService] Updating SMTC: $title - $artist, Art: $finalThumbnailPath',
     );
 
     _smtc!.updateMetadata(
@@ -142,7 +172,7 @@ class WindowMediaService {
         title: title,
         artist: artist,
         album: album,
-        thumbnail: thumbnailPath,
+        thumbnail: finalThumbnailPath,
       ),
     );
   }
