@@ -443,5 +443,6 @@
     "reset": "Zurücksetzen",
     "data_reset_success": "Daten gelöscht. Bitte App neu starten.",
     "general": "Allgemein",
-    "language": "Sprache"
+    "language": "Sprache",
+    "offset": "Versatz"
 }

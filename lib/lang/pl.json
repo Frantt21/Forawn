@@ -443,5 +443,6 @@
     "reset": "Resetuj",
     "data_reset_success": "Dane wyczyszczone. Proszę zrestartować aplikację.",
     "general": "Ogólne",
-    "language": "Język"
+    "language": "Język",
+    "offset": "Przesunięcie"
 }

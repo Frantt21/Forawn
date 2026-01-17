@@ -443,5 +443,6 @@
     "reset": "リセット",
     "data_reset_success": "データがクリアされました。アプリを再起動してください。",
     "general": "一般",
-    "language": "言語"
+    "language": "言語",
+    "offset": "オフセット"
 }

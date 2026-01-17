@@ -443,5 +443,6 @@
     "reset": "重置",
     "data_reset_success": "数据已清除。请重启应用。",
     "general": "常规",
-    "language": "语言"
+    "language": "语言",
+    "offset": "偏移"
 }

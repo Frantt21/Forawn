@@ -443,5 +443,6 @@
     "reset": "Réinitialiser",
     "data_reset_success": "Données effacées. Veuillez redémarrer l'application.",
     "general": "Général",
-    "language": "Langue"
+    "language": "Langue",
+    "offset": "Décalage"
 }

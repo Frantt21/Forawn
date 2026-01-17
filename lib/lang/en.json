@@ -448,5 +448,6 @@
     "reset": "Reset",
     "data_reset_success": "Data cleared. Please restart the app.",
     "general": "General",
-    "language": "Language"
+    "language": "Language",
+    "offset": "Offset"
 }

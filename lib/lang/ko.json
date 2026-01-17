@@ -443,5 +443,6 @@
     "reset": "재설정",
     "data_reset_success": "데이터가 지워졌습니다. 앱을 다시 시작하십시오.",
     "general": "일반",
-    "language": "언어"
+    "language": "언어",
+    "offset": "오프셋"
 }

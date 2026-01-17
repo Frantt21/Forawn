@@ -443,5 +443,6 @@
     "reset": "Redefinir",
     "data_reset_success": "Dados limpos. Por favor, reinicie o aplicativo.",
     "general": "Geral",
-    "language": "Idioma"
+    "language": "Idioma",
+    "offset": "Deslocamento"
 }

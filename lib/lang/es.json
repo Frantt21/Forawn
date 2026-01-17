@@ -449,5 +449,6 @@
     "reset": "Restablecer",
     "data_reset_success": "Datos borrados. Reinicia la aplicación.",
     "general": "General",
-    "language": "Idioma"
+    "language": "Idioma",
+    "offset": "Desfase"
 }
