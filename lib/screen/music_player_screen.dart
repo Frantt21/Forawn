@@ -300,9 +300,9 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen>
           nextIdx = (currentIndex ?? -1) + 1;
         }
         if (nextIdx < _files.length) {
-          _playFile(nextIdx);
+          _playFile(nextIdx, transitionDirection: 1);
         } else if (_musicPlayer.loopMode.value == LoopMode.all) {
-          _playFile(0);
+          _playFile(0, transitionDirection: 1);
         }
       }
     } else {
@@ -318,9 +318,9 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen>
           nextIdx = (currentIndex ?? -1) + 1;
         }
         if (nextIdx < _files.length) {
-          _updateMetadataFromFile(nextIdx);
+          _updateMetadataFromFile(nextIdx, transitionDirection: 1);
         } else if (_musicPlayer.loopMode.value == LoopMode.all) {
-          _updateMetadataFromFile(0);
+          _updateMetadataFromFile(0, transitionDirection: 1);
         }
       }
     }
@@ -329,6 +329,7 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen>
   Future<void> _updateMetadataFromFile(
     int index, {
     bool shouldPlay = true,
+    int? transitionDirection,
   }) async {
     if (index < 0 || index >= _files.length) return;
     _playedIndices.add(index);
@@ -340,7 +341,9 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen>
         final filename = p.basename(file.path);
 
         // Update direction
-        if (_musicPlayer.currentIndex.value != null) {
+        if (transitionDirection != null) {
+          _musicPlayer.transitionDirection.value = transitionDirection;
+        } else if (_musicPlayer.currentIndex.value != null) {
           _musicPlayer.transitionDirection.value =
               index > _musicPlayer.currentIndex.value! ? 1 : -1;
         }
@@ -715,11 +718,14 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen>
     }
   }
 
-  Future<void> _playFile(int index) async {
+  Future<void> _playFile(int index, {int? transitionDirection}) async {
     // Simplified to route through unified logic
     if (index >= 0 && index < _files.length) {
       debugPrint('[MusicPlayer] _playFile requested for index $index');
-      await _updateMetadataFromFile(index);
+      await _updateMetadataFromFile(
+        index,
+        transitionDirection: transitionDirection,
+      );
     }
   }
 
@@ -749,13 +755,13 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen>
           (f) => (f as File).path == previousTrack.path,
         );
         if (index >= 0) {
-          _playFile(index);
+          _playFile(index, transitionDirection: -1);
         }
       } else {
         // Si no hay historial, ir a la anterior en la playlist
         final cur = _currentIndex ?? 0;
         final nextIndex = max(0, cur - 1);
-        _playFile(nextIndex);
+        _playFile(nextIndex, transitionDirection: -1);
       }
     }
   }
