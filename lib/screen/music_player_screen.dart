@@ -475,6 +475,17 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen>
       // IMPORTANTE: Cargar estado guardado del reproductor después de cargar la librería
       // Esto asegura que el mini-player muestre la última canción reproducida
       await _musicPlayer.loadPlayerState();
+
+      // Intentar conectar a Discord si no está conectado
+      if (!DiscordService().isConnected) {
+        DiscordService().initialize().then((success) {
+          if (success && mounted) {
+            DiscordService().updateScreenPresence('player');
+          }
+        });
+      } else {
+        DiscordService().updateScreenPresence('player');
+      }
     } catch (e) {
       debugPrint('[MusicPlayer] Error in _init: $e');
     }
@@ -839,7 +850,23 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen>
             debugPrint(
               '[MusicPlayer] Recovered index for resume: $recoveredIndex',
             );
-            _playFile(recoveredIndex);
+
+            // Actualizar índice localmente
+            if (mounted) {
+              setState(() {
+                _currentIndex = recoveredIndex;
+              });
+            }
+
+            // Reanudar directamente para conservar la posición guardada
+            // NO llamar a _playFile porque eso reinicia la canción
+            _player.resume();
+
+            // Forzar actualización de estado por si acaso
+            MusicStateService().updateMusicState(isPlaying: true);
+            if (DiscordService().isConnected) {
+              DiscordService().updateMusicPresence();
+            }
             return;
           }
         }
