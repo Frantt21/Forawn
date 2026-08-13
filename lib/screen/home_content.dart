@@ -1,6 +1,5 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
-import 'package:url_launcher/url_launcher.dart';
 
 class HomeContent extends StatefulWidget {
   final String Function(String key, {String? fallback}) getText;
@@ -96,8 +95,6 @@ class _HomeContentState extends State<HomeContent> {
         return widget.getText('download_button', fallback: 'Música');
       case 'video':
         return widget.getText('vid_title', fallback: 'Video');
-      case 'images':
-        return widget.getText('ai_image_title', fallback: 'Imágenes');
       case 'notes':
         return widget.getText('notes_title', fallback: 'Notas');
       case 'translate':
@@ -117,8 +114,6 @@ class _HomeContentState extends State<HomeContent> {
         return Icons.music_note;
       case 'video':
         return Icons.video_library;
-      case 'images':
-        return Icons.image;
       case 'notes':
         return Icons.note;
       case 'translate':
@@ -256,51 +251,10 @@ class _HomeContentState extends State<HomeContent> {
           ),
         ),
 
-        // API Status Button - Bottom Right
-        Positioned(right: 20, bottom: 20, child: _buildApiStatusButton()),
+
       ],
     );
   }
 
-  Widget _buildApiStatusButton() {
-    return MouseRegion(
-      cursor: SystemMouseCursors.click,
-      child: GestureDetector(
-        onTap: () async {
-          final uri = Uri.parse('https://www.foranly.space/apis-status');
-          if (await canLaunchUrl(uri)) {
-            await launchUrl(uri, mode: LaunchMode.externalApplication);
-          }
-        },
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(
-                widget.getText('api_status', fallback: 'Estado de APIs'),
-                style: TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w500,
-                  color: Theme.of(
-                    context,
-                  ).textTheme.bodyMedium?.color?.withOpacity(0.8),
-                  decoration: TextDecoration.underline,
-                  decorationColor: Theme.of(
-                    context,
-                  ).textTheme.bodyMedium?.color?.withOpacity(0.5),
-                ),
-              ),
-              const SizedBox(width: 6),
-              Icon(
-                Icons.open_in_new,
-                size: 14,
-                color: Theme.of(context).iconTheme.color?.withOpacity(0.7),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
+
 }

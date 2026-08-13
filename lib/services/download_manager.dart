@@ -9,6 +9,7 @@ import '../models/download_task.dart';
 
 import 'lyrics_service.dart';
 import 'metadata_service.dart';
+import 'tools_service.dart';
 
 class DownloadManager extends ChangeNotifier {
   static final DownloadManager _instance = DownloadManager._internal();
@@ -246,7 +247,7 @@ class DownloadManager extends ChangeNotifier {
     );
 
     try {
-      final toolsDir = _findToolsDir();
+      final toolsDir = ToolsService().toolsDir;
       debugPrint('[DownloadManager] toolsDir="$toolsDir"');
 
       final downloadFolder = await _ensureDownloadFolder(t.type);
@@ -681,33 +682,6 @@ class DownloadManager extends ChangeNotifier {
     }
   }
 
-  // utilidades de herramientas
-  String _findBaseDir() {
-    try {
-      final exeDir = p.dirname(Platform.resolvedExecutable);
-      if (Directory(p.join(exeDir, 'tools')).existsSync()) return exeDir;
-    } catch (_) {}
-    final currentDir = Directory.current.path;
-    if (Directory(p.join(currentDir, 'tools')).existsSync()) return currentDir;
-
-    final candidates = <String>[
-      p.join(currentDir, 'build', 'windows', 'x64', 'runner', 'Debug'),
-      p.join(currentDir, 'build', 'windows', 'runner', 'Debug'),
-      p.join(currentDir, 'build', 'windows', 'x64', 'runner', 'Release'),
-      p.join(currentDir, 'build', 'windows', 'runner', 'Release'),
-      p.normalize(p.current),
-    ];
-    for (final base in candidates) {
-      if (Directory(p.join(base, 'tools')).existsSync()) return base;
-    }
-    return '';
-  }
-
-  String _findToolsDir() {
-    final base = _findBaseDir();
-    return base.isEmpty ? '' : p.join(base, 'tools');
-  }
-
   List<String> _checkTools(String toolsDir) {
     final missing = <String>[];
     if (!File(p.join(toolsDir, 'yt-dlp.exe')).existsSync()) {
@@ -912,9 +886,10 @@ class DownloadManager extends ChangeNotifier {
         '--extract-audio',
         '--audio-format',
         'mp3',
+        '--audio-quality',
+        '0', // Mejor calidad (320kbps para mp3)
         '--ffmpeg-location',
         ffmpegExe,
-        // Asegurar que los metadatos se embeben en el MP3
         '--embed-thumbnail',
         '--add-metadata',
       ]);
@@ -968,7 +943,7 @@ class DownloadManager extends ChangeNotifier {
       '-ac',
       '2',
       '-b:a',
-      '192k',
+      '320k',
       outputPath,
     ];
     final exitCode = await _runProcessStreamed(

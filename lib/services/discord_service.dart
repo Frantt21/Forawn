@@ -1,7 +1,6 @@
 import 'dart:async';
 import 'package:discord_rich_presence/discord_rich_presence.dart';
 import 'package:logging/logging.dart';
-import 'package:forawn/config/api_config.dart';
 import 'package:forawn/services/music_state_service.dart';
 import 'package:forawn/services/metadata_service.dart';
 import 'package:forawn/services/local_music_database.dart';
@@ -68,7 +67,9 @@ class DiscordService {
     if (_isInitialized) return _isConnected;
 
     try {
-      _client = Client(clientId: ApiConfig.discordApplicationId);
+      // Discord RPC deshabilitado: requiere client ID específico de la aplicación
+      _log.warning('Discord RPC deshabilitado - no hay client ID configurado');
+      return false;
 
       // Intentar conectar con timeout para evitar bloqueos
       await _client!.connect().timeout(

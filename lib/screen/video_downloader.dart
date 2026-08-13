@@ -11,6 +11,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:window_manager/window_manager.dart';
 import '../models/download_task.dart';
 import '../services/download_manager.dart';
+import '../services/tools_service.dart';
 import 'downloads_screen.dart';
 import '../widgets/elegant_notification.dart';
 
@@ -138,29 +139,7 @@ class _VideoDownloaderScreenState extends State<VideoDownloaderScreen>
   }
 
   // --- Process runner / yt-dlp integration ---
-  String _findBaseDir() {
-    try {
-      final exeDir = p.dirname(Platform.resolvedExecutable);
-      if (Directory(p.join(exeDir, 'tools')).existsSync()) return exeDir;
-    } catch (_) {}
-    final currentDir = Directory.current.path;
-    if (Directory(p.join(currentDir, 'tools')).existsSync()) return currentDir;
-
-    final candidates = <String>[
-      p.join(currentDir, 'build', 'windows', 'x64', 'runner', 'Debug'),
-      p.join(currentDir, 'build', 'windows', 'runner', 'Debug'),
-      p.join(currentDir, 'build', 'windows', 'x64', 'runner', 'Release'),
-      p.join(currentDir, 'build', 'windows', 'runner', 'Release'),
-      p.normalize(p.current),
-    ];
-    for (final base in candidates) {
-      if (Directory(p.join(base, 'tools')).existsSync()) return base;
-    }
-    return '';
-  }
-
-  String _findToolsDir() =>
-      _findBaseDir().isEmpty ? '' : p.join(_findBaseDir(), 'tools');
+  String _findToolsDir() => ToolsService().toolsDir;
 
   Future<int> _runProcessStreamed({
     required String executable,

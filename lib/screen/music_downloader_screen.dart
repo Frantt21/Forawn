@@ -8,7 +8,6 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:http/http.dart' as http;
 import 'package:path/path.dart' as p;
 import 'package:window_manager/window_manager.dart';
-import '../config/api_config.dart';
 import '../models/download_task.dart';
 import '../widgets/elegant_notification.dart';
 import '../services/download_manager.dart';
@@ -263,9 +262,9 @@ class _MusicDownloaderScreenState extends State<MusicDownloaderScreen>
     setState(() => _loadingRecommendations = true);
 
     try {
-      final uri = Uri.parse(
-        '${ApiConfig.foranlyBackendPrimary}/youtube/search',
-      ).replace(queryParameters: {'q': query, 'limit': '5'});
+      final uri = Uri.parse('https://api.deezer.com/search').replace(
+        queryParameters: {'q': query, 'limit': '5'},
+      );
       final response = await http.get(uri).timeout(const Duration(seconds: 10));
 
       if (!mounted) {
@@ -291,7 +290,7 @@ class _MusicDownloaderScreenState extends State<MusicDownloaderScreen>
         return;
       }
 
-      final resultsRaw = data['results'] as List<dynamic>? ?? [];
+      final resultsRaw = data['data'] as List<dynamic>? ?? [];
 
       debugPrint('[MusicDownloaderScreen] Found ${resultsRaw.length} results');
 
@@ -347,9 +346,9 @@ class _MusicDownloaderScreenState extends State<MusicDownloaderScreen>
     debugPrint('[MusicDownloaderScreen] buscarCanciones: query="$query"');
 
     try {
-      final uri = Uri.parse(
-        '${ApiConfig.foranlyBackendPrimary}/youtube/search',
-      ).replace(queryParameters: {'q': query, 'limit': '100'});
+      final uri = Uri.parse('https://api.deezer.com/search').replace(
+        queryParameters: {'q': query, 'limit': '100'},
+      );
 
       debugPrint('[MusicDownloaderScreen] Fetching from URI: $uri');
 
@@ -364,7 +363,7 @@ class _MusicDownloaderScreenState extends State<MusicDownloaderScreen>
 
         // Verificar si el backend devolvió un error
         if (data.containsKey('error')) {
-          debugPrint('[MusicDownloaderScreen] Backend error: ${data['error']}');
+          debugPrint('[MusicDownloaderScreen] Deezer API error: ${data['error']}');
           if (mounted) {
             setState(() => _searching = false);
             showElegantNotification(
@@ -411,7 +410,7 @@ class _MusicDownloaderScreenState extends State<MusicDownloaderScreen>
 
       debugPrint('[MusicDownloaderScreen] Response received, parsing data...');
 
-      final resultsRaw = data['results'] as List<dynamic>? ?? [];
+      final resultsRaw = data['data'] as List<dynamic>? ?? [];
 
       debugPrint('[MusicDownloaderScreen] Found ${resultsRaw.length} results');
 
@@ -551,7 +550,15 @@ class _MusicDownloaderScreenState extends State<MusicDownloaderScreen>
     }
     final nombre = title;
     final imageUrl = (c['image'] ?? '').toString();
-    final url = c['url']?.toString() ?? nombre;
+    // Usar búsqueda YouTube en lugar de URL directa de Deezer
+    // para obtener mejor calidad (yt-dlp + YouTube = audio completo)
+    final String url;
+    if (artista.isNotEmpty &&
+        artista != widget.getText('unknown_artist', fallback: 'Unknown artist')) {
+      url = '$nombre $artista';
+    } else {
+      url = '$nombre';
+    }
     final id = DateTime.now().millisecondsSinceEpoch.toString();
 
     // Use bypassSpotifyApi = true to enforce direct yt-dlp handling as we are providing YouTube URL/Search
@@ -996,104 +1003,38 @@ class _MusicDownloaderScreenState extends State<MusicDownloaderScreen>
     );
   }
 
-  // Función auxiliar para detectar inversión con validación cruzada
+  // Procesa resultados de la API de Deezer
   List<Map<String, dynamic>> _processSearchResults(List<dynamic> resultsRaw) {
-    // Primer paso: mapear todos los resultados con datos crudos
-    final rawMapped = resultsRaw
-        .map((item) {
+    final canciones = resultsRaw
+        .whereType<Map<String, dynamic>>()
+        .map((r) {
           try {
-            if (item is! Map<String, dynamic>) return null;
-            final r = item;
-            return {
-              'rawTitle': r['title'] ?? '',
-              'parsedSong': r['parsedSong'] ?? '',
-              'parsedArtist': r['parsedArtist'] ?? '',
-              'author': r['author'] ?? '',
-              'thumbnail': r['thumbnail'] ?? '',
-              'url': r['url'] ?? '',
-              'duration': r['duration'] ?? 0,
-            };
-          } catch (e) {
-            return null;
-          }
-        })
-        .where((m) => m != null)
-        .cast<Map<String, dynamic>>()
-        .toList();
+            final artistData = r['artist'] as Map<String, dynamic>?;
+            final albumData = r['album'] as Map<String, dynamic>?;
 
-    // Segundo paso: detectar inversiones usando validación cruzada
-    final canciones = rawMapped
-        .map((item) {
-          try {
-            final String rawTitle = item['rawTitle'];
-            String parsedSong = item['parsedSong'];
-            String parsedArtist = item['parsedArtist'];
-            final String author = item['author'];
+            final title = (r['title'] ?? '').toString();
+            final artist = (artistData?['name'] ?? 'Unknown artist').toString();
+            final image = (albumData?['cover_medium'] ??
+                    artistData?['picture_medium'] ??
+                    '')
+                .toString();
+            final url = (r['link'] ?? r['preview'] ?? '').toString();
+            final duration = r['duration'] is int ? (r['duration'] as int) * 1000 : 0;
+            final albumTitle = (albumData?['title'] ?? '').toString();
 
-            // DETECCIÓN DE INVERSIÓN CON VALIDACIÓN CRUZADA
-            String finalParsedSong = parsedSong;
-            String finalParsedArtist = parsedArtist;
-
-            // Método 1: Si la canción tiene múltiples artistas pero el artista no
-            final artistHasMultiple =
-                parsedArtist.contains(',') ||
-                parsedArtist.contains('&') ||
-                parsedArtist.toLowerCase().contains('ft.');
-            final songHasMultiple =
-                parsedSong.contains(',') ||
-                parsedSong.contains('&') ||
-                parsedSong.toLowerCase().contains('ft.');
-
-            if (songHasMultiple &&
-                !artistHasMultiple &&
-                parsedArtist.isNotEmpty) {
-              debugPrint(
-                '[MusicDownloaderScreen] ⚠️ Detected inverted fields (multiple artists), swapping...',
-              );
-              finalParsedArtist = parsedSong;
-              finalParsedSong = parsedArtist;
-            }
-            // Método 2: Validación cruzada con otras canciones
-            else {
-              // Contar cuántas otras canciones tienen el mismo parsedArtist
-              int matchingArtists = rawMapped.where((other) {
-                return other != item &&
-                    other['parsedArtist'].toString().toLowerCase() ==
-                        parsedSong.toLowerCase();
-              }).length;
-
-              // Si al menos 2 otras canciones tienen como artista lo que esta tiene como canción,
-              // probablemente están invertidos
-              if (matchingArtists >= 2 && parsedArtist.isNotEmpty) {
-                debugPrint(
-                  '[MusicDownloaderScreen] ⚠️ Detected inverted fields (cross-validation: $matchingArtists matches), swapping...',
-                );
-                finalParsedArtist = parsedSong;
-                finalParsedSong = parsedArtist;
-              }
-            }
-
-            final title = finalParsedSong.isNotEmpty
-                ? _toTitleCase(finalParsedSong)
-                : rawTitle;
-            String artist = finalParsedArtist.isNotEmpty
-                ? finalParsedArtist
-                : (author.isNotEmpty ? author : 'Unknown artist');
-            artist = _toTitleCase(artist);
+            if (title.isEmpty) return <String, dynamic>{};
 
             return {
-              'title': title,
-              'artist': artist,
-              'album': 'YouTube',
-              'image': item['thumbnail'],
-              'url': item['url'],
+              'title': _toTitleCase(title),
+              'artist': _toTitleCase(artist),
+              'album': albumTitle,
+              'image': image,
+              'url': url,
               'popularity': '100',
-              'duration_ms': (item['duration'] is int)
-                  ? (item['duration'] as int) * 1000
-                  : 0,
+              'duration_ms': duration,
             };
           } catch (e, st) {
-            debugPrint('[MusicDownloaderScreen] Error parsing item: $e\n$st');
+            debugPrint('[MusicDownloaderScreen] Error parsing Deezer item: $e\n$st');
             return <String, dynamic>{};
           }
         })

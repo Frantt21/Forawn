@@ -5,7 +5,7 @@ import 'dart:typed_data';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:path/path.dart' as p;
-import '../config/api_config.dart';
+import 'tools_service.dart';
 
 class TrackMetadata {
   final String title;
@@ -65,15 +65,13 @@ class MetadataService {
         return _cache[cacheKey];
       }
 
-      final uri = Uri.parse('${ApiConfig.foranlyBackendPrimary}/metadata')
-          .replace(
-            queryParameters: {
-              'title': title,
-              if (artist != null && artist.isNotEmpty) 'artist': artist,
-            },
-          );
+      // Buscar en Deezer API directamente
+      final searchQuery = [title, if (artist != null && artist.isNotEmpty) artist].join(' ');
+      final uri = Uri.parse('https://api.deezer.com/search').replace(
+        queryParameters: {'q': searchQuery, 'limit': '1'},
+      );
 
-      debugPrint('[MetadataService] Fetching metadata for: $title - $artist');
+      debugPrint('[MetadataService] Fetching metadata from Deezer for: $title - $artist');
 
       final response = await http
           .get(uri)
@@ -86,7 +84,24 @@ class MetadataService {
 
       if (response.statusCode == 200) {
         final data = json.decode(response.body);
-        final metadata = TrackMetadata.fromJson(data);
+        final results = data['data'] as List<dynamic>? ?? [];
+        if (results.isEmpty) return null;
+        final item = results.first as Map<String, dynamic>;
+        final albumData = item['album'] as Map<String, dynamic>?;
+        final artistData = item['artist'] as Map<String, dynamic>?;
+
+        final metadata = TrackMetadata(
+          title: item['title'] ?? title,
+          artist: artistData?['name'] ?? artist ?? '',
+          album: albumData?['title'] ?? '',
+          year: (albumData?['release_date'] as String?)?.length == 10
+              ? (albumData?['release_date'] as String).substring(0, 4)
+              : albumData?['release_date']?.toString(),
+          trackNumber: item['track_position'],
+          albumArtUrl: albumData?['cover_big'] ?? albumData?['cover_medium'],
+          duration: item['duration'] != null ? (item['duration'] as int) * 1000 : null,
+          hasAlbumArt: albumData?['cover_big'] != null,
+        );
 
         // Guardar en caché
         _cache[cacheKey] = metadata;
@@ -231,7 +246,7 @@ class MetadataService {
       debugPrint('[MetadataService] Running FFmpeg command logic');
 
       // Localizar ffmpeg
-      final toolsDir = _findToolsDir();
+      final toolsDir = ToolsService().toolsDir;
       debugPrint('[MetadataService] Tools dir found: "$toolsDir"');
 
       var ffmpegExe = 'ffmpeg'; // Default global
@@ -303,28 +318,5 @@ class MetadataService {
     }
   }
 
-  // --- Process runner / tools helpers ---
-  String _findBaseDir() {
-    try {
-      final exeDir = p.dirname(Platform.resolvedExecutable);
-      if (Directory(p.join(exeDir, 'tools')).existsSync()) return exeDir;
-    } catch (_) {}
-    final currentDir = Directory.current.path;
-    if (Directory(p.join(currentDir, 'tools')).existsSync()) return currentDir;
 
-    final candidates = <String>[
-      p.join(currentDir, 'build', 'windows', 'x64', 'runner', 'Debug'),
-      p.join(currentDir, 'build', 'windows', 'runner', 'Debug'),
-      p.join(currentDir, 'build', 'windows', 'x64', 'runner', 'Release'),
-      p.join(currentDir, 'build', 'windows', 'runner', 'Release'),
-      p.normalize(p.current),
-    ];
-    for (final base in candidates) {
-      if (Directory(p.join(base, 'tools')).existsSync()) return base;
-    }
-    return '';
-  }
-
-  String _findToolsDir() =>
-      _findBaseDir().isEmpty ? '' : p.join(_findBaseDir(), 'tools');
 }

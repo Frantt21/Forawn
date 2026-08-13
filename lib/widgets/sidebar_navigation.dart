@@ -61,14 +61,6 @@ class _SidebarNavigationState extends State<SidebarNavigation> {
       ),
     ];
 
-    _categories[widget.getText('ias_title', fallback: 'IAs')] = [
-      NavigationItem(
-        id: 'images',
-        icon: Icons.image,
-        label: widget.getText('ai_image_title', fallback: 'Imágenes'),
-      ),
-    ];
-
     _categories[widget.getText('tools_title', fallback: 'Herramientas')] = [
       // NavigationItem(
       //   id: 'notes',

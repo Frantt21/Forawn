@@ -3,7 +3,6 @@ import 'package:http/http.dart' as http;
 import 'package:logging/logging.dart';
 import 'package:sqflite/sqflite.dart';
 import 'package:path/path.dart' as p;
-import 'package:forawn/config/api_config.dart';
 import 'package:forawn/models/synced_lyrics.dart';
 import 'package:forawn/models/lyrics_search_result.dart';
 
@@ -22,7 +21,7 @@ class LyricsService {
     try {
       final encodedQuery = Uri.encodeComponent(query);
       final uri = Uri.parse(
-        '${ApiConfig.lyricsBaseUrl}/search?q=$encodedQuery',
+        'https://lrclib.net/api/search?q=$encodedQuery',
       );
 
       _log.info('Manual search lyrics: $query');
@@ -152,7 +151,7 @@ class LyricsService {
       final encodedQuery = Uri.encodeComponent(query);
       // Usar endpoint de búsqueda para mejor matching
       final uri = Uri.parse(
-        '${ApiConfig.lyricsBaseUrl}/search?q=$encodedQuery',
+        'https://lrclib.net/api/search?q=$encodedQuery',
       );
 
       final response = await http

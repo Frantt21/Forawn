@@ -12,7 +12,6 @@ import 'package:hotkey_manager/hotkey_manager.dart';
 import 'screen/music_downloader_screen.dart';
 import 'screen/music_player_screen.dart';
 import 'settings.dart';
-import 'imgia_screen.dart';
 import 'translate.dart';
 import 'package:path/path.dart' as p;
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
@@ -27,9 +26,9 @@ import 'widgets/sidebar_navigation.dart';
 
 import 'screen/home_content.dart';
 
-import 'services/discord_service.dart';
 import 'services/global_music_player.dart';
 import 'services/local_music_database.dart';
+import 'services/tools_service.dart';
 import 'services/window_media_service.dart';
 
 const String kDefaultLangCode = 'en';
@@ -116,14 +115,13 @@ Future<void> main() async {
   currentLang = saved;
   lang = await loadLanguageFromExeOrAssets(saved);
 
-  // Inicializar Discord Rich Presence si está habilitado
-  final discordEnabled = prefs.getBool('discord_enabled') ?? false;
-  if (discordEnabled) {
-    try {
-      await DiscordService().initialize();
-    } catch (e) {
-      debugPrint('[Discord] Error al inicializar: $e');
-    }
+
+
+  // Descargar herramientas (ffmpeg, yt-dlp) si faltan
+  try {
+    await ToolsService().initialize();
+  } catch (e) {
+    debugPrint('[Main] Error initializing tools: $e');
   }
 
   // Inicializar base de datos local de música
@@ -541,10 +539,7 @@ class _HomeScreenState extends State<HomeScreen> with WindowListener {
       );
     });
 
-    // Actualizar Discord Rich Presence si está conectado
-    if (DiscordService().isConnected) {
-      DiscordService().updateScreenPresence(screenId);
-    }
+  
   }
 
   // Store folder actions per screen
@@ -610,8 +605,6 @@ class _HomeScreenState extends State<HomeScreen> with WindowListener {
     windowManager.removeListener(this);
     // Guardar estado del reproductor al destruir (inmediato)
     GlobalMusicPlayer().savePlayerStateImmediate();
-    // Limpiar Discord Rich Presence
-    DiscordService().dispose();
     super.dispose();
   }
 
@@ -660,7 +653,6 @@ class _HomeScreenState extends State<HomeScreen> with WindowListener {
       'music',
       'video',
       'player',
-      'images',
       'translate',
       'qr',
     ];
@@ -689,12 +681,7 @@ class _HomeScreenState extends State<HomeScreen> with WindowListener {
         onRegisterFolderAction: (action) =>
             _registerFolderAction(action, 'player'),
       ),
-      'images': AiImageScreen(
-        getText: widget.getText,
-        currentLang: widget.currentLangCode,
-        onRegisterFolderAction: (action) =>
-            _registerFolderAction(action, 'images'),
-      ),
+
       'translate': TranslateScreen(
         getText: widget.getText,
         currentLang: widget.currentLangCode,
@@ -757,8 +744,7 @@ class _HomeScreenState extends State<HomeScreen> with WindowListener {
         return widget.getText('download_button', fallback: 'Música');
       case 'video':
         return widget.getText('vid_title', fallback: 'Video');
-      case 'images':
-        return widget.getText('ai_image_title', fallback: 'Imágenes');
+
       case 'player':
         return widget.getText(
           'music_player_title',
@@ -897,20 +883,7 @@ class _HomeScreenState extends State<HomeScreen> with WindowListener {
                                             _onFolderAction?.call();
                                           },
                                         ),
-                                      if (_currentScreen == 'images')
-                                        IconButton(
-                                          tooltip: widget.getText(
-                                            'folder_button',
-                                            fallback: 'Folder',
-                                          ),
-                                          icon: const Icon(
-                                            Icons.folder_open,
-                                            size: 20,
-                                          ),
-                                          onPressed: () {
-                                            _onFolderAction?.call();
-                                          },
-                                        ),
+
                                       if (_currentScreen == 'translate')
                                         IconButton(
                                           tooltip: widget.getText(
