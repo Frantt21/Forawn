@@ -1023,9 +1023,28 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen>
 
   int _tabIndex = 0;
 
+  // Playlist seleccionada para ver su detalle dentro del mismo screen
+  Playlist? _selectedPlaylist;
+  bool _selectedPlaylistIsReadOnly = false;
+
   @override
   Widget build(BuildContext context) {
     super.build(context); // Required for AutomaticKeepAliveClientMixin
+
+    final selected = _selectedPlaylist;
+    if (selected != null) {
+      // Renderizar el detalle de la playlist en este mismo screen
+      return PlaylistDetailScreen(
+        key: ValueKey('playlist_detail_${selected.id}'),
+        playlist: selected,
+        getText: widget.getText,
+        isReadOnly: _selectedPlaylistIsReadOnly,
+        onBack: () {
+          if (mounted) setState(() => _selectedPlaylist = null);
+        },
+      );
+    }
+
     return _buildLibraryView();
   }
 
@@ -1747,16 +1766,10 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen>
   }) {
     return GestureDetector(
       onTap: () {
-        Navigator.push(
-          context,
-          MaterialPageRoute(
-            builder: (context) => PlaylistDetailScreen(
-              playlist: playlist,
-              getText: widget.getText,
-              isReadOnly: isFavorite,
-            ),
-          ),
-        ).then((_) => setState(() {}));
+        setState(() {
+          _selectedPlaylist = playlist;
+          _selectedPlaylistIsReadOnly = isFavorite;
+        });
       },
       onLongPress: isFavorite
           ? null

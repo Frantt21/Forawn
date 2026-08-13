@@ -17,12 +17,14 @@ class PlaylistDetailScreen extends StatefulWidget {
   final Playlist playlist;
   final bool isReadOnly;
   final String Function(String key, {String? fallback}) getText;
+  final VoidCallback? onBack;
 
   const PlaylistDetailScreen({
     super.key,
     required this.playlist,
     required this.getText,
     this.isReadOnly = false,
+    this.onBack,
   });
 
   @override
@@ -278,7 +280,11 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen>
                 _animationController.reverse();
               });
             } else {
-              Navigator.pop(context);
+              if (widget.onBack != null) {
+                widget.onBack!();
+              } else {
+                Navigator.pop(context);
+              }
             }
           },
         ),
