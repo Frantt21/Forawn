@@ -1,9 +1,18 @@
+/// Palabra con timestamp propio (formato karaoke <mm:ss.xx> de SyncLRC).
+class KaraokeWord {
+  final Duration timestamp;
+  final String text;
+
+  KaraokeWord({required this.timestamp, required this.text});
+}
+
 /// Modelo para una línea de letra sincronizada
 class LyricLine {
   final Duration timestamp;
   final String text;
+  final List<KaraokeWord>? words;
 
-  LyricLine({required this.timestamp, required this.text});
+  LyricLine({required this.timestamp, required this.text, this.words});
 
   /// Crea una LyricLine desde formato LRC: [mm:ss.xx] texto
   factory LyricLine.fromLRC(String line) {
@@ -17,7 +26,7 @@ class LyricLine {
     final minutes = int.parse(match.group(1)!);
     final seconds = int.parse(match.group(2)!);
     final centiseconds = int.parse(match.group(3)!);
-    final text = match.group(4)!.trim();
+    final fullText = match.group(4)!;
 
     final timestamp = Duration(
       minutes: minutes,
@@ -25,7 +34,39 @@ class LyricLine {
       milliseconds: centiseconds * 10,
     );
 
-    return LyricLine(timestamp: timestamp, text: text);
+    // Palabras con timestamps propios (formato karaoke <mm:ss.xx>)
+    List<KaraokeWord>? words;
+    final wordRegex = RegExp(r'(?:<(\d{2}):(\d{2})\.(\d{2,3})>)?([^<]+)');
+    if (fullText.contains('<')) {
+      words = [];
+      for (final wMatch in wordRegex.allMatches(fullText)) {
+        final wText = wMatch.group(4)!.trimRight();
+        if (wText.isEmpty) continue;
+        words.add(
+          KaraokeWord(
+            timestamp: wMatch.group(1) != null
+                ? Duration(
+                    minutes: int.parse(wMatch.group(1)!),
+                    seconds: int.parse(wMatch.group(2)!),
+                    milliseconds:
+                        int.parse(wMatch.group(3)!) *
+                        (wMatch.group(3)!.length == 3 ? 1 : 10),
+                  )
+                : timestamp,
+            text: wText,
+          ),
+        );
+      }
+    }
+
+    // Limpiar las etiquetas internas <mm:ss.xx> del texto visible
+    var text = fullText.replaceAll(
+      RegExp(r'<\d{2}:\d{2}\.\d{2,3}>'),
+      '',
+    );
+    text = text.replaceAll(RegExp(r'\s+'), ' ').trim();
+
+    return LyricLine(timestamp: timestamp, text: text, words: words);
   }
 
   /// Convierte a formato LRC

@@ -1,8 +1,12 @@
+import 'dart:io';
+import 'dart:typed_data';
 import 'dart:ui';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/synced_lyrics.dart';
+import '../services/tools_service.dart';
 
 typedef TextGetter = String Function(String key, {String? fallback});
 
@@ -20,6 +24,12 @@ class LyricsDisplay extends StatefulWidget {
   /// Desfase de sincronización (se resta a la posición para el sweep).
   final Duration lyricsOffset;
 
+  /// Archivo de audio para extraer la energía (waveform) con ffmpeg.
+  final String? audioPath;
+
+  /// Duración total de la canción (para mapear tiempo → muestra).
+  final ValueListenable<Duration>? durationNotifier;
+
   const LyricsDisplay({
     super.key,
     required this.lyrics,
@@ -29,6 +39,8 @@ class LyricsDisplay extends StatefulWidget {
     this.textAlign = TextAlign.center,
     this.onTap,
     this.lyricsOffset = Duration.zero,
+    this.audioPath,
+    this.durationNotifier,
   });
 
   @override
@@ -51,6 +63,11 @@ class _LyricsDisplayState extends State<LyricsDisplay>
 
   // Modo karaoke (sweep palabra por palabra).
   bool _isSweepEnabled = false;
+
+  // Waveform: energía real del audio extraída con ffmpeg (equivalente al
+  // audio_waveforms de forawn_mobile, que no soporta Linux/Windows).
+  List<double> _waveformData = [];
+  int _waveformGen = 0;
 
   @override
   bool get wantKeepAlive => true;
@@ -128,6 +145,7 @@ class _LyricsDisplayState extends State<LyricsDisplay>
     _controller.addListener(_checkButtonVisibility);
     widget.currentIndexNotifier.addListener(_onIndexChanged);
     _loadSweepSetting();
+    _extractWaveform();
 
     // Crear keys para cada item (con gaps)
     for (var i = 0; i < _lines.length; i++) {
@@ -145,12 +163,107 @@ class _LyricsDisplayState extends State<LyricsDisplay>
     } catch (_) {}
   }
 
+  /// Extrae la energía del audio con ffmpeg (como audio_waveforms del
+  /// móvil): PCM mono a 4 kHz → 1000 valores de amplitud media por ventana.
+  Future<void> _extractWaveform() async {
+    final path = widget.audioPath;
+    if (path == null || path.isEmpty || !ToolsService().hasFfmpeg) return;
+    final gen = ++_waveformGen;
+    try {
+      final file = File(path);
+      if (!await file.exists() || await file.length() > 80 * 1024 * 1024) {
+        return;
+      }
+      if (!mounted) return;
+      final result = await Process.run(
+        ToolsService().ffmpegPath,
+        ['-i', path, '-ac', '1', '-ar', '4000', '-f', 'f32le', '-'],
+        stdoutEncoding: null,
+      );
+      if (gen != _waveformGen || !mounted) return;
+      final bytes = result.stdout as Uint8List;
+      final data = _computeEnergyBuckets(bytes, 1000);
+      if (mounted && gen == _waveformGen) {
+        setState(() => _waveformData = data);
+      }
+    } catch (e) {
+      debugPrint('[LyricsDisplay] Error extracting waveform: $e');
+    }
+  }
+
+  /// Divide el PCM float32 en `buckets` ventanas y devuelve la amplitud
+  /// media (abs) de cada una — la "energía" por tramo de la canción.
+  List<double> _computeEnergyBuckets(Uint8List bytes, int buckets) {
+    if (bytes.length < 4) return [];
+    final sampleCount = bytes.length ~/ 4;
+    final byteData = ByteData.sublistView(bytes);
+    final result = List<double>.filled(buckets, 0.0);
+    for (var b = 0; b < buckets; b++) {
+      final startSample = (b * sampleCount) ~/ buckets;
+      final endSample = ((b + 1) * sampleCount) ~/ buckets;
+      if (endSample <= startSample) continue;
+      var sum = 0.0;
+      for (var i = startSample; i < endSample; i++) {
+        sum += byteData.getFloat32(i * 4, Endian.little).abs();
+      }
+      result[b] = sum / (endSample - startSample);
+    }
+    return result;
+  }
+
+  /// Progreso de la línea por energía acumulada del audio (igual que
+  /// _getWaveformProgress de forawn_mobile). Devuelve -1 si no hay datos.
+  double _getWaveformProgress(int displayIndex, Duration position) {
+    final duration = widget.durationNotifier?.value;
+    if (_waveformData.isEmpty ||
+        duration == null ||
+        duration.inMilliseconds == 0) {
+      return -1.0;
+    }
+    final line = _lines[displayIndex];
+    final startMs = line.timestamp.inMilliseconds;
+    final endMs = displayIndex < _lines.length - 1
+        ? _lines[displayIndex + 1].timestamp.inMilliseconds
+        : duration.inMilliseconds;
+    final currentMs = (position - widget.lyricsOffset).inMilliseconds;
+    final totalSongMs = duration.inMilliseconds;
+
+    if (currentMs <= startMs) return 0.0;
+    if (currentMs >= endMs) return 1.0;
+
+    final startIndex = (startMs * _waveformData.length / totalSongMs)
+        .floor()
+        .clamp(0, _waveformData.length - 1);
+    final endIndex = (endMs * _waveformData.length / totalSongMs)
+        .floor()
+        .clamp(0, _waveformData.length - 1);
+    final currentIndex = (currentMs * _waveformData.length / totalSongMs)
+        .floor()
+        .clamp(0, _waveformData.length - 1);
+
+    if (startIndex >= endIndex) return -1.0;
+
+    var totalEnergy = 0.0;
+    var currentEnergy = 0.0;
+    for (var i = startIndex; i <= endIndex; i++) {
+      final energy = _waveformData[i].abs() + 0.05;
+      totalEnergy += energy;
+      if (i <= currentIndex) currentEnergy += energy;
+    }
+    if (totalEnergy == 0) return -1.0;
+    return (currentEnergy / totalEnergy).clamp(0.0, 1.0);
+  }
+
   @override
   void didUpdateWidget(LyricsDisplay oldWidget) {
     super.didUpdateWidget(oldWidget);
 
-    // Si cambiaron las lyrics (nueva canción), recrear keys y resetear scroll
-    if (oldWidget.lyrics != widget.lyrics) {
+    // Si cambiaron las lyrics o el audio (nueva canción), recrear keys y
+    // resetear scroll y waveform
+    if (oldWidget.lyrics != widget.lyrics ||
+        oldWidget.audioPath != widget.audioPath) {
+      _waveformData = [];
+      _extractWaveform();
       // Recrear keys para los nuevos items (con gaps)
       _itemKeys.clear();
       for (var i = 0; i < _lines.length; i++) {
@@ -335,7 +448,79 @@ class _LyricsDisplayState extends State<LyricsDisplay>
   }
 
   /// Línea con sweep palabra por palabra (modo karaoke, forawn_mobile).
-  Widget _buildKaraokeWords(TextStyle style, String text, double lineProgress) {
+  Widget _buildKaraokeWords(
+    TextStyle style,
+    LyricLine line,
+    Duration position,
+    int displayIndex,
+  ) {
+    final effectivePos = position - widget.lyricsOffset;
+
+    // Timestamps reales por palabra (SyncLRC <mm:ss.xx>): render exacto,
+    // sin matemática por caracteres (igual que forawn_mobile).
+    final words = line.words;
+    if (words != null && words.isNotEmpty) {
+      final endTime = displayIndex < _lines.length - 1
+          ? _lines[displayIndex + 1].timestamp
+          : line.timestamp + const Duration(seconds: 5);
+      final wordWidgets = <Widget>[];
+      for (var i = 0; i < words.length; i++) {
+        final w = words[i];
+        final wStart = w.timestamp;
+        final wEnd = i < words.length - 1 ? words[i + 1].timestamp : endTime;
+
+        double wordProgress = 0.0;
+        if (effectivePos >= wEnd) {
+          wordProgress = 1.0;
+        } else if (effectivePos > wStart) {
+          final durationMs = (wEnd - wStart).inMilliseconds;
+          wordProgress = durationMs > 0
+              ? ((effectivePos - wStart).inMilliseconds / durationMs)
+                    .clamp(0.0, 1.0)
+              : 1.0;
+        }
+
+        wordWidgets.add(
+          _LyricWord(
+            word: w.text + (i < words.length - 1 ? ' ' : ''),
+            progress: wordProgress,
+            style: style,
+            activeColor: Colors.white,
+            inactiveColor: Colors.white.withOpacity(0.3),
+          ),
+        );
+      }
+      return Wrap(
+        alignment: WrapAlignment.start,
+        crossAxisAlignment: WrapCrossAlignment.center,
+        spacing: 0.0,
+        runSpacing: 4.0,
+        children: wordWidgets,
+      );
+    }
+
+    // Progreso por energía real del audio (waveform con ffmpeg) si está
+    // disponible; si no, estimación por tiempo. Ambos suavizados con
+    // 300 ms easeOutCubic (igual que el móvil).
+    var lineProgress = _getWaveformProgress(displayIndex, position);
+    if (lineProgress < 0) {
+      lineProgress = _lineProgress(displayIndex, position);
+    }
+    return TweenAnimationBuilder<double>(
+      duration: const Duration(milliseconds: 300),
+      curve: Curves.easeOutCubic,
+      tween: Tween<double>(begin: lineProgress, end: lineProgress),
+      builder: (context, smoothProgress, _) =>
+          _buildKaraokeFromProgress(style, line.text, smoothProgress),
+    );
+  }
+
+  /// Matemática por caracteres con overlap (fallback sin timestamps).
+  Widget _buildKaraokeFromProgress(
+    TextStyle style,
+    String text,
+    double lineProgress,
+  ) {
     final words = text.split(' ');
     final totalChars = text.length;
     final currentCharIndex = lineProgress * totalChars;
@@ -366,7 +551,7 @@ class _LyricsDisplayState extends State<LyricsDisplay>
           progress: wordProgress,
           style: style,
           activeColor: Colors.white,
-          inactiveColor: Colors.white.withOpacity(0.5),
+          inactiveColor: Colors.white.withOpacity(0.3),
         ),
       );
 
@@ -475,8 +660,9 @@ class _LyricsDisplayState extends State<LyricsDisplay>
                         builder: (context, position, _) {
                           return _buildKaraokeWords(
                             baseStyle,
-                            line.text,
-                            _lineProgress(index, position),
+                            line,
+                            position,
+                            index,
                           );
                         },
                       );
