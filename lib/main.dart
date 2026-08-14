@@ -230,9 +230,9 @@ Future<void> checkForUpdate(
       showDialog(
         context: context,
         builder: (_) => AlertDialog(
-          backgroundColor: const Color(0xFF1E1E1E),
+          backgroundColor: const Color(0xFF1C1C1E),
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(10),
+            borderRadius: BorderRadius.circular(16),
           ),
           title: Text(
             getText('update_title', fallback: 'Nueva versión disponible'),

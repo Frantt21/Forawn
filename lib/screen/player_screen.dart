@@ -3,6 +3,7 @@ import 'dart:io';
 import 'dart:math';
 import 'dart:typed_data';
 import 'dart:ui';
+import 'package:http/http.dart' as http;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:audioplayers/audioplayers.dart';
@@ -52,6 +53,19 @@ class _PlayerScreenState extends State<PlayerScreen> with WindowListener {
   // (en segundos). Mientras se arrastra se muestra esta
   // posición; el seek se aplica al soltar (onChangeEnd).
   double? _dragSeekValue;
+
+  // Animación de corazón al dar like con doble tap en la
+  // portada (misma función que forawn_mobile).
+  bool _showHeartAnimation = false;
+
+  // Modo de artwork expandido de fondo (forawn_mobile).
+  bool _isFullArtworkMode = true;
+
+  // Artwork online de alta resolución (Deezer) para el modo extendido:
+  // se usa cuando el artwork embebido del MP3 es pequeño o falta. Los
+  // bytes se precargan para que la imagen no "salte" al cambiar de canción.
+  Uint8List? _onlineArtworkBytes;
+  String? _artworkLoadPath;
 
   // UI colors/state
   Color? _dominantColor;
@@ -122,6 +136,10 @@ class _PlayerScreenState extends State<PlayerScreen> with WindowListener {
     _musicPlayer.currentFilePath.addListener(_loadSavedOffset);
     _musicPlayer.position.addListener(_updateLyricIndex);
     _loadSavedOffset(); // Initial load
+    _loadArtworkMode();
+    // Cargar el artwork online cacheado (al re-entrar la canción no
+    // cambia, así que sin esto se perdería la calidad de 1000 px).
+    _loadOnlineArtwork();
 
     // Keyboard listeners are handled by RawKeyboardListener in build
   }
@@ -174,8 +192,14 @@ class _PlayerScreenState extends State<PlayerScreen> with WindowListener {
   }
 
   void _onTitleChanged() {
-    if (mounted)
-      setState(() => _currentTitle = _musicPlayer.currentTitle.value);
+    if (mounted) {
+      setState(() {
+        _currentTitle = _musicPlayer.currentTitle.value;
+        // Reset para la nueva canción; se recarga el artwork online.
+        _onlineArtworkBytes = null;
+      });
+      _loadOnlineArtwork();
+    }
   }
 
   void _onArtistChanged() {
@@ -249,7 +273,7 @@ class _PlayerScreenState extends State<PlayerScreen> with WindowListener {
       barrierDismissible: true,
       builder: (dialogContext) => Dialog(
         backgroundColor: const Color(0xFF1C1C1E),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         insetPadding: const EdgeInsets.all(24),
         child: Container(
           width: 400,
@@ -406,7 +430,7 @@ class _PlayerScreenState extends State<PlayerScreen> with WindowListener {
       barrierDismissible: true,
       builder: (dialogContext) => Dialog(
         backgroundColor: const Color(0xFF1C1C1E),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         insetPadding: const EdgeInsets.all(24),
         child: Container(
           width: 400,
@@ -656,7 +680,7 @@ class _PlayerScreenState extends State<PlayerScreen> with WindowListener {
       context: parentContext,
       builder: (context) => Dialog(
         backgroundColor: const Color(0xFF1C1C1E),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         child: Container(
           width: 350,
           padding: const EdgeInsets.all(24),
@@ -1101,6 +1125,350 @@ class _PlayerScreenState extends State<PlayerScreen> with WindowListener {
     }
   }
 
+  // --- Modo de artwork expandido (forawn_mobile) ---
+
+  Future<void> _loadArtworkMode() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final saved = prefs.getBool('full_artwork_mode');
+      if (mounted && saved != null) {
+        setState(() => _isFullArtworkMode = saved);
+      }
+    } catch (e) {
+      debugPrint('[PlayerScreen] Error loading artwork mode: $e');
+    }
+  }
+
+  Future<void> _toggleArtworkMode() async {
+    setState(() => _isFullArtworkMode = !_isFullArtworkMode);
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setBool('full_artwork_mode', _isFullArtworkMode);
+    } catch (e) {
+      debugPrint('[PlayerScreen] Error saving artwork mode: $e');
+    }
+  }
+
+  // --- Gestos en la portada (forawn_mobile) ---
+
+  void _handleHorizontalSwipe(DragEndDetails details) {
+    final velocity = details.primaryVelocity ?? 0;
+    if (velocity < 0) {
+      _playNext();
+    } else if (velocity > 0) {
+      _playPrevious();
+    }
+  }
+
+  void _handleVerticalSwipe(DragEndDetails details) {
+    if ((details.primaryVelocity ?? 0) > 500) {
+      Navigator.of(context).pop();
+    }
+  }
+
+  void _handleDoubleTapLike() {
+    final song = _getCurrentSong();
+    PlaylistService().toggleLike(song.id);
+    setState(() => _showHeartAnimation = true);
+    Future.delayed(const Duration(milliseconds: 800), () {
+      if (mounted) setState(() => _showHeartAnimation = false);
+    });
+  }
+
+  /// Corazón animado al dar like (forawn_mobile).
+  Widget _buildHeartOverlay() {
+    return IgnorePointer(
+      child: AnimatedOpacity(
+        duration: const Duration(milliseconds: 200),
+        opacity: _showHeartAnimation ? 1.0 : 0.0,
+        child: Center(
+          child: TweenAnimationBuilder<double>(
+            tween: Tween(begin: 0.5, end: _showHeartAnimation ? 1.2 : 0.5),
+            duration: const Duration(milliseconds: 400),
+            curve: Curves.elasticOut,
+            builder: (context, scale, child) {
+              return Transform.scale(
+                scale: scale,
+                child: Icon(
+                  Icons.favorite_rounded,
+                  color: _adjustColorForControls(_dominantColor),
+                  size: 100,
+                ),
+              );
+            },
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// Carga el artwork online de alta resolución (Deezer) para el modo
+  /// extendido. Prioridad: bytes ya descargados en la DB (sin red, sin
+  /// parpadeo) → embebido si es grande → descargar y cachear. Así, tras la
+  /// primera reproducción de una canción siempre se usa la máxima calidad
+  /// desde el primer frame.
+  Future<void> _loadOnlineArtwork() async {
+    final path = _musicPlayer.currentFilePath.value;
+    if (path.isEmpty) return;
+    _artworkLoadPath = path;
+
+    try {
+      final meta = await LocalMusicDatabase().getMetadata(path);
+
+      // 1. Bytes del artwork online ya descargados: aplicar directo (sin red)
+      final cachedBytes = meta?.onlineArtworkData;
+      if (cachedBytes != null && cachedBytes.isNotEmpty) {
+        await _applyOnlineArtworkBytes(path, cachedBytes);
+        return;
+      }
+
+      // 2. Si el artwork embebido ya es grande, no hace falta buscar online
+      final art = _currentArt;
+      if (art != null && await _isArtworkLargeEnough(art)) return;
+
+      // 3. URL cacheada: descargar los bytes una vez y guardarlos en la DB
+      final cachedUrl = meta?.onlineArtworkUrl;
+      if (cachedUrl != null && cachedUrl.isNotEmpty) {
+        await _downloadAndCacheArtwork(
+            path, _upscaleDeezerArtwork(cachedUrl));
+        return;
+      }
+
+      // 4. Buscar en Deezer, cachear la URL y descargar los bytes
+      final metadata = await MetadataService().searchMetadata(
+        _currentTitle,
+        _currentArtist,
+      );
+      if (metadata?.albumArtUrl != null && metadata!.albumArtUrl!.isNotEmpty) {
+        await LocalMusicDatabase().updateOnlineArtworkUrl(
+          path,
+          metadata.albumArtUrl!,
+        );
+        await _downloadAndCacheArtwork(
+            path, _upscaleDeezerArtwork(metadata.albumArtUrl!));
+      }
+    } catch (e) {
+      debugPrint('[PlayerScreen] Error loading online artwork: $e');
+    }
+  }
+
+  /// Descarga los bytes del artwork online, los guarda en la DB y los aplica.
+  Future<void> _downloadAndCacheArtwork(String path, String url) async {
+    try {
+      final res = await http
+          .get(Uri.parse(url))
+          .timeout(const Duration(seconds: 8));
+      if (res.statusCode != 200 || res.bodyBytes.isEmpty) return;
+      await LocalMusicDatabase().updateOnlineArtworkData(path, res.bodyBytes);
+      await _applyOnlineArtworkBytes(path, res.bodyBytes);
+    } catch (e) {
+      debugPrint('[PlayerScreen] Error downloading online artwork: $e');
+    }
+  }
+
+  /// Aplica los bytes del artwork online en el estado SOLO si la canción
+  /// sigue siendo la actual. Decodifica la imagen ANTES (precache) para que
+  /// el intercambio no muestre un frame en blanco (parpadeo).
+  Future<void> _applyOnlineArtworkBytes(String path, Uint8List bytes) async {
+    final ctx = context;
+    try {
+      await precacheImage(MemoryImage(bytes), ctx);
+    } catch (_) {}
+    if (mounted && _artworkLoadPath == path) {
+      setState(() => _onlineArtworkBytes = bytes);
+    }
+  }
+
+  /// Sube la resolución del artwork de Deezer (500x500 -> 1000x1000)
+  /// para el modo extendido; otras URLs se dejan tal cual.
+  String _upscaleDeezerArtwork(String url) {
+    if (url.contains('dzcdn.net')) {
+      return url
+          .replaceAll('500x500', '1000x1000')
+          .replaceAll('250x250', '1000x1000');
+    }
+    return url;
+  }
+
+  /// True si el artwork embebido tiene al menos 700 px de ancho
+  /// (suficiente para el modo extendido sin verse pixelado).
+  Future<bool> _isArtworkLargeEnough(Uint8List bytes) async {
+    try {
+      final codec = await instantiateImageCodec(bytes);
+      final frame = await codec.getNextFrame();
+      final width = frame.image.width;
+      frame.image.dispose();
+      codec.dispose();
+      return width >= 700;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  /// Imagen de máxima calidad para el modo extendido. Siempre devuelve el
+  /// MISMO tipo de widget (Container + MemoryImage): cuando llegan los bytes
+  /// del artwork online solo cambia la fuente de la imagen, así el
+  /// AnimatedSwitcher no reinicia la transición ni la imagen "salta".
+  Widget _buildFullArtworkImage() {
+    final bytes = _onlineArtworkBytes ?? _currentArt!;
+    return Container(
+      key: ValueKey(_currentTitle),
+      decoration: BoxDecoration(
+        image: DecorationImage(
+          image: MemoryImage(bytes),
+          fit: BoxFit.cover,
+          filterQuality: FilterQuality.high,
+        ),
+      ),
+    );
+  }
+
+  /// Área de gestos transparente para el modo de artwork expandido
+  /// (la portada es el fondo; los gestos se capturan aquí).
+  Widget _buildFullArtworkGestureArea() {
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onHorizontalDragEnd: _handleHorizontalSwipe,
+      onVerticalDragEnd: _handleVerticalSwipe,
+      onDoubleTap: _handleDoubleTapLike,
+      child: Stack(
+        fit: StackFit.expand,
+        children: [
+          const SizedBox.expand(),
+          _buildHeartOverlay(),
+        ],
+      ),
+    );
+  }
+
+  /// Fondo de artwork expandido (forawn_mobile): portada edge-to-edge en
+  /// la mitad superior, fundida con el color dominante oscurecido abajo,
+  /// más viñeta para el contraste de los controles.
+  Widget _buildFullArtworkBackground() {
+    final rawColor = _dominantColor ?? const Color(0xFF1C1C1E);
+    final hsl = HSLColor.fromColor(rawColor);
+    final baseColor = hsl
+        .withLightness((hsl.lightness * 0.4).clamp(0.0, 1.0))
+        .toColor();
+
+    return IgnorePointer(
+      child: Stack(
+        fit: StackFit.expand,
+        children: [
+          // 1. Color sólido dominante oscurecido
+          AnimatedContainer(
+            duration: const Duration(milliseconds: 1000),
+            color: baseColor,
+          ),
+          // 2. Zona superior: artwork fundido por máscara + degradado a
+          // pantalla completa, desenfocados JUNTOS al abrir lyrics (así no
+          // queda un degradado nítido sobre el fondo borroso).
+          ValueListenableBuilder<bool>(
+            valueListenable: _musicPlayer.showLyrics,
+            builder: (context, showLyrics, _) {
+              return TweenAnimationBuilder<double>(
+                tween: Tween(
+                  begin: 0,
+                  end: showLyrics ? 24 : 0,
+                ),
+                duration: const Duration(milliseconds: 600),
+                curve: Curves.easeInOut,
+                builder: (context, sigma, child) {
+                  return ImageFiltered(
+                    imageFilter: ImageFilter.blur(
+                      sigmaX: sigma,
+                      sigmaY: sigma,
+                    ),
+                    child: child,
+                  );
+                },
+                child: Stack(
+                  fit: StackFit.expand,
+                  children: [
+                    // 2a. Artwork edge-to-edge en la mitad superior, con
+                    // máscara que lo funde a transparente ANTES del borde
+                    // de su caja: ese borde queda invisible (sin costura de
+                    // píxeles en modo maximizado).
+                    Align(
+                      alignment: Alignment.topCenter,
+                      child: FractionallySizedBox(
+                        heightFactor: 0.65,
+                        widthFactor: 1.0,
+                        child: ShaderMask(
+                          // dstIn: conserva el color del artwork y usa solo
+                          // el alpha del degradado como máscara (srcIn
+                          // reemplazaría el color por el del shader → blanco).
+                          blendMode: BlendMode.dstIn,
+                          shaderCallback: (bounds) => LinearGradient(
+                            begin: Alignment.topCenter,
+                            end: Alignment.bottomCenter,
+                            colors: const [
+                              Colors.white,
+                              Colors.white,
+                              Colors.transparent,
+                            ],
+                            stops: const [0.0, 0.82, 1.0],
+                          ).createShader(bounds),
+                          child: AnimatedSwitcher(
+                            duration: const Duration(milliseconds: 800),
+                            child: _buildFullArtworkImage(),
+                          ),
+                        ),
+                      ),
+                    ),
+                    // 2b. Degradado a pantalla completa: oscurece arriba y
+                    // funde la portada con el color base (difuminado como
+                    // forawn_mobile). Al ser full-screen no tiene borde de
+                    // capa → sin separación visible en maximizado; además
+                    // queda dentro del blur para desenfocarse con todo.
+                    AnimatedContainer(
+                      duration: const Duration(milliseconds: 1000),
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          begin: Alignment.topCenter,
+                          end: Alignment.bottomCenter,
+                          colors: [
+                            Colors.black.withOpacity(0.5),
+                            Colors.transparent,
+                            baseColor.withOpacity(0.85),
+                            baseColor,
+                          ],
+                          stops: const [0.0, 0.4, 0.82, 1.0],
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              );
+            },
+          ),
+          // 4. Viñeta inferior para contraste de los controles
+          IgnorePointer(
+            child: Align(
+              alignment: Alignment.bottomCenter,
+              child: FractionallySizedBox(
+                heightFactor: 0.5,
+                widthFactor: 1.0,
+                child: Container(
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.topCenter,
+                      end: Alignment.bottomCenter,
+                      colors: [
+                        Colors.black.withOpacity(0.0),
+                        Colors.black.withOpacity(0.7),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   void _handleKeyboardEvent(RawKeyEvent event) {
     if (event is! RawKeyDownEvent) return;
     if (event.logicalKey == LogicalKeyboardKey.f9) _playPrevious();
@@ -1120,7 +1488,11 @@ class _PlayerScreenState extends State<PlayerScreen> with WindowListener {
         child: Stack(
           children: [
             // GLOBAL BACKGROUND
-            if (_useBlurBackground && _currentArt != null)
+            // Modo artwork expandido (forawn_mobile): la portada llena la
+            // parte superior y se funde con el color dominante abajo.
+            if (_isFullArtworkMode && _currentArt != null)
+              Positioned.fill(child: _buildFullArtworkBackground())
+            else if (_useBlurBackground && _currentArt != null)
               Positioned.fill(
                 child: AnimatedSwitcher(
                   duration: const Duration(milliseconds: 800),
@@ -1142,9 +1514,8 @@ class _PlayerScreenState extends State<PlayerScreen> with WindowListener {
                     ),
                   ),
                 ),
-              ),
-
-            if (!_useBlurBackground)
+              )
+            else if (!_useBlurBackground)
               Positioned.fill(
                 child: AnimatedContainer(
                   duration: const Duration(milliseconds: 600),
@@ -1574,6 +1945,8 @@ class _PlayerScreenState extends State<PlayerScreen> with WindowListener {
                                                                 _lyricsOffset,
                                                           );
                                                         },
+                                                        lyricsOffset:
+                                                            _lyricsOffset,
                                                       );
                                                     },
                                                   ),
@@ -1619,7 +1992,11 @@ class _PlayerScreenState extends State<PlayerScreen> with WindowListener {
                                               const Spacer(),
                                               Flexible(
                                                 flex: 12,
-                                                child: AspectRatio(
+                                                // En modo artwork expandido la portada es el
+                                                // fondo; aquí va un área de gestos transparente.
+                                                child: _isFullArtworkMode
+                                                    ? _buildFullArtworkGestureArea()
+                                                    : AspectRatio(
                                                   aspectRatio: 1,
                                                   child: ValueListenableBuilder<bool>(
                                                     valueListenable: ValueNotifier(
@@ -1742,38 +2119,69 @@ class _PlayerScreenState extends State<PlayerScreen> with WindowListener {
                                                                 );
                                                               }
                                                             },
-                                                            child: Container(
+                                                            child: GestureDetector(
                                                               key: ValueKey(
                                                                 _currentTitle,
                                                               ),
-                                                              width: double
-                                                                  .infinity,
-                                                              height: double
-                                                                  .infinity,
-                                                              decoration:
-                                                                  _currentArt !=
-                                                                      null
-                                                                  ? BoxDecoration(
-                                                                      image: DecorationImage(
-                                                                        image: MemoryImage(
-                                                                          _currentArt!,
-                                                                        ),
-                                                                        fit: BoxFit
-                                                                            .cover,
-                                                                      ),
-                                                                    )
-                                                                  : null,
-                                                              child:
-                                                                  _currentArt ==
-                                                                      null
-                                                                  ? const Icon(
-                                                                      Icons
-                                                                          .music_note,
-                                                                      size: 120,
-                                                                      color: Colors
-                                                                          .white12,
-                                                                    )
-                                                                  : null,
+                                                              behavior:
+                                                                  HitTestBehavior
+                                                                      .opaque,
+                                                              // Gestos en la portada (forawn_mobile):
+                                                              // swipe horizontal (cambiar canción),
+                                                              // swipe vertical abajo (cerrar) y
+                                                              // doble click (dar like).
+                                                              onHorizontalDragEnd:
+                                                                  _handleHorizontalSwipe,
+                                                              onVerticalDragEnd:
+                                                                  _handleVerticalSwipe,
+                                                              onDoubleTap:
+                                                                  _handleDoubleTapLike,
+                                                              child: Stack(
+                                                                fit: StackFit
+                                                                    .expand,
+                                                                children: [
+                                                                  Container(
+                                                                    width: double
+                                                                        .infinity,
+                                                                    height: double
+                                                                        .infinity,
+                                                                    decoration:
+                                                                        _currentArt !=
+                                                                            null
+                                                                        ? BoxDecoration(
+                                                                            image:
+                                                                                DecorationImage(
+                                                                                  image:
+                                                                                      MemoryImage(
+                                                                                        _currentArt!,
+                                                                                      ),
+                                                                                  fit:
+                                                                                      BoxFit
+                                                                                          .cover,
+                                                                                  filterQuality:
+                                                                                      FilterQuality
+                                                                                          .high,
+                                                                                ),
+                                                                          )
+                                                                        : null,
+                                                                    child:
+                                                                        _currentArt ==
+                                                                            null
+                                                                        ? const Icon(
+                                                                            Icons
+                                                                                .music_note,
+                                                                            size:
+                                                                                120,
+                                                                            color:
+                                                                                Colors
+                                                                                    .white12,
+                                                                          )
+                                                                        : null,
+                                                                  ),
+                                                                  // Corazón animado al dar like
+                                                                  _buildHeartOverlay(),
+                                                                ],
+                                                              ),
                                                             ),
                                                           ),
                                                         ),
@@ -1866,20 +2274,10 @@ class _PlayerScreenState extends State<PlayerScreen> with WindowListener {
                                               mainAxisSize: MainAxisSize.min,
                                               children: [
                                                 Row(
+                                                  mainAxisAlignment:
+                                                      MainAxisAlignment.center,
                                                   children: [
-                                                    // Spacer izquierdo: igual que el área derecha (con el
-                                                    // volumen), así los controles quedan perfectamente
-                                                    // centrados y el volumen no los empuja.
-                                                    Expanded(
-                                                      child: SizedBox(),
-                                                    ),
-                                                    Row(
-                                                      mainAxisSize:
-                                                          MainAxisSize.min,
-                                                      mainAxisAlignment:
-                                                          MainAxisAlignment
-                                                              .center,
-                                                      children: [
+                                                    // Shuffle Toggle (estilo forawn_mobile)
                                                     IconButton(
                                                       icon: Icon(
                                                         Icons.shuffle,
@@ -1891,6 +2289,7 @@ class _PlayerScreenState extends State<PlayerScreen> with WindowListener {
                                                                 _dominantColor,
                                                               )
                                                             : Colors.white54,
+                                                        size: 24,
                                                       ),
                                                       onPressed: () {
                                                         _musicPlayer
@@ -1903,6 +2302,7 @@ class _PlayerScreenState extends State<PlayerScreen> with WindowListener {
                                                       },
                                                     ),
                                                     const SizedBox(width: 8),
+                                                    // Loop Toggle (estilo forawn_mobile)
                                                     IconButton(
                                                       icon: Icon(
                                                         _musicPlayer
@@ -1922,6 +2322,7 @@ class _PlayerScreenState extends State<PlayerScreen> with WindowListener {
                                                                 _dominantColor,
                                                               )
                                                             : Colors.white54,
+                                                        size: 24,
                                                       ),
                                                       onPressed: () {
                                                         final modes = [
@@ -1943,14 +2344,13 @@ class _PlayerScreenState extends State<PlayerScreen> with WindowListener {
                                                         setState(() {});
                                                       },
                                                     ),
-
                                                     const SizedBox(width: 16),
-
+                                                    // Previous (estilo forawn_mobile: icono grande)
                                                     IconButton(
                                                       icon: Icon(
                                                         Icons
                                                             .skip_previous_rounded,
-                                                        size: 48,
+                                                        size: 56,
                                                         color:
                                                             _adjustColorForControls(
                                                               _dominantColor,
@@ -1958,43 +2358,81 @@ class _PlayerScreenState extends State<PlayerScreen> with WindowListener {
                                                       ),
                                                       onPressed: _playPrevious,
                                                     ),
-                                                    const SizedBox(width: 8),
-                                                    Container(
-                                                      decoration: BoxDecoration(
-                                                        color:
-                                                            _adjustColorForControls(
-                                                              _dominantColor,
-                                                            ),
-                                                        shape: BoxShape.circle,
-                                                      ),
-                                                      child: IconButton(
-                                                        icon: ValueListenableBuilder<bool>(
-                                                          valueListenable:
+                                                    const SizedBox(width: 16),
+                                                    // Play/Pause grande sin círculo, con spinner de
+                                                    // carga (estilo forawn_mobile).
+                                                    IconButton(
+                                                      iconSize: 80,
+                                                      padding: EdgeInsets.zero,
+                                                      constraints:
+                                                          const BoxConstraints(),
+                                                      icon:
+                                                          ValueListenableBuilder<
+                                                              PlayerState
+                                                          >(
+                                                        valueListenable:
+                                                            _musicPlayer
+                                                                .playerState,
+                                                        builder: (ctx, state,
+                                                            _) {
+                                                          final isLoading =
+                                                              state ==
+                                                                      PlayerState
+                                                                          .stopped &&
+                                                                  _musicPlayer
+                                                                      .currentFilePath
+                                                                      .value
+                                                                      .isNotEmpty;
+                                                          final isPlaying =
                                                               _musicPlayer
-                                                                  .isPlaying,
-                                                          builder: (ctx, isPlaying, _) => Icon(
-                                                            isPlaying
-                                                                ? Icons
-                                                                      .pause_rounded
-                                                                : Icons
-                                                                      .play_arrow_rounded,
-                                                            color: _getContrastColor(
-                                                              _adjustColorForControls(
-                                                                _dominantColor,
-                                                              ),
-                                                            ),
-                                                            size: 40,
-                                                          ),
-                                                        ),
-                                                        onPressed:
-                                                            _togglePlayPause,
+                                                                  .isPlaying
+                                                                  .value;
+                                                          return isLoading
+                                                              ? SizedBox(
+                                                                  width: 80,
+                                                                  height: 80,
+                                                                  child:
+                                                                      Center(
+                                                                    child:
+                                                                        SizedBox(
+                                                                      width: 36,
+                                                                      height:
+                                                                          36,
+                                                                      child:
+                                                                          CircularProgressIndicator(
+                                                                        strokeWidth:
+                                                                            3,
+                                                                        color:
+                                                                            _adjustColorForControls(
+                                                                              _dominantColor,
+                                                                            ),
+                                                                      ),
+                                                                    ),
+                                                                  ),
+                                                                )
+                                                              : Icon(
+                                                                  isPlaying
+                                                                      ? Icons
+                                                                          .pause_rounded
+                                                                      : Icons
+                                                                          .play_arrow_rounded,
+                                                                  color:
+                                                                      _adjustColorForControls(
+                                                                        _dominantColor,
+                                                                      ),
+                                                                  size: 80,
+                                                                );
+                                                        },
                                                       ),
+                                                      onPressed:
+                                                          _togglePlayPause,
                                                     ),
-                                                    const SizedBox(width: 8),
+                                                    const SizedBox(width: 16),
+                                                    // Next (estilo forawn_mobile: icono grande)
                                                     IconButton(
                                                       icon: Icon(
                                                         Icons.skip_next_rounded,
-                                                        size: 48,
+                                                        size: 56,
                                                         color:
                                                             _adjustColorForControls(
                                                               _dominantColor,
@@ -2002,9 +2440,7 @@ class _PlayerScreenState extends State<PlayerScreen> with WindowListener {
                                                       ),
                                                       onPressed: _playNext,
                                                     ),
-
                                                     const SizedBox(width: 12),
-
                                                     // Lyrics Toggle
                                                     ValueListenableBuilder<
                                                       bool
@@ -2023,6 +2459,7 @@ class _PlayerScreenState extends State<PlayerScreen> with WindowListener {
                                                                 _adjustColorForControls(
                                                                   _dominantColor,
                                                                 ),
+                                                            size: 24,
                                                           ),
                                                           onPressed: () =>
                                                               _musicPlayer
@@ -2032,10 +2469,8 @@ class _PlayerScreenState extends State<PlayerScreen> with WindowListener {
                                                         );
                                                       },
                                                     ),
-
                                                     const SizedBox(width: 8),
-
-                                                    // Heart / Like: fuera del menú, al lado del de lyrics
+                                                    // Heart / Like: adopta el color del acento
                                                     AnimatedBuilder(
                                                       animation:
                                                           PlaylistService(),
@@ -2061,12 +2496,11 @@ class _PlayerScreenState extends State<PlayerScreen> with WindowListener {
                                                                 ? Icons.favorite
                                                                 : Icons
                                                                     .favorite_border,
-                                                            color: isLiked
-                                                                ? Colors
-                                                                    .purpleAccent
-                                                                : _adjustColorForControls(
-                                                                    _dominantColor,
-                                                                  ),
+                                                            color:
+                                                                _adjustColorForControls(
+                                                                  _dominantColor,
+                                                                ),
+                                                            size: 24,
                                                           ),
                                                           onPressed: () {
                                                             PlaylistService()
@@ -2078,95 +2512,8 @@ class _PlayerScreenState extends State<PlayerScreen> with WindowListener {
                                                         );
                                                       },
                                                     ),
-                                                        ],
-                                                      ),
-                                                    // Volumen: misma fila, pero sin empujar los controles:
-                                                    // quedan centrados y el volumen anclado a la derecha.
-                                                    Expanded(
-                                                      child: Row(
-                                                        mainAxisAlignment:
-                                                            MainAxisAlignment
-                                                                .end,
-                                                        children: [
-                                                          Icon(
-                                                            Icons.volume_up,
-                                                            color: _adjustColorForControls(
-                                                              _dominantColor,
-                                                            ).withOpacity(
-                                                              0.7,
-                                                            ),
-                                                            size: 20,
-                                                          ),
-                                                          const SizedBox(
-                                                            width: 8,
-                                                          ),
-                                                          SizedBox(
-                                                            width: 80,
-                                                            // Zona clickeable más alta (48 px = altura de la
-                                                            // fila de controles) sin engrosar la barra: el
-                                                            // track se mantiene centrado y de 2 px.
-                                                            height: 48,
-                                                            child:
-                                                                SliderTheme(
-                                                              data: SliderTheme.of(
-                                                                context,
-                                                              ).copyWith(
-                                                                trackHeight: 2,
-                                                                thumbShape:
-                                                                    const RoundSliderThumbShape(
-                                                                      enabledThumbRadius:
-                                                                          0,
-                                                                    ),
-                                                                overlayShape:
-                                                                    const RoundSliderOverlayShape(
-                                                                      overlayRadius:
-                                                                          0,
-                                                                    ),
-                                                                activeTrackColor:
-                                                                    _adjustColorForControls(
-                                                                      _dominantColor,
-                                                                    ).withOpacity(
-                                                                      0.7,
-                                                                    ),
-                                                                inactiveTrackColor:
-                                                                    Colors
-                                                                        .white10,
-                                                                thumbColor:
-                                                                    _adjustColorForControls(
-                                                                      _dominantColor,
-                                                                    ),
-                                                              ),
-                                                              child: Slider(
-                                                                value:
-                                                                    _musicPlayer
-                                                                        .volume
-                                                                        .value,
-                                                                onChanged:
-                                                                    (v) async {
-                                                                  _musicPlayer
-                                                                          .volume
-                                                                          .value =
-                                                                      v;
-                                                                  _musicPlayer
-                                                                          .isMuted
-                                                                          .value =
-                                                                      v == 0;
-                                                                  await _player
-                                                                      .setVolume(
-                                                                        v,
-                                                                      );
-                                                                  setState(
-                                                                    () {},
-                                                                  );
-                                                                },
-                                                              ),
-                                                            ),
-                                                          ),
-                                                        ],
-                                                      ),
+                                                      ],
                                                     ),
-                                                  ],
-                                                ),
 
                                                 const SizedBox(height: 8),
 
@@ -2183,15 +2530,25 @@ class _PlayerScreenState extends State<PlayerScreen> with WindowListener {
                                                             .value;
                                                     // Barra de progreso: centrada, con ancho máximo
                                                     // acotado y el tiempo en la misma línea que la barra.
-                                                    // El volumen vive en la fila de controles.
-                                                    return Center(
-                                                      child: ConstrainedBox(
-                                                        constraints:
-                                                            const BoxConstraints(
-                                                              maxWidth: 420,
-                                                            ),
-                                                        child: Row(
-                                                          children: [
+                                                    // El volumen vive en esta misma fila (a la derecha).
+                                                    return Row(
+                                                      children: [
+                                                        // Espejo del volumen: mantiene la línea de tiempo
+                                                        // centrada en la pantalla sin afectar el layout.
+                                                        const Expanded(
+                                                          child: SizedBox(),
+                                                        ),
+                                                        Expanded(
+                                                          child: Center(
+                                                            child:
+                                                                ConstrainedBox(
+                                                              constraints:
+                                                                  const BoxConstraints(
+                                                                    maxWidth:
+                                                                        420,
+                                                                  ),
+                                                              child: Row(
+                                                                children: [
                                                             Text(
                                                               // Durante el arrastre se muestra la posición
                                                               // del dedo en vez de la reproducción.
@@ -2311,6 +2668,94 @@ class _PlayerScreenState extends State<PlayerScreen> with WindowListener {
                                                           ],
                                                         ),
                                                       ),
+                                                    ),
+                                                    ),
+                                                        // Volumen: anclado a la derecha (no empuja el centro)
+                                                        Expanded(
+                                                          child: Padding(
+                                                            padding:
+                                                                const EdgeInsets
+                                                                        .only(
+                                                                  right: 16,
+                                                                ),
+                                                            child: Row(
+                                                              mainAxisAlignment:
+                                                                  MainAxisAlignment
+                                                                      .end,
+                                                              children: [
+                                                            Icon(
+                                                              Icons.volume_up,
+                                                              color: _adjustColorForControls(
+                                                                _dominantColor,
+                                                              ).withOpacity(
+                                                                0.7,
+                                                              ),
+                                                              size: 20,
+                                                            ),
+                                                            const SizedBox(
+                                                              width: 8,
+                                                            ),
+                                                            SizedBox(
+                                                              width: 80,
+                                                              height: 48,
+                                                              child:
+                                                                  SliderTheme(
+                                                                data: SliderTheme.of(context).copyWith(
+                                                                  trackHeight: 2,
+                                                                  thumbShape:
+                                                                      const RoundSliderThumbShape(
+                                                                        enabledThumbRadius:
+                                                                            0,
+                                                                      ),
+                                                                  overlayShape:
+                                                                      const RoundSliderOverlayShape(
+                                                                        overlayRadius:
+                                                                            0,
+                                                                      ),
+                                                                  activeTrackColor:
+                                                                      _adjustColorForControls(
+                                                                        _dominantColor,
+                                                                      ).withOpacity(
+                                                                        0.7,
+                                                                      ),
+                                                                  inactiveTrackColor:
+                                                                      Colors
+                                                                          .white10,
+                                                                  thumbColor:
+                                                                      _adjustColorForControls(
+                                                                        _dominantColor,
+                                                                      ),
+                                                                ),
+                                                                child: Slider(
+                                                                  value: _musicPlayer
+                                                                      .volume
+                                                                      .value,
+                                                                  onChanged:
+                                                                      (v) async {
+                                                                    _musicPlayer
+                                                                            .volume
+                                                                            .value =
+                                                                        v;
+                                                                    _musicPlayer
+                                                                            .isMuted
+                                                                            .value =
+                                                                        v == 0;
+                                                                    await _player
+                                                                        .setVolume(
+                                                                          v,
+                                                                        );
+                                                                    setState(
+                                                                      () {},
+                                                                    );
+                                                                  },
+                                                                ),
+                                                              ),
+                                                            ),
+                                                              ],
+                                                            ),
+                                                          ),
+                                                        ),
+                                                      ],
                                                     );
                                                   },
                                                 ),
@@ -2572,6 +3017,8 @@ class _PlayerScreenState extends State<PlayerScreen> with WindowListener {
                             _showEditMetadataDialog(context);
                           } else if (value == 'add_playlist') {
                             _showAddToPlaylistDialog(context);
+                          } else if (value == 'toggle_artwork_mode') {
+                            _toggleArtworkMode();
                           }
                         },
                         itemBuilder: (BuildContext context) =>
@@ -2612,6 +3059,34 @@ class _PlayerScreenState extends State<PlayerScreen> with WindowListener {
                                   widget.getText(
                                     'edit_metadata',
                                     fallback: 'Editar metadatos',
+                                  ),
+                                  style: const TextStyle(
+                                    color: Colors.white,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          PopupMenuItem<String>(
+                            value: 'toggle_artwork_mode',
+                            child: Row(
+                              children: [
+                                Icon(
+                                  _isFullArtworkMode
+                                      ? Icons.crop_square
+                                      : Icons.fullscreen,
+                                  color: Colors.white,
+                                  size: 20,
+                                ),
+                                const SizedBox(width: 8),
+                                Text(
+                                  widget.getText(
+                                    _isFullArtworkMode
+                                        ? 'square_artwork_mode'
+                                        : 'full_artwork_mode',
+                                    fallback: _isFullArtworkMode
+                                        ? 'Square Mode'
+                                        : 'Full Mode',
                                   ),
                                   style: const TextStyle(
                                     color: Colors.white,
@@ -2744,7 +3219,10 @@ class _PlayerScreenState extends State<PlayerScreen> with WindowListener {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        backgroundColor: const Color(0xFF2C2C2E),
+        backgroundColor: const Color(0xFF1C1C1E),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(16),
+        ),
         title: Text(
           widget.getText('synchronize', fallback: 'Sincronizar'),
           style: const TextStyle(color: Colors.white),
@@ -2825,7 +3303,7 @@ class _PlayerScreenState extends State<PlayerScreen> with WindowListener {
             return Dialog(
               backgroundColor: const Color(0xFF1C1C1E),
               shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(20),
+                borderRadius: BorderRadius.circular(16),
               ),
               child: Container(
                 width: 500, // Fixed width for desktop/large screens

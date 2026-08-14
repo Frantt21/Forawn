@@ -76,6 +76,8 @@ class _SettingsScreenState extends State<SettingsScreen> with WindowListener {
 
   // Player Prefs
   bool _useBlurBackground = false;
+  bool _lyricsSweepEnabled = false;
+  static const _lyricsSweepKey = 'lyrics_sweep_enabled';
 
   bool _langMenuOpen = false;
   bool _langHovered = false;
@@ -176,12 +178,14 @@ class _SettingsScreenState extends State<SettingsScreen> with WindowListener {
       final savedLang = _prefs!.getString(_preferredLangKey);
       final discordEnabled = _prefs!.getBool(_discordEnabledKey) ?? false;
       final blurBg = _prefs!.getBool('use_blur_background') ?? false;
+      final sweepEnabled = _prefs!.getBool(_lyricsSweepKey) ?? false;
 
       if (!mounted) return;
       setState(() {
         _discordEnabled = discordEnabled;
         _discordConnected = DiscordService().isConnected;
         _useBlurBackground = blurBg;
+        _lyricsSweepEnabled = sweepEnabled;
         if (savedLang != null && savedLang.isNotEmpty) {
           _selectedLang = savedLang;
         }
@@ -472,6 +476,25 @@ class _SettingsScreenState extends State<SettingsScreen> with WindowListener {
                         ),
                         Divider(height: 1, color: currentTheme.dividerColor),
                         _SettingsTile(
+                          leadingIcon: Icons.graphic_eq,
+                          leadingColor: Colors.pinkAccent,
+                          title: get(
+                            'lyrics_sweep_title',
+                            fallback: 'Karaoke Sweep',
+                          ),
+                          subtitle: get(
+                            'lyrics_sweep_sub',
+                            fallback:
+                                'Highlight lyrics word by word in the player',
+                          ),
+                          trailing: Switch(
+                            value: _lyricsSweepEnabled,
+                            onChanged: _toggleLyricsSweep,
+                            activeColor: Colors.purpleAccent,
+                          ),
+                        ),
+                        Divider(height: 1, color: currentTheme.dividerColor),
+                        _SettingsTile(
                           leadingIcon: Icons.palette,
                           leadingColor: Colors.amberAccent,
                           title: get(
@@ -626,12 +649,24 @@ class _SettingsScreenState extends State<SettingsScreen> with WindowListener {
     } catch (_) {}
   }
 
+  Future<void> _toggleLyricsSweep(bool value) async {
+    try {
+      _prefs ??= await SharedPreferences.getInstance();
+      await _prefs!.setBool(_lyricsSweepKey, value);
+      if (!mounted) return;
+      setState(() => _lyricsSweepEnabled = value);
+    } catch (_) {}
+  }
+
   Future<void> _clearAllLyrics() async {
     // Confirm with user
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
         backgroundColor: const Color(0xFF1C1C1E),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(16),
+        ),
         title: Text(
           widget.getText(
             'confirm_clear_lyrics',
@@ -696,6 +731,9 @@ class _SettingsScreenState extends State<SettingsScreen> with WindowListener {
       context: context,
       builder: (context) => AlertDialog(
         backgroundColor: const Color(0xFF1C1C1E),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(16),
+        ),
         title: Text(
           widget.getText('confirm_reset_data', fallback: 'Restablecer Datos'),
           style: const TextStyle(color: Colors.white),

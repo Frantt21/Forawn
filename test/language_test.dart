@@ -13,7 +13,18 @@ void main() {
       expect(map['settings'], isNotEmpty, reason: 'idioma $code');
       expect(map['language'], isNotEmpty, reason: 'idioma $code');
       // Claves del menu del reproductor y dialogs relacionados
-      for (final key in ['player_reproducer', 'done', 'no_title', 'no_song']) {
+      for (final key in [
+        'player_reproducer',
+        'done',
+        'no_title',
+        'no_song',
+        'song',
+        'songs',
+        'full_artwork_mode',
+        'square_artwork_mode',
+        'lyrics_sweep_title',
+        'lyrics_sweep_sub',
+      ]) {
         expect(map[key], isNotEmpty, reason: 'idioma $code, clave $key');
       }
     }

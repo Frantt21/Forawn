@@ -75,6 +75,7 @@ class GlobalMusicPlayer {
 
     player.onPlayerStateChanged.listen((state) {
       final wasPlaying = isPlaying.value;
+      playerState.value = state;
       // isPlaying ValueNotifier se actualiza aquí, lo que disparará el listener de arriba
       isPlaying.value = state == PlayerState.playing;
 
@@ -152,6 +153,9 @@ class GlobalMusicPlayer {
 
   // Estado de reproducción
   final ValueNotifier<bool> isPlaying = ValueNotifier(false);
+  // Estado real del reproductor (para el spinner de carga tipo forawn_mobile).
+  final ValueNotifier<PlayerState> playerState =
+      ValueNotifier(PlayerState.stopped);
   final ValueNotifier<bool> showMiniPlayer = ValueNotifier(
     false,
   ); // Desactivado por defecto

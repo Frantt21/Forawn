@@ -527,16 +527,19 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen>
         child: Dialog(
           backgroundColor: const Color(0xFF1C1C1E),
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(20),
+            borderRadius: BorderRadius.circular(16),
           ),
           child: Padding(
             padding: const EdgeInsets.all(32),
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                const Text(
-                  'Cargando librería',
-                  style: TextStyle(
+                Text(
+                  widget.getText(
+                    'loading_library',
+                    fallback: 'Loading library',
+                  ),
+                  style: const TextStyle(
                     fontSize: 20,
                     fontWeight: FontWeight.bold,
                     color: Colors.white,
@@ -961,6 +964,9 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen>
         builder: (context, processed, _) {
           return AlertDialog(
             backgroundColor: const Color(0xFF1C1C1E),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(16),
+            ),
             title: Text(
               widget.getText(
                 'reloading_missing_colors',
@@ -1850,13 +1856,11 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen>
               else if (playlist.imagePath != null)
                 Image.file(File(playlist.imagePath!), fit: BoxFit.cover)
               else
-                Container(
-                  color: Colors.grey[800],
-                  child: const Icon(
-                    Icons.queue_music,
-                    size: 40,
-                    color: Colors.white54,
-                  ),
+                // Sin imagen propia: collage de hasta 4 artworks de las
+                // canciones (misma función que forawn_mobile).
+                _PlaylistCollageArtwork(
+                  songs: playlist.songs,
+                  fallbackIcon: Icons.queue_music,
                 ),
 
               // Gradient Overlay (Only for non-favorites or image ones)
@@ -1895,7 +1899,7 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen>
                     ),
                     const SizedBox(height: 2),
                     Text(
-                      "${playlist.songs.length} songs",
+                      "${playlist.songs.length} ${playlist.songs.length == 1 ? widget.getText('song', fallback: 'Song') : widget.getText('songs', fallback: 'Songs')}",
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: const TextStyle(
@@ -2659,6 +2663,130 @@ class _AnimatedAudioBarsState extends State<_AnimatedAudioBars>
         color: Colors.white,
         borderRadius: BorderRadius.circular(widget.size / 10),
       ),
+    );
+  }
+}
+
+/// Collage de hasta 4 artworks de las canciones de una playlist
+/// (misma función que forawn_mobile). Los artworks se cargan de forma
+/// asíncrona vía LocalMusicDatabase (que ya cachea en memoria).
+class _PlaylistCollageArtwork extends StatefulWidget {
+  final List<Song> songs;
+  final IconData fallbackIcon;
+
+  const _PlaylistCollageArtwork({
+    required this.songs,
+    required this.fallbackIcon,
+  });
+
+  @override
+  State<_PlaylistCollageArtwork> createState() =>
+      _PlaylistCollageArtworkState();
+}
+
+class _PlaylistCollageArtworkState extends State<_PlaylistCollageArtwork> {
+  List<Uint8List> _artworks = const [];
+
+  @override
+  void initState() {
+    super.initState();
+    _loadArtworks();
+  }
+
+  @override
+  void didUpdateWidget(_PlaylistCollageArtwork oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // Si la tarjeta se reutiliza para otra playlist (misma posición en
+    // la lista/grid), recargar el collage.
+    if (!_sameSongs(oldWidget.songs, widget.songs)) {
+      _loadArtworks();
+    }
+  }
+
+  bool _sameSongs(List<Song> a, List<Song> b) {
+    if (a.length != b.length) return false;
+    for (var i = 0; i < a.length; i++) {
+      if (a[i].filePath != b[i].filePath) return false;
+    }
+    return true;
+  }
+
+  Future<void> _loadArtworks() async {
+    // Considerar hasta 8 canciones únicas para encontrar 4 artworks.
+    final seen = <String>{};
+    final candidates = <Song>[];
+    for (final song in widget.songs) {
+      if (candidates.length >= 8) break;
+      if (seen.add(song.filePath)) candidates.add(song);
+    }
+
+    final results = await Future.wait(candidates.map((song) async {
+      Uint8List? art = song.artworkData;
+      if (art == null) {
+        try {
+          final metadata =
+              await LocalMusicDatabase().getMetadata(song.filePath);
+          art = metadata?.artwork;
+        } catch (_) {
+          art = null;
+        }
+      }
+      return art;
+    }));
+
+    final artworks = <Uint8List>[];
+    for (final art in results) {
+      if (art != null && art.isNotEmpty) {
+        artworks.add(art);
+        if (artworks.length >= 4) break;
+      }
+    }
+
+    if (!mounted) return;
+    setState(() => _artworks = artworks);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    // Collage 2x2 con 4 artworks distintos (forawn_mobile).
+    if (_artworks.length >= 4) {
+      return Column(
+        children: [
+          Expanded(
+            child: Row(
+              children: [
+                Expanded(
+                  child: Image.memory(_artworks[0], fit: BoxFit.cover),
+                ),
+                Expanded(
+                  child: Image.memory(_artworks[1], fit: BoxFit.cover),
+                ),
+              ],
+            ),
+          ),
+          Expanded(
+            child: Row(
+              children: [
+                Expanded(
+                  child: Image.memory(_artworks[2], fit: BoxFit.cover),
+                ),
+                Expanded(
+                  child: Image.memory(_artworks[3], fit: BoxFit.cover),
+                ),
+              ],
+            ),
+          ),
+        ],
+      );
+    }
+    // 1-3 artworks: usar el primero (forawn_mobile).
+    if (_artworks.isNotEmpty) {
+      return Image.memory(_artworks.first, fit: BoxFit.cover);
+    }
+    // Sin artworks: icono de respaldo.
+    return Container(
+      color: Colors.grey[800],
+      child: Icon(widget.fallbackIcon, size: 40, color: Colors.white54),
     );
   }
 }

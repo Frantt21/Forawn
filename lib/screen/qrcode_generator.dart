@@ -585,7 +585,14 @@ class _QrGeneratorScreenState extends State<QrGeneratorScreen> {
     final color = await showDialog<Color?>(
       context: context,
       builder: (_) => AlertDialog(
-        title: Text(widget.getText('pick_color', fallback: 'Elegir color')),
+        backgroundColor: const Color(0xFF1C1C1E),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(16),
+        ),
+        title: Text(
+          widget.getText('pick_color', fallback: 'Elegir color'),
+          style: const TextStyle(color: Colors.white),
+        ),
         content: Wrap(
           spacing: 8,
           runSpacing: 8,

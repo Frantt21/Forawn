@@ -501,12 +501,16 @@ class _VideoDownloaderScreenState extends State<VideoDownloaderScreen>
         return StatefulBuilder(
           builder: (ctx2, setStateDialog) {
             return AlertDialog(
-              backgroundColor: Theme.of(context).cardTheme.color,
+              backgroundColor: const Color(0xFF1C1C1E),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(16),
+              ),
               title: Text(
                 widget.getText(
                   'choose_resolution',
                   fallback: 'Choose resolution',
                 ),
+                style: const TextStyle(color: Colors.white),
               ),
               content: Column(
                 mainAxisSize: MainAxisSize.min,

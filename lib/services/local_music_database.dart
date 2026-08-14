@@ -35,7 +35,7 @@ class LocalMusicDatabase extends ChangeNotifier {
 
       _database = await openDatabase(
         path,
-        version: 3,
+        version: 4,
         onCreate: (db, version) async {
           // Tabla de metadatos
           await db.execute('''
@@ -46,6 +46,8 @@ class LocalMusicDatabase extends ChangeNotifier {
               album TEXT,
               duration_ms INTEGER,
               artwork_hash TEXT,
+              online_artwork_url TEXT,
+              online_artwork_data BLOB,
               created_at INTEGER NOT NULL,
               updated_at INTEGER NOT NULL
             )
@@ -109,6 +111,11 @@ class LocalMusicDatabase extends ChangeNotifier {
               'ALTER TABLE metadata ADD COLUMN online_artwork_url TEXT',
             );
           }
+          if (oldVersion < 4) {
+            await db.execute(
+              'ALTER TABLE metadata ADD COLUMN online_artwork_data BLOB',
+            );
+          }
         },
       );
 
@@ -144,11 +151,47 @@ class LocalMusicDatabase extends ChangeNotifier {
           artworkHash: old.artworkHash,
           artwork: old.artwork,
           onlineArtworkUrl: url,
+          onlineArtworkData: old.onlineArtworkData,
         );
       }
       notifyListeners();
     } catch (e) {
       debugPrint('[LocalMusicDB] Error updating online artwork: $e');
+    }
+  }
+
+  /// Guarda los bytes del artwork online descargado: así al reproducir la
+  /// canción de nuevo se usa directo la máxima calidad (sin red, sin
+  /// mostrar primero el artwork embebido ni parpadear).
+  Future<void> updateOnlineArtworkData(
+      String filePath, Uint8List bytes) async {
+    if (!_isInitialized) await initialize();
+    try {
+      await _database!.update(
+        'metadata',
+        {'online_artwork_data': bytes},
+        where: 'file_path = ?',
+        whereArgs: [filePath],
+      );
+
+      // Update cache
+      if (_metadataCache.containsKey(filePath)) {
+        final old = _metadataCache[filePath]!;
+        _metadataCache[filePath] = SongMetadata(
+          filePath: old.filePath,
+          title: old.title,
+          artist: old.artist,
+          album: old.album,
+          durationMs: old.durationMs,
+          artworkHash: old.artworkHash,
+          artwork: old.artwork,
+          onlineArtworkUrl: old.onlineArtworkUrl,
+          onlineArtworkData: bytes,
+        );
+      }
+      notifyListeners();
+    } catch (e) {
+      debugPrint('[LocalMusicDB] Error updating online artwork data: $e');
     }
   }
 
@@ -700,6 +743,7 @@ class SongMetadata {
   final int? durationMs;
   final String? artworkHash;
   final String? onlineArtworkUrl; // New field
+  final Uint8List? onlineArtworkData; // Bytes del artwork online (alta res)
   Uint8List? artwork;
 
   SongMetadata({
@@ -710,6 +754,7 @@ class SongMetadata {
     this.durationMs,
     this.artworkHash,
     this.onlineArtworkUrl,
+    this.onlineArtworkData,
     this.artwork,
   });
 
@@ -722,6 +767,7 @@ class SongMetadata {
       durationMs: map['duration_ms'] as int?,
       artworkHash: map['artwork_hash'] as String?,
       onlineArtworkUrl: map['online_artwork_url'] as String?,
+      onlineArtworkData: map['online_artwork_data'] as Uint8List?,
     );
   }
 
@@ -734,6 +780,7 @@ class SongMetadata {
       'duration_ms': durationMs,
       'artwork_hash': artworkHash,
       'online_artwork_url': onlineArtworkUrl,
+      'online_artwork_data': onlineArtworkData,
     };
   }
 }

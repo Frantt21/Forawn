@@ -257,6 +257,12 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen>
     final isDark = themeColor.computeLuminance() < 0.5;
     final textColor = isDark ? Colors.white : Colors.black;
 
+    // Botones estilo forawn_mobile: color de acento = color de texto
+    // (blanco en tema oscuro, negro en tema claro).
+    final isFavorites = playlist.id == 'favorites';
+    final buttonColor = textColor;
+    final buttonTextColor = isDark ? Colors.black : Colors.white;
+
     // Filter songs
     final songs = playlist.songs.where((s) {
       if (_searchQuery.isEmpty) return true;
@@ -438,18 +444,24 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen>
                           ),
                         const SizedBox(height: 8),
                         Text(
-                          "${playlist.songs.length} ${widget.getText('songs', fallback: 'Songs')}",
+                          "${playlist.songs.length} ${playlist.songs.length == 1 ? widget.getText('song', fallback: 'Song') : widget.getText('songs', fallback: 'Songs')}${_playlistDurationSuffix(playlist.songs)}",
                           style: const TextStyle(color: Colors.white70),
                         ),
                         const SizedBox(height: 32),
-                        // Action Buttons
+                        // Action Buttons (estilo forawn_mobile):
+                        // - Play: píldora primaria rellena
+                        // - Favoritos: Shuffle como píldora secundaria
+                        // - Otras playlist: Shuffle + Add como círculos
                         Row(
                           mainAxisAlignment: MainAxisAlignment.center,
                           children: [
-                            _buildActionButton(
-                              icon: Icons.play_arrow,
-                              label: widget.getText('play', fallback: 'Play'),
-                              isPrimary: true,
+                            _buildPrimaryPlayButton(
+                              label: widget.getText(
+                                'play',
+                                fallback: 'Play',
+                              ),
+                              backgroundColor: buttonColor,
+                              foregroundColor: buttonTextColor,
                               onPressed: playlist.songs.isEmpty
                                   ? null
                                   : () {
@@ -463,27 +475,55 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen>
                                     },
                             ),
                             const SizedBox(width: 12),
-                            _buildActionButton(
-                              icon: Icons.shuffle,
-                              label: widget.getText(
-                                'shuffle',
-                                fallback: 'Shuffle',
+                            if (isFavorites)
+                              _buildShufflePill(
+                                label: widget.getText(
+                                  'shuffle',
+                                  fallback: 'Shuffle',
+                                ),
+                                color: buttonColor,
+                                onPressed: playlist.songs.isEmpty
+                                    ? null
+                                    : () {
+                                        final files = playlist.songs
+                                            .map((s) => File(s.filePath))
+                                            .toList();
+                                        GlobalMusicPlayer().playPlaylist(
+                                          files,
+                                          Random().nextInt(files.length),
+                                        );
+                                        GlobalMusicPlayer().isShuffle.value =
+                                            true;
+                                      },
+                              )
+                            else ...[
+                              _buildCircularButton(
+                                icon: Icons.shuffle,
+                                color: buttonColor,
+                                onPressed: playlist.songs.isEmpty
+                                    ? null
+                                    : () {
+                                        final files = playlist.songs
+                                            .map((s) => File(s.filePath))
+                                            .toList();
+                                        GlobalMusicPlayer().playPlaylist(
+                                          files,
+                                          Random().nextInt(files.length),
+                                        );
+                                        GlobalMusicPlayer().isShuffle.value =
+                                            true;
+                                      },
                               ),
-                              isPrimary: false,
-                              onPressed: playlist.songs.isEmpty
-                                  ? null
-                                  : () {
-                                      final files = playlist.songs
-                                          .map((s) => File(s.filePath))
-                                          .toList();
-                                      GlobalMusicPlayer().playPlaylist(
-                                        files,
-                                        Random().nextInt(files.length),
-                                      );
-                                      GlobalMusicPlayer().isShuffle.value =
-                                          true;
-                                    },
-                            ),
+                              const SizedBox(width: 12),
+                              _buildCircularButton(
+                                icon: Icons.add,
+                                color: buttonColor,
+                                onPressed: () => _showAddSongsDialog(
+                                  context,
+                                  playlist,
+                                ),
+                              ),
+                            ],
                           ],
                         ),
                         // Removed TextField from here
@@ -640,7 +680,7 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen>
                   constraints: const BoxConstraints(maxWidth: 500),
                   decoration: BoxDecoration(
                     color: Colors.grey[900]!.withOpacity(0.95),
-                    borderRadius: BorderRadius.circular(20),
+                    borderRadius: BorderRadius.circular(16),
                     border: Border.all(
                       color: Colors.white.withOpacity(0.1),
                       width: 1,
@@ -867,53 +907,111 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen>
     );
   }
 
-  Widget _buildActionButton({
-    required IconData icon,
+  /// Sufijo de duración total de la playlist (como forawn_mobile):
+  /// " · 1:23:45". Vacío si ninguna canción tiene duración.
+  String _playlistDurationSuffix(List<Song> songs) {
+    var total = Duration.zero;
+    var hasDuration = false;
+    for (final song in songs) {
+      if (song.duration != null) {
+        total += song.duration!;
+        hasDuration = true;
+      }
+    }
+    if (!hasDuration) return '';
+    final hours = total.inHours;
+    final minutes = total.inMinutes.remainder(60);
+    final seconds = total.inSeconds.remainder(60);
+    final mm = minutes.toString().padLeft(2, '0');
+    final ss = seconds.toString().padLeft(2, '0');
+    return hours > 0 ? ' · $hours:$mm:$ss' : ' · $mm:$ss';
+  }
+
+  /// Píldora primaria (Play) — mismo estilo que forawn_mobile.
+  Widget _buildPrimaryPlayButton({
     required String label,
-    required bool isPrimary,
+    required Color backgroundColor,
+    required Color foregroundColor,
     required VoidCallback? onPressed,
   }) {
-    return ElevatedButton(
-      onPressed: onPressed,
-      style: ButtonStyle(
-        backgroundColor: WidgetStateProperty.resolveWith((states) {
-          if (isPrimary) {
-            if (states.contains(WidgetState.disabled)) {
-              return Colors.white.withOpacity(0.3);
-            }
-            return Colors.white;
-          } else {
-            // Secondary button logic
-            if (states.contains(WidgetState.hovered)) {
-              return Colors.white.withOpacity(0.2); // Visible hover
-            }
-            return Colors.white.withOpacity(0.1); // Default
-          }
-        }),
-        foregroundColor: WidgetStateProperty.resolveWith((states) {
-          if (states.contains(WidgetState.disabled)) {
-            return Colors.grey;
-          }
-          return isPrimary ? Colors.black : Colors.white;
-        }),
-        elevation: WidgetStateProperty.all(isPrimary ? 4 : 0),
-        padding: WidgetStateProperty.all(
-          const EdgeInsets.symmetric(horizontal: 32, vertical: 16),
+    return SizedBox(
+      height: 44,
+      width: 150,
+      child: ElevatedButton.icon(
+        onPressed: onPressed,
+        icon: Icon(Icons.play_arrow, size: 24, color: foregroundColor),
+        label: Text(
+          label.toUpperCase(),
+          style: TextStyle(
+            color: foregroundColor,
+            fontWeight: FontWeight.bold,
+            fontSize: 14,
+            letterSpacing: 1.0,
+          ),
         ),
-        shape: WidgetStateProperty.all(
-          RoundedRectangleBorder(borderRadius: BorderRadius.circular(30)),
+        style: ElevatedButton.styleFrom(
+          backgroundColor: backgroundColor,
+          foregroundColor: foregroundColor,
+          elevation: 2,
+          padding: EdgeInsets.zero,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(22),
+          ),
         ),
       ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(icon, size: 24),
-          const SizedBox(width: 8),
-          Text(
-            label,
-            style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+    );
+  }
+
+  /// Botón circular (Shuffle / Add) — mismo estilo que forawn_mobile.
+  Widget _buildCircularButton({
+    required IconData icon,
+    required Color color,
+    required VoidCallback? onPressed,
+  }) {
+    return Container(
+      width: 44,
+      height: 44,
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.15),
+        shape: BoxShape.circle,
+      ),
+      child: IconButton(
+        icon: Icon(icon, color: color, size: 22),
+        onPressed: onPressed,
+        padding: EdgeInsets.zero,
+      ),
+    );
+  }
+
+  /// Píldora secundaria (Shuffle en favoritos) — forawn_mobile.
+  Widget _buildShufflePill({
+    required String label,
+    required Color color,
+    required VoidCallback? onPressed,
+  }) {
+    return SizedBox(
+      height: 44,
+      width: 130,
+      child: OutlinedButton.icon(
+        onPressed: onPressed,
+        icon: Icon(Icons.shuffle, size: 20, color: color),
+        label: Text(
+          label.toUpperCase(),
+          style: TextStyle(
+            color: color,
+            fontWeight: FontWeight.bold,
+            fontSize: 14,
+            letterSpacing: 1.0,
           ),
-        ],
+        ),
+        style: OutlinedButton.styleFrom(
+          backgroundColor: color.withOpacity(0.15),
+          side: BorderSide.none,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(22),
+          ),
+          padding: EdgeInsets.zero,
+        ),
       ),
     );
   }
@@ -971,7 +1069,7 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen>
                   ),
                   decoration: BoxDecoration(
                     color: Colors.grey[900]!.withOpacity(0.95),
-                    borderRadius: BorderRadius.circular(20),
+                    borderRadius: BorderRadius.circular(16),
                     border: Border.all(
                       color: Colors.white.withOpacity(0.1),
                       width: 1,
