@@ -257,10 +257,10 @@ class _PlayerScreenState extends State<PlayerScreen> with WindowListener {
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
                   Text(
-                    // If specific title "Update metadata" is preferred but localized:
-                    // sticking to original "edit_metadata" or switching if requested.
-                    // Image says "Update metadata"
-                    'Update metadata',
+                    widget.getText(
+                      'edit_metadata',
+                      fallback: 'Update metadata',
+                    ),
                     style: const TextStyle(
                       color: Colors.white,
                       fontSize: 20,
@@ -748,7 +748,12 @@ class _PlayerScreenState extends State<PlayerScreen> with WindowListener {
                                 ).showSnackBar(
                                   // Use parentContext
                                   SnackBar(
-                                    content: Text("Added to ${playlist.name}"),
+                                    content: Text(
+                                      widget.getText(
+                                        'added_to_playlist',
+                                        fallback: 'Added to {name}',
+                                      ).replaceFirst('{name}', playlist.name),
+                                    ),
                                     behavior: SnackBarBehavior.floating,
                                     shape: RoundedRectangleBorder(
                                       borderRadius: BorderRadius.circular(10),

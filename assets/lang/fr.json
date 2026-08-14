@@ -1,4 +1,4 @@
-﻿{
+{
     "title":  "Forawn",
     "clock_label":  "Heure actuelle",
     "download_button":  "Musique",
@@ -445,5 +445,19 @@
     "data_reset_success": "Données effacées. Veuillez redémarrer l'application.",
     "general": "Général",
     "language": "Langue",
-    "offset": "Décalage"
+    "offset": "Décalage",
+    "player_reproducer": "Lecteur",
+    "done": "Terminé",
+    "download_count": "Total",
+    "download_queued": "Téléchargement en file d'attente",
+    "local_player_title": "Lecteur",
+    "no_title": "Sans titre",
+    "copy_tooltip": "Copier",
+    "bypass_active": "Contourner l'API Spotify (Actif)",
+    "bypass_inactive": "Utiliser l'API Spotify",
+    "colors": "couleurs",
+    "added_to_playlist": "Ajouté à {name}",
+    "no_recently_played": "Aucune chanson jouée récemment.",
+    "no_playlists_yet": "Aucune liste de lecture",
+    "reload_library": "Recharger la bibliothèque"
 }

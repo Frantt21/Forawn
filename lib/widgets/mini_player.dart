@@ -193,7 +193,12 @@ class _MiniPlayerState extends State<MiniPlayer> {
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
                                 Text(
-                                  title.isEmpty ? "No Song" : title,
+                                  title.isEmpty
+                                      ? widget.getText(
+                                          'no_song',
+                                          fallback: 'No Song',
+                                        )
+                                      : title,
                                   maxLines: 1,
                                   overflow: TextOverflow.ellipsis,
                                   style: const TextStyle(

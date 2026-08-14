@@ -13,7 +13,6 @@ import 'screen/music_downloader_screen.dart';
 import 'screen/music_player_screen.dart';
 import 'settings.dart';
 import 'translate.dart';
-import 'package:path/path.dart' as p;
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import 'services/download_manager.dart';
 import 'services/global_keyboard_service.dart';
@@ -150,7 +149,7 @@ Future<void> main() async {
   final prefs = await SharedPreferences.getInstance();
   final saved = prefs.getString('preferred_lang') ?? kDefaultLangCode;
   currentLang = saved;
-  lang = await loadLanguageFromExeOrAssets(saved);
+  lang = await loadLanguage(saved);
 
 
 
@@ -185,37 +184,21 @@ Future<void> main() async {
   runApp(ForawnAppRoot(initialLangCode: currentLang, initialLangMap: lang));
 }
 
-Future<Map<String, String>> loadLanguageFromExeOrAssets(String code) async {
+/// Carga un idioma desde los assets empaquetados de la app.
+/// Todas las traducciones viven en `assets/lang/` y se incluyen en el build,
+/// por lo que no hace falta ninguna carpeta `lang/` externa junto al binario.
+Future<Map<String, String>> loadLanguage(String code) async {
   final Map<String, String> empty = <String, String>{};
-
   try {
-    final base = _exeBaseDir();
-    final external = File(p.join(base, 'lang', '$code.json'));
-    if (await external.exists()) {
-      final s = await external.readAsString();
-      final Map<String, dynamic> parsed = jsonDecode(s);
-      return parsed.map((k, v) => MapEntry(k, v.toString()));
+    var content = await rootBundle.loadString('assets/lang/$code.json');
+    // Tolerar un BOM UTF-8 inicial (jsonDecode no lo acepta).
+    if (content.isNotEmpty && content.codeUnitAt(0) == 0xFEFF) {
+      content = content.substring(1);
     }
-  } catch (_) {}
-
-  try {
-    final content = await rootBundle.loadString('assets/lang/$code.json');
     final Map<String, dynamic> parsed = jsonDecode(content);
     return parsed.map((k, v) => MapEntry(k, v.toString()));
   } catch (_) {}
-
   return empty;
-}
-
-String _exeBaseDir() {
-  try {
-    final resolved = Platform.resolvedExecutable;
-    if (resolved.isNotEmpty) return File(resolved).parent.path;
-  } catch (_) {}
-  try {
-    return Directory.current.path;
-  } catch (_) {}
-  return '.';
 }
 
 Future<void> checkForUpdate(
@@ -380,7 +363,7 @@ class _ForawnAppRootState extends State<ForawnAppRoot> {
 
   Future<void> _changeLanguage(String newCode) async {
     if (newCode == _langCode) return;
-    final newMap = await loadLanguageFromExeOrAssets(newCode);
+    final newMap = await loadLanguage(newCode);
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString('preferred_lang', newCode);
     if (!mounted) return;

@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=Forawn
+Comment=Music downloader and local music player
+Exec=forawn
+Icon=com.frantt21.forawn
+Terminal=false
+Categories=AudioVideo;Audio;Player;
+StartupNotify=true
+StartupWMClass=com.frantt21.forawn

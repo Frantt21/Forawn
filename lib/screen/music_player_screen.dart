@@ -1322,9 +1322,12 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen>
           ),
           const SizedBox(height: 16),
           if (historyPaths.isEmpty)
-            const Text(
-              "No recently played songs.",
-              style: TextStyle(color: Colors.grey),
+            Text(
+              widget.getText(
+                'no_recently_played',
+                fallback: 'No recently played songs.',
+              ),
+              style: const TextStyle(color: Colors.grey),
             )
           else
             SizedBox(
@@ -1365,7 +1368,10 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen>
               ),
               child: Center(
                 child: Text(
-                  "No playlists yet",
+                  widget.getText(
+                    'no_playlists_yet',
+                    fallback: 'No playlists yet',
+                  ),
                   style: TextStyle(color: Colors.white.withOpacity(0.3)),
                 ),
               ),
@@ -2203,7 +2209,12 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen>
                                 Navigator.pop(context);
                                 ScaffoldMessenger.of(context).showSnackBar(
                                   SnackBar(
-                                    content: Text("Added to ${playlist.name}"),
+                                    content: Text(
+                                      widget.getText(
+                                        'added_to_playlist',
+                                        fallback: 'Added to {name}',
+                                      ).replaceFirst('{name}', playlist.name),
+                                    ),
                                     behavior: SnackBarBehavior.floating,
                                     shape: RoundedRectangleBorder(
                                       borderRadius: BorderRadius.circular(10),

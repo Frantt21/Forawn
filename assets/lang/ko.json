@@ -1,4 +1,4 @@
-﻿{
+{
     "title":  "Forawn",
     "clock_label":  "현재 시각",
     "download_button":  "음악",
@@ -445,5 +445,20 @@
     "data_reset_success": "데이터가 지워졌습니다. 앱을 다시 시작하십시오.",
     "general": "일반",
     "language": "언어",
-    "offset": "오프셋"
+    "offset": "오프셋",
+    "player_reproducer": "플레이어",
+    "done": "완료",
+    "download_count": "합계",
+    "download_queued": "다운로드가 대기열에 추가됨",
+    "local_player_title": "플레이어",
+    "no_title": "제목 없음",
+    "copy_tooltip": "복사",
+    "bypass_active": "Spotify API 우회 (활성)",
+    "bypass_inactive": "Spotify API 사용",
+    "colors": "색상",
+    "added_to_playlist": "{name}에 추가됨",
+    "no_recently_played": "최근 재생한 곡이 없습니다.",
+    "no_playlists_yet": "아직 재생목록이 없습니다",
+    "cancel2": "취소",
+    "reload_library": "라이브러리 다시 불러오기"
 }

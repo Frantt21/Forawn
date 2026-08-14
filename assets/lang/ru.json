@@ -1,4 +1,4 @@
-﻿{
+{
     "title":  "Forawn",
     "clock_label":  "Текущее время",
     "download_button":  "Музыка",
@@ -445,5 +445,20 @@
     "data_reset_success": "Данные очищены. Пожалуйста, перезапустите приложение.",
     "general": "Общие",
     "language": "Язык",
-    "offset": "Смещение"
+    "offset": "Смещение",
+    "player_reproducer": "Плеер",
+    "done": "Готово",
+    "download_count": "Всего",
+    "download_queued": "Загрузка добавлена в очередь",
+    "local_player_title": "Плеер",
+    "no_title": "Без названия",
+    "copy_tooltip": "Копировать",
+    "bypass_active": "Обойти API Spotify (Активно)",
+    "bypass_inactive": "Использовать API Spotify",
+    "colors": "цвета",
+    "added_to_playlist": "Добавлено в {name}",
+    "no_recently_played": "Нет недавно воспроизведённых песен.",
+    "no_playlists_yet": "Плейлистов пока нет",
+    "cancel2": "Отмена",
+    "reload_library": "Перезагрузить библиотеку"
 }

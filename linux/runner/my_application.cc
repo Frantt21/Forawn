@@ -30,7 +30,27 @@ static void my_application_activate(GApplication* application) {
   // (unificada en los 3 SO) y window_manager.setAsFrameless() quita las
   // decoraciones del sistema. Si creáramos un GtkHeaderBar aquí, se vería
   // junto a la barra propia de la app.
-  gtk_window_set_title(window, "forawn");
+  gtk_window_set_title(window, "Forawn");
+
+  // Establecer el icono de la ventana desde el asset empaquetado
+  // (data/flutter_assets/assets/icon.png) en lugar del icono por defecto.
+  g_autofree gchar* exe_path = g_file_read_link("/proc/self/exe", nullptr);
+  if (exe_path != nullptr) {
+    g_autofree gchar* exe_dir = g_path_get_dirname(exe_path);
+    g_autofree gchar* icon_path = g_build_filename(
+        exe_dir, "data", "flutter_assets", "assets", "icon.png", nullptr);
+    g_autoptr(GError) icon_error = nullptr;
+    GdkPixbuf* pixbuf = gdk_pixbuf_new_from_file(icon_path, &icon_error);
+    if (pixbuf != nullptr) {
+      GdkPixbuf* scaled = gdk_pixbuf_scale_simple(
+          pixbuf, 256, 256, GDK_INTERP_BILINEAR);
+      if (scaled != nullptr) {
+        gtk_window_set_icon(window, scaled);
+        g_object_unref(scaled);
+      }
+      g_object_unref(pixbuf);
+    }
+  }
 
   gtk_window_set_default_size(window, 1280, 720);
 

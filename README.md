@@ -44,6 +44,14 @@ Current version: **v1.0.6**
 - Sidebar navigation with recent screens tracking
 - Localized UI with 10 languages
 
+### Configuration
+
+Sensitive credentials live in `lib/config/api_config.dart`, which is in `.gitignore` (see "API Keys and Sensitive Configuration"). Fill in the values locally — the file must exist for the project to build.
+
+| Field | Description |
+|-------|-------------|
+| `ApiConfig.discordClientId` | Client ID of your application in the [Discord Developer Portal](https://discord.com/developers/applications) (OAuth2 -> Client ID). Required for Discord Rich Presence; empty leaves the integration disabled. |
+
 ---
 
 ## Project Structure
@@ -59,7 +67,6 @@ forawn/
 │   ├── version.dart              # Version constant
 │   ├── language_controller.dart  # Language loading helpers
 │   ├── config/                   # Runtime configuration
-│   ├── lang/                     # Language files copied next to the binary
 │   ├── models/                   # Data models (songs, playlists, downloads, lyrics)
 │   ├── screen/
 │   │   ├── music_player_screen.dart   # Library, playlists, favorites
@@ -80,7 +87,7 @@ forawn/
 │   │   ├── playlist_service.dart
 │   │   ├── lyrics_service.dart
 │   │   ├── lyrics_adjuster.dart
-│   │   ├── discord_service.dart
+│   │   ├── discord_service.dart       # Discord Rich Presence (client ID en lib/config)
 │   │   ├── window_media_service.dart  # Windows SMTC
 │   │   ├── global_keyboard_service.dart
 │   │   └── native_media_service.dart
@@ -253,10 +260,9 @@ English, Spanish, French, German (Switzerland), Portuguese, Russian, Japanese, K
 
 1. Copy `assets/lang/en.json` to `assets/lang/<code>.json` (for example `it.json`)
 2. Translate every key
-3. Add the file to the `assets:` section of `pubspec.yaml` if needed
-4. The language will be detected and selectable in Settings
+3. The language will be detected and selectable in Settings
 
-Language files can also be placed next to the executable in a `lang/` folder, so translations can be updated without recompiling.
+All translation files live in `assets/lang/` (declared in the `assets:` section of `pubspec.yaml`), so they are bundled inside the app binary at build time. No external `lang/` folder next to the executable is required.
 
 ---
 

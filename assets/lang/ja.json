@@ -1,4 +1,4 @@
-﻿{
+{
     "title":  "Forawn",
     "clock_label":  "現在時刻",
     "download_button":  "音楽",
@@ -445,5 +445,21 @@
     "data_reset_success": "データがクリアされました。アプリを再起動してください。",
     "general": "一般",
     "language": "言語",
-    "offset": "オフセット"
+    "offset": "オフセット",
+    "player_reproducer": "プレーヤー",
+    "done": "完了",
+    "download_count": "合計",
+    "download_queued": "ダウンロードをキューに追加しました",
+    "local_player_title": "プレーヤー",
+    "no_title": "無題",
+    "copy_tooltip": "コピー",
+    "bypass_active": "Spotify APIをバイパス（有効）",
+    "bypass_inactive": "Spotify APIを使用",
+    "colors": "色",
+    "added_to_playlist": "{name} に追加されました",
+    "no_recently_played": "最近再生した曲はありません。",
+    "no_playlists_yet": "プレイリストはまだありません",
+    "cancel2": "キャンセル",
+    "notes_title": "メモ",
+    "reload_library": "ライブラリを再読み込み"
 }

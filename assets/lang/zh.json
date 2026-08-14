@@ -1,4 +1,4 @@
-﻿{
+{
     "title":  "Forawn",
     "clock_label":  "当前时间",
     "download_button":  "音乐",
@@ -445,5 +445,19 @@
     "data_reset_success": "数据已清除。请重启应用。",
     "general": "常规",
     "language": "语言",
-    "offset": "偏移"
+    "offset": "偏移",
+    "player_reproducer": "播放器",
+    "done": "完成",
+    "download_count": "总计",
+    "download_queued": "下载已加入队列",
+    "local_player_title": "播放器",
+    "no_title": "无标题",
+    "copy_tooltip": "复制",
+    "bypass_active": "绕过 Spotify API（已启用）",
+    "bypass_inactive": "使用 Spotify API",
+    "colors": "颜色",
+    "added_to_playlist": "已添加到{name}",
+    "no_recently_played": "最近没有播放的歌曲。",
+    "no_playlists_yet": "还没有播放列表",
+    "reload_library": "重新加载音乐库"
 }

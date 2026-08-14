@@ -873,13 +873,19 @@ class _VideoDownloaderScreenState extends State<VideoDownloaderScreen>
           ),
         ),
       ),
-      floatingActionButton: FloatingActionButton(
-        heroTag: 'video_downloads_fab',
-        tooltip: get('open_downloads', fallback: 'Downloads'),
-        onPressed: _openDownloadsScreen,
-        backgroundColor: const Color.fromARGB(255, 224, 64, 251),
-        foregroundColor: Colors.black87,
-        child: const Icon(Icons.download),
+      floatingActionButton: Padding(
+        // Imita la posición del botón de descargas del screen de música:
+        // allí el FAB va dentro de un Padding(bottom: 16), así que replicamos
+        // ese mismo desplazamiento para que queden a la misma altura.
+        padding: const EdgeInsets.only(bottom: 16),
+        child: FloatingActionButton(
+          heroTag: 'video_downloads_fab',
+          tooltip: get('open_downloads', fallback: 'Downloads'),
+          onPressed: _openDownloadsScreen,
+          backgroundColor: const Color.fromARGB(255, 224, 64, 251),
+          foregroundColor: Colors.black87,
+          child: const Icon(Icons.download),
+        ),
       ),
       floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
     );

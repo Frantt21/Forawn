@@ -1,4 +1,4 @@
-﻿{
+{
     "title":  "Forawn",
     "clock_label":  "Aktuelle Uhrzeit",
     "download_button":  "Musig",
@@ -445,5 +445,19 @@
     "data_reset_success": "Daten gelöscht. Bitte App neu starten.",
     "general": "Allgemein",
     "language": "Sprache",
-    "offset": "Versatz"
+    "offset": "Versatz",
+    "player_reproducer": "Player",
+    "done": "Fertig",
+    "download_count": "Gesamt",
+    "download_queued": "Download eingereiht",
+    "local_player_title": "Player",
+    "no_title": "Ohne Titel",
+    "copy_tooltip": "Kopieren",
+    "bypass_active": "Spotify-API umgehen (Aktiv)",
+    "bypass_inactive": "Spotify-API verwenden",
+    "colors": "Farben",
+    "added_to_playlist": "Zu {name} hinzugefügt",
+    "no_recently_played": "Keine kürzlich gespielten Songs.",
+    "no_playlists_yet": "Noch keine Wiedergabelisten",
+    "reload_library": "Bibliothek neu laden"
 }
