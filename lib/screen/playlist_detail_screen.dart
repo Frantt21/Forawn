@@ -11,6 +11,7 @@ import '../models/song_model.dart';
 import '../services/playlist_service.dart';
 import '../services/global_music_player.dart';
 import '../services/local_music_database.dart';
+import '../widgets/app_title_bar.dart';
 import '../widgets/mini_player.dart';
 
 class PlaylistDetailScreen extends StatefulWidget {
@@ -264,92 +265,104 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen>
     }).toList();
 
     return Scaffold(
-      backgroundColor: Colors.black,
-      extendBodyBehindAppBar: true,
-      appBar: AppBar(
-        backgroundColor: Colors.transparent,
-        elevation: 0,
-        leading: IconButton(
-          icon: Icon(Icons.arrow_back, color: textColor),
-          onPressed: () {
-            if (_isSearching) {
-              setState(() {
-                _isSearching = false;
-                _searchQuery = '';
-                _searchController.clear();
-                _animationController.reverse();
-              });
-            } else {
-              if (widget.onBack != null) {
-                widget.onBack!();
-              } else {
-                Navigator.pop(context);
-              }
-            }
-          },
-        ),
-        title: _isSearching ? _buildSearchField(textColor) : null,
-        centerTitle: true,
-        actions: [
-          if (!_isSearching) ...[
-            IconButton(
-              icon: Icon(Icons.search, color: textColor),
+      backgroundColor: themeColor,
+      body: Column(
+        children: [
+          // Misma title bar de la app, tintada con el color de la playlist.
+          AppTitleBar(
+            title: _isSearching
+                ? _buildSearchField(textColor)
+                : Text(
+                    playlist.name,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+            tintColor: themeColor,
+            windowBackgroundColor: themeColor,
+            getText: widget.getText,
+            leading: IconButton(
+              icon: const Icon(Icons.arrow_back, size: 20),
               onPressed: () {
-                setState(() {
-                  _isSearching = true;
-                  _animationController.forward();
-                });
+                if (_isSearching) {
+                  setState(() {
+                    _isSearching = false;
+                    _searchQuery = '';
+                    _searchController.clear();
+                    _animationController.reverse();
+                  });
+                } else {
+                  if (widget.onBack != null) {
+                    widget.onBack!();
+                  } else {
+                    Navigator.pop(context);
+                  }
+                }
               },
             ),
-            if (!widget.isReadOnly)
-              PopupMenuButton<String>(
-                icon: Icon(Icons.more_vert, color: textColor),
-                onSelected: (value) async {
-                  if (value == 'edit') {
-                    _showEditPlaylistDialog(context, playlist);
-                  } else if (value == 'add') {
-                    _showAddSongsDialog(context, playlist);
-                  }
-                },
-                itemBuilder: (BuildContext context) {
-                  return [
-                    PopupMenuItem(
-                      value: 'edit',
-                      child: Row(
-                        children: [
-                          Icon(Icons.edit, color: Colors.black54),
-                          SizedBox(width: 8),
-                          Text(
-                            widget.getText(
-                              'edit_playlist',
-                              fallback: 'Edit Playlist',
-                            ),
+            actions: [
+              if (!_isSearching) ...[
+                IconButton(
+                  icon: const Icon(Icons.search, size: 20),
+                  onPressed: () {
+                    setState(() {
+                      _isSearching = true;
+                      _animationController.forward();
+                    });
+                  },
+                ),
+                if (!widget.isReadOnly)
+                  PopupMenuButton<String>(
+                    icon: const Icon(Icons.more_vert, size: 20),
+                    onSelected: (value) async {
+                      if (value == 'edit') {
+                        _showEditPlaylistDialog(context, playlist);
+                      } else if (value == 'add') {
+                        _showAddSongsDialog(context, playlist);
+                      }
+                    },
+                    itemBuilder: (BuildContext context) {
+                      return [
+                        PopupMenuItem(
+                          value: 'edit',
+                          child: Row(
+                            children: [
+                              Icon(Icons.edit, color: Colors.black54),
+                              SizedBox(width: 8),
+                              Text(
+                                widget.getText(
+                                  'edit_playlist',
+                                  fallback: 'Edit Playlist',
+                                ),
+                              ),
+                            ],
                           ),
-                        ],
-                      ),
-                    ),
-                    PopupMenuItem(
-                      value: 'add',
-                      child: Row(
-                        children: [
-                          Icon(Icons.add, color: Colors.black54),
-                          SizedBox(width: 8),
-                          Text(
-                            widget.getText('add_songs', fallback: 'Add Songs'),
+                        ),
+                        PopupMenuItem(
+                          value: 'add',
+                          child: Row(
+                            children: [
+                              Icon(Icons.add, color: Colors.black54),
+                              SizedBox(width: 8),
+                              Text(
+                                widget.getText(
+                                  'add_songs',
+                                  fallback: 'Add Songs',
+                                ),
+                              ),
+                            ],
                           ),
-                        ],
-                      ),
-                    ),
-                  ];
-                },
-              ),
-          ],
-        ],
-      ),
-      body: Stack(
-        children: [
-          // Background flat color
-          Positioned.fill(child: Container(color: themeColor)),
+                        ),
+                      ];
+                    },
+                  ),
+              ],
+            ],
+          ),
+          Expanded(
+            child: Stack(
+              children: [
+                // Background flat color
+                Positioned.fill(child: Container(color: themeColor)),
 
           CustomScrollView(
             controller: _scrollController,
@@ -589,16 +602,19 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen>
             ],
           ),
 
-          // Mini Player
-          Positioned(
-            bottom: 16,
-            left: 16,
-            right: 16,
-            child: SafeArea(child: MiniPlayer(getText: widget.getText)),
+              // Mini Player
+              Positioned(
+                bottom: 16,
+                left: 16,
+                right: 16,
+                child: SafeArea(child: MiniPlayer(getText: widget.getText)),
+              ),
+            ],
           ),
-        ],
-      ),
-    );
+        ),
+      ],
+    ),
+  );
   }
 
   Future<void> _showEditPlaylistDialog(

@@ -9,6 +9,7 @@ import 'package:file_picker/file_picker.dart';
 import 'package:path/path.dart' as p;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:window_manager/window_manager.dart';
+import 'main.dart' show gUseNativeFrame;
 
 typedef TextGetter = String Function(String key, {String? fallback});
 
@@ -95,7 +96,9 @@ class _TranslateScreenState extends State<TranslateScreen> with WindowListener {
   @override
   void initState() {
     super.initState();
-    windowManager.addListener(this);
+    if (!gUseNativeFrame) {
+      windowManager.addListener(this);
+    }
     _selectedCountryKey = _defaultCountryForLang(widget.currentLang);
     _loadFolderPref(); // async, does not block UI
     // build localized labels after first frame so widget.getText is available
@@ -118,7 +121,9 @@ class _TranslateScreenState extends State<TranslateScreen> with WindowListener {
 
   @override
   void dispose() {
-    windowManager.removeListener(this);
+    if (!gUseNativeFrame) {
+      windowManager.removeListener(this);
+    }
     _debounce?.cancel();
     _inputController.dispose();
     // Don't close HTTP client - prevents "Connection closed" errors in debug mode

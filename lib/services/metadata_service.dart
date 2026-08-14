@@ -4,7 +4,6 @@ import 'dart:async';
 import 'dart:typed_data';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
-import 'package:path/path.dart' as p;
 import 'tools_service.dart';
 
 class TrackMetadata {
@@ -252,10 +251,7 @@ class MetadataService {
       var ffmpegExe = 'ffmpeg'; // Default global
 
       if (toolsDir.isNotEmpty) {
-        var localFfmpeg = p.join(toolsDir, 'ffmpeg', 'bin', 'ffmpeg.exe');
-        if (!File(localFfmpeg).existsSync()) {
-          localFfmpeg = p.join(toolsDir, 'ffmpeg.exe');
-        }
+        final localFfmpeg = ToolsService().ffmpegPath;
 
         debugPrint(
           '[MetadataService] Checking local ffmpeg at: "$localFfmpeg"',

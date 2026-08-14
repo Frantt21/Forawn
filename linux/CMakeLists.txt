@@ -42,6 +42,9 @@ endif()
 function(APPLY_STANDARD_SETTINGS TARGET)
   target_compile_features(${TARGET} PUBLIC cxx_std_14)
   target_compile_options(${TARGET} PRIVATE -Wall -Werror)
+  # Algunos plugins (p.ej. hotkey_manager_linux) disparan -Wsometimes-uninitialized
+  # con Clang reciente; que no rompa el build (mantiene el warning visible).
+  target_compile_options(${TARGET} PRIVATE -Wno-error=sometimes-uninitialized)
   target_compile_options(${TARGET} PRIVATE "$<$<NOT:$<CONFIG:Debug>>:-O3>")
   target_compile_definitions(${TARGET} PRIVATE "$<$<NOT:$<CONFIG:Debug>>:NDEBUG>")
 endfunction()
@@ -79,7 +82,12 @@ include(flutter/generated_plugins.cmake)
 # By default, "installing" just makes a relocatable bundle in the build
 # directory.
 set(BUILD_BUNDLE_DIR "${PROJECT_BINARY_DIR}/bundle")
-if(CMAKE_INSTALL_PREFIX_INITIALIZED_TO_DEFAULT)
+# Forzar el bundle como prefijo de instalación. El chequeo adicional cubre el
+# caso en que una configuración previa fallida dejó CMAKE_INSTALL_PREFIX=/usr/local
+# cacheado (entonces INITIALIZED_TO_DEFAULT ya no es true y sin esto el build
+# intentaría instalar en /usr/local sin permisos).
+if(CMAKE_INSTALL_PREFIX_INITIALIZED_TO_DEFAULT OR
+   CMAKE_INSTALL_PREFIX STREQUAL "/usr/local")
   set(CMAKE_INSTALL_PREFIX "${BUILD_BUNDLE_DIR}" CACHE PATH "..." FORCE)
 endif()
 

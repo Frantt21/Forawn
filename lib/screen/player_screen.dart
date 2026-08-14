@@ -19,6 +19,7 @@ import '../models/synced_lyrics.dart';
 import 'lyrics_display_widget.dart';
 import 'package:window_manager/window_manager.dart';
 
+import '../main.dart' show gUseNativeFrame, gShowWindowButtons, gMacTrafficLightInset;
 import '../services/metadata_service.dart';
 import '../services/playlist_service.dart';
 import '../models/song_model.dart';
@@ -86,7 +87,9 @@ class _PlayerScreenState extends State<PlayerScreen> with WindowListener {
   @override
   void initState() {
     super.initState();
-    windowManager.addListener(this);
+    if (!gUseNativeFrame) {
+      windowManager.addListener(this);
+    }
     _focusNode = FocusNode();
     _player = _musicPlayer.player;
 
@@ -1169,19 +1172,39 @@ class _PlayerScreenState extends State<PlayerScreen> with WindowListener {
                                       // Lyrics View
                                       IgnorePointer(
                                         ignoring: !showLyrics,
-                                        child: AnimatedOpacity(
-                                          opacity: showLyrics ? 1.0 : 0.0,
+                                        child: AnimatedSlide(
+                                          offset: showLyrics
+                                              ? Offset.zero
+                                              : const Offset(0, 0.04),
                                           duration: const Duration(
-                                            milliseconds: 0,
+                                            milliseconds: 350,
                                           ),
-                                          child: SizedBox.expand(
-                                            child: Column(
-                                              key: const ValueKey(
-                                                'lyrics_column_view',
-                                              ),
+                                          curve: Curves.easeOutCubic,
+                                          child: AnimatedOpacity(
+                                            opacity: showLyrics ? 1.0 : 0.0,
+                                            duration: const Duration(
+                                              milliseconds: 300,
+                                            ),
+                                            curve: Curves.easeInOut,
+                                            child: SizedBox.expand(
+                                              child: Column(
+                                                key: const ValueKey(
+                                                  'lyrics_column_view',
+                                                ),
                                               children: [
                                                 // HEADER ROW: Artwork + Info + Controls
-                                                Padding(
+                                                // Al mostrar lyrics, baja desde arriba
+                                                // (donde estaba el artwork grande); al
+                                                // volver al player, sube hacia fuera.
+                                                AnimatedSlide(
+                                                  offset: showLyrics
+                                                      ? Offset.zero
+                                                      : const Offset(0, -0.25),
+                                                  duration: const Duration(
+                                                    milliseconds: 450,
+                                                  ),
+                                                  curve: Curves.easeInOutCubic,
+                                                  child: Padding(
                                                   padding:
                                                       const EdgeInsets.only(
                                                         left: 0,
@@ -1488,6 +1511,7 @@ class _PlayerScreenState extends State<PlayerScreen> with WindowListener {
                                                     ],
                                                   ),
                                                 ),
+                                                ),
 
                                                 const Divider(
                                                   color: Colors.white12,
@@ -1548,16 +1572,37 @@ class _PlayerScreenState extends State<PlayerScreen> with WindowListener {
                                             ),
                                           ),
                                         ),
+                                        ),
                                       ),
 
                                       // Cover Art View
                                       IgnorePointer(
                                         ignoring: showLyrics,
-                                        child: AnimatedOpacity(
-                                          opacity: showLyrics ? 0.0 : 1.0,
+                                        // Al pasar a lyrics, la vista del player
+                                        // sube y se encoge hacia la posición del
+                                        // header de lyrics (morph de artwork +
+                                        // título + artista).
+                                        child: AnimatedSlide(
+                                          offset: showLyrics
+                                              ? const Offset(0, -0.22)
+                                              : Offset.zero,
                                           duration: const Duration(
-                                            milliseconds: 0,
+                                            milliseconds: 450,
                                           ),
+                                          curve: Curves.easeInOutCubic,
+                                          child: AnimatedScale(
+                                            scale: showLyrics ? 0.55 : 1.0,
+                                            duration: const Duration(
+                                              milliseconds: 450,
+                                            ),
+                                            curve: Curves.easeInOutCubic,
+                                            child: AnimatedOpacity(
+                                              opacity: showLyrics ? 0.0 : 1.0,
+                                              duration: const Duration(
+                                                milliseconds: 300,
+                                              ),
+                                              curve: Curves.easeInOut,
+
                                           child: Column(
                                             key: const ValueKey('cover_art'),
                                             children: [
@@ -1759,6 +1804,8 @@ class _PlayerScreenState extends State<PlayerScreen> with WindowListener {
                                             ],
                                           ),
                                         ),
+                                        ),
+                                        ),
                                       ),
                                     ],
                                   ),
@@ -1770,7 +1817,31 @@ class _PlayerScreenState extends State<PlayerScreen> with WindowListener {
                               valueListenable: _musicPlayer.showLyrics,
                               builder: (context, showLyrics, _) {
                                 return AnimatedSwitcher(
-                                  duration: const Duration(milliseconds: 0),
+                                  duration: const Duration(
+                                    milliseconds: 400,
+                                  ),
+                                  switchInCurve: Curves.easeOutCubic,
+                                  switchOutCurve: Curves.easeInCubic,
+                                  transitionBuilder: (child, animation) {
+                                    // Los controles suben al pasar a lyrics
+                                    // (se mueven hacia el header) y entran
+                                    // desde abajo al volver al player.
+                                    return SlideTransition(
+                                      position: Tween<Offset>(
+                                        begin: const Offset(0, 0.4),
+                                        end: Offset.zero,
+                                      ).animate(
+                                        CurvedAnimation(
+                                          parent: animation,
+                                          curve: Curves.easeOutCubic,
+                                        ),
+                                      ),
+                                      child: FadeTransition(
+                                        opacity: animation,
+                                        child: child,
+                                      ),
+                                    );
+                                  },
                                   child: showLyrics
                                       ? const SizedBox.shrink()
                                       : Column(
@@ -2115,60 +2186,6 @@ class _PlayerScreenState extends State<PlayerScreen> with WindowListener {
                                                       },
                                                     ),
 
-                                                    const SizedBox(width: 16),
-
-                                                    // Volume
-                                                    Icon(
-                                                      Icons.volume_up,
-                                                      color:
-                                                          _adjustColorForControls(
-                                                            _dominantColor,
-                                                          ).withOpacity(0.7),
-                                                      size: 20,
-                                                    ),
-                                                    SizedBox(
-                                                      width: 120,
-                                                      child: SliderTheme(
-                                                        data: SliderTheme.of(context).copyWith(
-                                                          trackHeight: 2,
-                                                          thumbShape:
-                                                              const RoundSliderThumbShape(
-                                                                enabledThumbRadius:
-                                                                    5,
-                                                              ),
-                                                          activeTrackColor:
-                                                              _adjustColorForControls(
-                                                                _dominantColor,
-                                                              ).withOpacity(
-                                                                0.7,
-                                                              ),
-                                                          inactiveTrackColor:
-                                                              Colors.white10,
-                                                          thumbColor:
-                                                              _adjustColorForControls(
-                                                                _dominantColor,
-                                                              ),
-                                                        ),
-                                                        child: Slider(
-                                                          value: _musicPlayer
-                                                              .volume
-                                                              .value,
-                                                          onChanged: (v) async {
-                                                            _musicPlayer
-                                                                    .volume
-                                                                    .value =
-                                                                v;
-                                                            _musicPlayer
-                                                                    .isMuted
-                                                                    .value =
-                                                                v == 0;
-                                                            await _player
-                                                                .setVolume(v);
-                                                            setState(() {});
-                                                          },
-                                                        ),
-                                                      ),
-                                                    ),
                                                   ],
                                                 ),
 
@@ -2185,88 +2202,180 @@ class _PlayerScreenState extends State<PlayerScreen> with WindowListener {
                                                         _musicPlayer
                                                             .duration
                                                             .value;
-                                                    return Column(
-                                                      children: [
-                                                        SliderTheme(
-                                                          data: SliderTheme.of(context).copyWith(
-                                                            trackHeight: 2,
-                                                            thumbShape:
-                                                                const RoundSliderThumbShape(
-                                                                  enabledThumbRadius:
-                                                                      6,
+                                                    // Barra de progreso: centrada, con ancho máximo
+                                                    // acotado (no ocupa todo el espacio) y el tiempo
+                                                    // en la misma línea que la barra. Al final de la
+                                                    // fila va el control de volumen (corto y separado).
+                                                    return Center(
+                                                      child: ConstrainedBox(
+                                                        constraints:
+                                                            const BoxConstraints(
+                                                              maxWidth: 560,
+                                                            ),
+                                                        child: Row(
+                                                          children: [
+                                                            Text(
+                                                              _formatDuration(
+                                                                position,
+                                                              ),
+                                                              style: const TextStyle(
+                                                                color: Colors
+                                                                    .white54,
+                                                                fontSize: 12,
+                                                              ),
+                                                            ),
+                                                            const SizedBox(
+                                                              width: 8,
+                                                            ),
+                                                            Expanded(
+                                                              child: SliderTheme(
+                                                                data: SliderTheme.of(context).copyWith(
+                                                                  trackHeight: 2,
+                                                                  // Sin dot: thumb invisible (radio 0) y sin overlay,
+                                                                  // igual que la barra de volumen.
+                                                                  thumbShape:
+                                                                      const RoundSliderThumbShape(
+                                                                        enabledThumbRadius:
+                                                                            0,
+                                                                      ),
+                                                                  overlayShape:
+                                                                      const RoundSliderOverlayShape(
+                                                                        overlayRadius:
+                                                                            0,
+                                                                      ),
+                                                                  // Sin padding lateral interno: los tiempos
+                                                                  // quedan pegados a la barra.
+                                                                  padding:
+                                                                      EdgeInsets.zero,
+                                                                  activeTrackColor:
+                                                                      _adjustColorForControls(
+                                                                        _dominantColor,
+                                                                      ),
+                                                                  inactiveTrackColor:
+                                                                      Colors.white10,
+                                                                  thumbColor:
+                                                                      _adjustColorForControls(
+                                                                        _dominantColor,
+                                                                      ),
                                                                 ),
-                                                            activeTrackColor:
-                                                                _adjustColorForControls(
-                                                                  _dominantColor,
-                                                                ),
-                                                            inactiveTrackColor:
-                                                                Colors.white10,
-                                                            thumbColor:
-                                                                _adjustColorForControls(
-                                                                  _dominantColor,
-                                                                ),
-                                                          ),
-                                                          child: Slider(
-                                                            value: position
-                                                                .inSeconds
-                                                                .toDouble()
-                                                                .clamp(
-                                                                  0.0,
-                                                                  duration
-                                                                      .inSeconds
-                                                                      .toDouble(),
-                                                                ),
-                                                            max:
-                                                                duration.inSeconds
-                                                                        .toDouble() >
-                                                                    0
-                                                                ? duration
+                                                                child: Slider(
+                                                                  value: position
                                                                       .inSeconds
                                                                       .toDouble()
-                                                                : 1.0,
-                                                            onChanged: (v) =>
-                                                                _player.seek(
-                                                                  Duration(
-                                                                    seconds: v
-                                                                        .toInt(),
+                                                                      .clamp(
+                                                                        0.0,
+                                                                        duration
+                                                                            .inSeconds
+                                                                            .toDouble(),
+                                                                      ),
+                                                                  max:
+                                                                      duration
+                                                                              .inSeconds
+                                                                              .toDouble() >
+                                                                          0
+                                                                      ? duration
+                                                                            .inSeconds
+                                                                            .toDouble()
+                                                                      : 1.0,
+                                                                  onChanged: (v) =>
+                                                                      _player.seek(
+                                                                        Duration(
+                                                                          seconds:
+                                                                              v.toInt(),
+                                                                        ),
+                                                                      ),
+                                                                ),
+                                                              ),
+                                                            ),
+                                                            const SizedBox(
+                                                              width: 8,
+                                                            ),
+                                                            Text(
+                                                              _formatDuration(
+                                                                duration,
+                                                              ),
+                                                              style: const TextStyle(
+                                                                color: Colors
+                                                                    .white54,
+                                                                fontSize: 12,
+                                                              ),
+                                                            ),
+                                                            // Volumen: separado de la barra de progreso,
+                                                            // más corto que antes y en la misma línea.
+                                                            const SizedBox(
+                                                              width: 24,
+                                                            ),
+                                                            Icon(
+                                                              Icons.volume_up,
+                                                              color:
+                                                                  _adjustColorForControls(
+                                                                    _dominantColor,
+                                                                  ).withOpacity(
+                                                                    0.7,
                                                                   ),
+                                                              size: 20,
+                                                            ),
+                                                            const SizedBox(
+                                                              width: 8,
+                                                            ),
+                                                            SizedBox(
+                                                              width: 80,
+                                                              child: SliderTheme(
+                                                                data: SliderTheme.of(context).copyWith(
+                                                                  trackHeight: 2,
+                                                                  // Sin dot: thumb invisible (radio 0) y sin
+                                                                  // overlay, igual que la barra de progreso.
+                                                                  thumbShape:
+                                                                      const RoundSliderThumbShape(
+                                                                        enabledThumbRadius:
+                                                                            0,
+                                                                      ),
+                                                                  overlayShape:
+                                                                      const RoundSliderOverlayShape(
+                                                                        overlayRadius:
+                                                                            0,
+                                                                      ),
+                                                                  activeTrackColor:
+                                                                      _adjustColorForControls(
+                                                                        _dominantColor,
+                                                                      ).withOpacity(
+                                                                        0.7,
+                                                                      ),
+                                                                  inactiveTrackColor:
+                                                                      Colors.white10,
+                                                                  thumbColor:
+                                                                      _adjustColorForControls(
+                                                                        _dominantColor,
+                                                                      ),
                                                                 ),
-                                                          ),
+                                                                child: Slider(
+                                                                  value:
+                                                                      _musicPlayer
+                                                                          .volume
+                                                                          .value,
+                                                                  onChanged: (v) async {
+                                                                    _musicPlayer
+                                                                            .volume
+                                                                            .value =
+                                                                        v;
+                                                                    _musicPlayer
+                                                                            .isMuted
+                                                                            .value =
+                                                                        v == 0;
+                                                                    await _player
+                                                                        .setVolume(
+                                                                          v,
+                                                                        );
+                                                                    setState(
+                                                                      () {},
+                                                                    );
+                                                                  },
+                                                                ),
+                                                              ),
+                                                            ),
+                                                          ],
                                                         ),
-                                                        Padding(
-                                                          padding:
-                                                              const EdgeInsets.symmetric(
-                                                                horizontal: 24,
-                                                              ),
-                                                          child: Row(
-                                                            mainAxisAlignment:
-                                                                MainAxisAlignment
-                                                                    .spaceBetween,
-                                                            children: [
-                                                              Text(
-                                                                _formatDuration(
-                                                                  position,
-                                                                ),
-                                                                style: const TextStyle(
-                                                                  color: Colors
-                                                                      .white54,
-                                                                  fontSize: 12,
-                                                                ),
-                                                              ),
-                                                              Text(
-                                                                _formatDuration(
-                                                                  duration,
-                                                                ),
-                                                                style: const TextStyle(
-                                                                  color: Colors
-                                                                      .white54,
-                                                                  fontSize: 12,
-                                                                ),
-                                                              ),
-                                                            ],
-                                                          ),
-                                                        ),
-                                                      ],
+                                                      ),
                                                     );
                                                   },
                                                 ),
@@ -2479,6 +2588,9 @@ class _PlayerScreenState extends State<PlayerScreen> with WindowListener {
                   color: Colors.transparent,
                   child: Row(
                     children: [
+                      // Espacio para traffic lights nativos en macOS
+                      if (gMacTrafficLightInset > 0)
+                        SizedBox(width: gMacTrafficLightInset),
                       SizedBox(
                         width: 36,
                         height: 36,
@@ -2508,30 +2620,32 @@ class _PlayerScreenState extends State<PlayerScreen> with WindowListener {
                               ),
                         ),
                       ),
-                      IconButton(
-                        tooltip: widget.getText(
-                          'minimize',
-                          fallback: 'Minimize',
+                      if (gShowWindowButtons) ...[
+                        IconButton(
+                          tooltip: widget.getText(
+                            'minimize',
+                            fallback: 'Minimize',
+                          ),
+                          icon: const Icon(
+                            Icons.remove,
+                            size: 18,
+                            color: Colors.white,
+                          ),
+                          onPressed: _minimize,
                         ),
-                        icon: const Icon(
-                          Icons.remove,
-                          size: 18,
-                          color: Colors.white,
+                        IconButton(
+                          tooltip: widget.getText(
+                            'maximize',
+                            fallback: 'Maximize',
+                          ),
+                          icon: const Icon(
+                            Icons.crop_square,
+                            size: 18,
+                            color: Colors.white,
+                          ),
+                          onPressed: _maximizeRestore,
                         ),
-                        onPressed: _minimize,
-                      ),
-                      IconButton(
-                        tooltip: widget.getText(
-                          'maximize',
-                          fallback: 'Maximize',
-                        ),
-                        icon: const Icon(
-                          Icons.crop_square,
-                          size: 18,
-                          color: Colors.white,
-                        ),
-                        onPressed: _maximizeRestore,
-                      ),
+                      ],
                       IconButton(
                         tooltip: widget.getText('back', fallback: 'Back'),
                         icon: const Icon(

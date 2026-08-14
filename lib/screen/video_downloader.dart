@@ -9,6 +9,7 @@ import 'package:file_picker/file_picker.dart';
 import 'package:path/path.dart' as p;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:window_manager/window_manager.dart';
+import '../main.dart' show gUseNativeFrame;
 import '../models/download_task.dart';
 import '../services/download_manager.dart';
 import '../services/tools_service.dart';
@@ -56,7 +57,9 @@ class _VideoDownloaderScreenState extends State<VideoDownloaderScreen>
   void initState() {
     super.initState();
     try {
-      windowManager.addListener(this);
+      if (!gUseNativeFrame) {
+        windowManager.addListener(this);
+      }
     } catch (e) {
       debugPrint('[VideoDownloaderScreen] Error adding window listener: $e');
     }
@@ -81,7 +84,9 @@ class _VideoDownloaderScreenState extends State<VideoDownloaderScreen>
   @override
   void dispose() {
     try {
-      windowManager.removeListener(this);
+      if (!gUseNativeFrame) {
+        windowManager.removeListener(this);
+      }
     } catch (e) {
       debugPrint('[VideoDownloaderScreen] Error removing window listener: $e');
     }
@@ -224,7 +229,7 @@ class _VideoDownloaderScreenState extends State<VideoDownloaderScreen>
     required String url,
     required void Function(String) logger,
   }) async {
-    final ytdlp = p.join(toolsDir, 'yt-dlp.exe');
+    final ytdlp = ToolsService().ytDlpPath;
     // Optimization: Add --flat-playlist if we suspect playlist, but simplest is standard -j
     final args = [url, '-j', '--no-playlist', '--ignore-errors'];
     final outBuf = StringBuffer();

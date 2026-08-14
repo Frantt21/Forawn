@@ -4,7 +4,7 @@ import 'dart:io';
 import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:window_manager/window_manager.dart';
-import 'main.dart' show checkForUpdate;
+import 'main.dart' show checkForUpdate, gUseNativeFrame, gShowWindowButtons, gMacTrafficLightInset;
 import 'package:flutter_acrylic/flutter_acrylic.dart' as acrylic;
 import 'widgets/elegant_notification.dart';
 import 'services/discord_service.dart';
@@ -100,7 +100,9 @@ class _SettingsScreenState extends State<SettingsScreen> with WindowListener {
   @override
   void initState() {
     super.initState();
-    windowManager.addListener(this);
+    if (!gUseNativeFrame) {
+      windowManager.addListener(this);
+    }
     _selectedLang = widget.currentLang;
     _init();
   }
@@ -162,7 +164,9 @@ class _SettingsScreenState extends State<SettingsScreen> with WindowListener {
 
   @override
   void dispose() {
-    windowManager.removeListener(this);
+    if (!gUseNativeFrame) {
+      windowManager.removeListener(this);
+    }
     super.dispose();
   }
 
@@ -317,6 +321,9 @@ class _SettingsScreenState extends State<SettingsScreen> with WindowListener {
                 color: Colors.transparent,
                 child: Row(
                   children: [
+                    // Espacio para traffic lights nativos en macOS
+                    if (gMacTrafficLightInset > 0)
+                      SizedBox(width: gMacTrafficLightInset),
                     SizedBox(
                       width: 36,
                       height: 36,
@@ -341,16 +348,18 @@ class _SettingsScreenState extends State<SettingsScreen> with WindowListener {
                         ),
                       ),
                     ),
-                    IconButton(
-                      tooltip: get('minimize', fallback: 'Minimize'),
-                      icon: const Icon(Icons.remove, size: 18),
-                      onPressed: _minimize,
-                    ),
-                    IconButton(
-                      tooltip: get('maximize', fallback: 'Maximize'),
-                      icon: const Icon(Icons.crop_square, size: 18),
-                      onPressed: _maximizeRestore,
-                    ),
+                    if (gShowWindowButtons) ...[
+                      IconButton(
+                        tooltip: get('minimize', fallback: 'Minimize'),
+                        icon: const Icon(Icons.remove, size: 18),
+                        onPressed: _minimize,
+                      ),
+                      IconButton(
+                        tooltip: get('maximize', fallback: 'Maximize'),
+                        icon: const Icon(Icons.crop_square, size: 18),
+                        onPressed: _maximizeRestore,
+                      ),
+                    ],
                     IconButton(
                       tooltip: get('back', fallback: 'Back'),
                       icon: const Icon(Icons.arrow_back, size: 18),

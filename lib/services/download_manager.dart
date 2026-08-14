@@ -264,7 +264,7 @@ class DownloadManager extends ChangeNotifier {
           '[DownloadManager] starting yt-dlp video download for ${t.id} output="$outputTemplate" formatId=${t.formatId}',
         );
 
-        final exitSuccess = await _ytDlpDownloadWithProgress(
+        final (exitSuccess, ytDlpError) = await _ytDlpDownloadWithProgress(
           taskId: t.id,
           toolsDir: toolsDir,
           queryOrUrl: t.sourceUrl,
@@ -284,7 +284,9 @@ class DownloadManager extends ChangeNotifier {
             t,
             status: DownloadStatus.failed,
             progress: 0.0,
-            errorMessage: 'yt-dlp video download failed',
+            errorMessage: ytDlpError.isNotEmpty
+                ? 'yt-dlp: $ytDlpError'
+                : 'yt-dlp video download failed',
             finishedAt: DateTime.now(),
           );
           Future.microtask(() => _scheduleQueue());
@@ -332,8 +334,8 @@ class DownloadManager extends ChangeNotifier {
         throw Exception('tools dir not found and spotify direct failed');
       }
 
-      final ffmpegExe = p.join(toolsDir, 'ffmpeg', 'bin', 'ffmpeg.exe');
-      final hasFfmpeg = File(ffmpegExe).existsSync();
+      final ffmpegExe = ToolsService().ffmpegPath;
+      final hasFfmpeg = ToolsService().hasFfmpeg;
       final outputTemplate = hasFfmpeg
           ? p.join(downloadFolder, '$safeBase.mp3')
           : p.join(downloadFolder, '$safeBase.%(ext)s');
@@ -363,7 +365,7 @@ class DownloadManager extends ChangeNotifier {
         '[DownloadManager] starting yt-dlp for ${t.id} output="$outputTemplate" hasFfmpeg=$hasFfmpeg query="$ytQueryOrUrl"',
       );
 
-      final exitSuccess = await _ytDlpDownloadWithProgress(
+      final (exitSuccess, ytDlpError) = await _ytDlpDownloadWithProgress(
         taskId: t.id,
         toolsDir: toolsDir,
         queryOrUrl: ytQueryOrUrl,
@@ -382,7 +384,9 @@ class DownloadManager extends ChangeNotifier {
           t,
           status: DownloadStatus.failed,
           progress: 0.0,
-          errorMessage: 'yt-dlp failed or returned non-zero exit code',
+          errorMessage: ytDlpError.isNotEmpty
+              ? 'yt-dlp: $ytDlpError'
+              : 'yt-dlp failed or returned non-zero exit code',
           finishedAt: DateTime.now(),
         );
         debugPrint(
@@ -451,7 +455,7 @@ class DownloadManager extends ChangeNotifier {
             );
 
             // Usar ffmpeg para escribir metadatos
-            final ffmpegExe = p.join(toolsDir, 'ffmpeg', 'bin', 'ffmpeg.exe');
+            final ffmpegExe = ToolsService().ffmpegPath;
             if (File(ffmpegExe).existsSync()) {
               final tempPath = '${found.path}.temp.mp3';
 
@@ -684,11 +688,11 @@ class DownloadManager extends ChangeNotifier {
 
   List<String> _checkTools(String toolsDir) {
     final missing = <String>[];
-    if (!File(p.join(toolsDir, 'yt-dlp.exe')).existsSync()) {
-      missing.add('yt-dlp.exe');
+    if (!ToolsService().hasYtDlp) {
+      missing.add('yt-dlp');
     }
-    if (!File(p.join(toolsDir, 'ffmpeg', 'bin', 'ffmpeg.exe')).existsSync()) {
-      missing.add('ffmpeg.exe (recommended for mp3)');
+    if (!ToolsService().hasFfmpeg) {
+      missing.add('ffmpeg (recommended for mp3)');
     }
     return missing;
   }
@@ -837,7 +841,7 @@ class DownloadManager extends ChangeNotifier {
     return 0;
   }
 
-  Future<bool> _ytDlpDownloadWithProgress({
+  Future<(bool, String)> _ytDlpDownloadWithProgress({
     required String taskId,
     required String toolsDir,
     required String queryOrUrl,
@@ -846,12 +850,12 @@ class DownloadManager extends ChangeNotifier {
     String? formatId,
     bool extractAudio = false,
   }) async {
-    final ytdlp = p.join(toolsDir, 'yt-dlp.exe');
-    final ffmpegExe = p.join(toolsDir, 'ffmpeg', 'bin', 'ffmpeg.exe');
+    final ytdlp = ToolsService().ytDlpPath;
+    final ffmpegExe = ToolsService().ffmpegPath;
     final hasYtdlp = File(ytdlp).existsSync();
     if (!hasYtdlp) {
       debugPrint('[DownloadManager] yt-dlp not found at $ytdlp');
-      return false;
+      return (false, 'yt-dlp no encontrado');
     }
 
     final searchArg =
@@ -904,6 +908,9 @@ class DownloadManager extends ChangeNotifier {
 
     debugPrint('[DownloadManager] yt-dlp args: ${args.join(' ')}');
 
+    // Últimas líneas de stderr (útil para reportar el error real)
+    final stderrLines = <String>[];
+
     final exitCode = await _runProcessStreamed(
       taskId: taskId,
       executable: ytdlp,
@@ -914,12 +921,14 @@ class DownloadManager extends ChangeNotifier {
       },
       onStderr: (l) {
         debugPrint('[yt-dlp stderr] $l');
+        stderrLines.add(l);
+        if (stderrLines.length > 8) stderrLines.removeAt(0);
       },
       onProgressLine: onProgressLine,
     );
 
     debugPrint('[DownloadManager] yt-dlp exitCode=$exitCode for task $taskId');
-    return exitCode == 0;
+    return (exitCode == 0, stderrLines.join(' | '));
   }
 
   Future<bool> _convertToMp3({

@@ -1,30 +1,75 @@
-// // This is a basic Flutter widget test.
-// //
-// // To perform an interaction with a widget in your test, use the WidgetTester
-// // utility in the flutter_test package. For example, you can send tap and scroll
-// // gestures. You can also use WidgetTester to find child widgets in the widget
-// // tree, read text, and verify that the values of widget properties are correct.
+import 'package:flutter/material.dart';
+import 'package:flutter_test/flutter_test.dart';
 
-// import 'package:flutter/material.dart';
-// import 'package:flutter_test/flutter_test.dart';
+import 'package:forawn/utils/color_utils.dart';
+import 'package:forawn/widgets/app_title_bar.dart';
 
-// import 'package:forawn/main.dart';
+void main() {
+  group('readableTextColorFor', () {
+    test('devuelve blanco sobre fondos oscuros', () {
+      expect(readableTextColorFor(const Color(0xFF1E1E1E)), Colors.white);
+      expect(readableTextColorFor(const Color(0xFF000000)), Colors.white);
+    });
 
-// void main() {
-//   testWidgets('Counter increments smoke test', (WidgetTester tester) async {
-//     // Build our app and trigger a frame.
-//     await tester.pumpWidget(const MyApp());
+    test('devuelve negro sobre fondos claros', () {
+      expect(readableTextColorFor(const Color(0xFFF5F5F5)), Colors.black);
+      expect(readableTextColorFor(const Color(0xFFFFFFFF)), Colors.black);
+    });
 
-//     // Verify that our counter starts at 0.
-//     expect(find.text('0'), findsOneWidget);
-//     expect(find.text('1'), findsNothing);
+    test('elige el color con mayor ratio de contraste', () {
+      final bg = const Color(0xFF767676); // gris medio
+      final withWhite = contrastRatio(bg, Colors.white);
+      final withBlack = contrastRatio(bg, Colors.black);
+      final chosen = readableTextColorFor(bg);
+      expect(chosen, withWhite >= withBlack ? Colors.white : Colors.black);
+    });
+  });
 
-//     // Tap the '+' icon and trigger a frame.
-//     await tester.tap(find.byIcon(Icons.add));
-//     await tester.pump();
+  group('AppTitleBar', () {
+    String getText(String key, {String? fallback}) => fallback ?? key;
 
-//     // Verify that our counter has incremented.
-//     expect(find.text('0'), findsNothing);
-//     expect(find.text('1'), findsOneWidget);
-//   });
-// }
+    testWidgets('usa texto blanco con tint oscuro', (tester) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: AppTitleBar(
+              title: const Text('Mi Playlist'),
+              getText: getText,
+              tintColor: const Color(0xFF1E1E1E),
+              windowBackgroundColor: const Color(0xFF1E1E1E),
+            ),
+          ),
+        ),
+      );
+
+      final text = tester.widget<Text>(find.text('Mi Playlist'));
+      final resolved = DefaultTextStyle.of(
+        tester.element(find.text('Mi Playlist')),
+      ).style;
+      expect(resolved.color, Colors.white);
+      expect(text.style?.color, isNull); // hereda del DefaultTextStyle
+    });
+
+    testWidgets('usa texto negro con tint claro', (tester) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: AppTitleBar(
+              title: const Text('Mi Playlist'),
+              getText: getText,
+              tintColor: const Color(0xFFF5F5F5),
+              windowBackgroundColor: const Color(0xFFF5F5F5),
+            ),
+          ),
+        ),
+      );
+
+      final text = tester.widget<Text>(find.text('Mi Playlist'));
+      final resolved = DefaultTextStyle.of(
+        tester.element(find.text('Mi Playlist')),
+      ).style;
+      expect(resolved.color, Colors.black);
+      expect(text.style?.color, isNull); // hereda del DefaultTextStyle
+    });
+  });
+}

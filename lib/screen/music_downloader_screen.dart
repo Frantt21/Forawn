@@ -8,6 +8,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:http/http.dart' as http;
 import 'package:path/path.dart' as p;
 import 'package:window_manager/window_manager.dart';
+import '../main.dart' show gUseNativeFrame;
 import '../models/download_task.dart';
 import '../widgets/elegant_notification.dart';
 import '../services/download_manager.dart';
@@ -52,7 +53,9 @@ class _MusicDownloaderScreenState extends State<MusicDownloaderScreen>
   void initState() {
     super.initState();
     try {
-      windowManager.addListener(this);
+      if (!gUseNativeFrame) {
+        windowManager.addListener(this);
+      }
     } catch (e) {
       debugPrint('[MusicDownloaderScreen] Error adding window listener: $e');
     }
@@ -117,7 +120,9 @@ class _MusicDownloaderScreenState extends State<MusicDownloaderScreen>
       debugPrint('[MusicDownloaderScreen] Error removing dm listener: $e');
     }
     try {
-      windowManager.removeListener(this);
+      if (!gUseNativeFrame) {
+        windowManager.removeListener(this);
+      }
     } catch (e) {
       debugPrint('[MusicDownloaderScreen] Error removing window listener: $e');
     }

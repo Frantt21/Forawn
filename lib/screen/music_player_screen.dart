@@ -1023,27 +1023,42 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen>
 
   int _tabIndex = 0;
 
-  // Playlist seleccionada para ver su detalle dentro del mismo screen
-  Playlist? _selectedPlaylist;
-  bool _selectedPlaylistIsReadOnly = false;
+  /// Abre el detalle de la playlist como pantalla completa (cubre todo el
+  /// screen, con su propia title bar) con una animación de barrido de
+  /// derecha a izquierda.
+  void _openPlaylist(Playlist playlist, {bool isReadOnly = false}) {
+    Navigator.of(context).push(
+      PageRouteBuilder(
+        transitionDuration: const Duration(milliseconds: 450),
+        reverseTransitionDuration: const Duration(milliseconds: 350),
+        pageBuilder: (_, __, ___) => PlaylistDetailScreen(
+          playlist: playlist,
+          getText: widget.getText,
+          isReadOnly: isReadOnly,
+        ),
+        transitionsBuilder: (_, animation, __, child) {
+          final curved = CurvedAnimation(
+            parent: animation,
+            curve: Curves.easeOutCubic,
+            reverseCurve: Curves.easeInCubic,
+          );
+          // Barrido de derecha a izquierda: la pantalla entra deslizándose
+          // desde la derecha (mantiene su tamaño completo, sin re-dimensionar).
+          return SlideTransition(
+            position: Tween<Offset>(
+              begin: const Offset(1, 0),
+              end: Offset.zero,
+            ).animate(curved),
+            child: child,
+          );
+        },
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
     super.build(context); // Required for AutomaticKeepAliveClientMixin
-
-    final selected = _selectedPlaylist;
-    if (selected != null) {
-      // Renderizar el detalle de la playlist en este mismo screen
-      return PlaylistDetailScreen(
-        key: ValueKey('playlist_detail_${selected.id}'),
-        playlist: selected,
-        getText: widget.getText,
-        isReadOnly: _selectedPlaylistIsReadOnly,
-        onBack: () {
-          if (mounted) setState(() => _selectedPlaylist = null);
-        },
-      );
-    }
 
     return _buildLibraryView();
   }
@@ -1765,12 +1780,7 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen>
     double? height = 160,
   }) {
     return GestureDetector(
-      onTap: () {
-        setState(() {
-          _selectedPlaylist = playlist;
-          _selectedPlaylistIsReadOnly = isFavorite;
-        });
-      },
+      onTap: () => _openPlaylist(playlist, isReadOnly: isFavorite),
       onLongPress: isFavorite
           ? null
           : () {

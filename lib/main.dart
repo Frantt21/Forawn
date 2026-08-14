@@ -30,6 +30,7 @@ import 'services/global_music_player.dart';
 import 'services/local_music_database.dart';
 import 'services/tools_service.dart';
 import 'services/window_media_service.dart';
+import 'utils/color_utils.dart';
 
 const String kDefaultLangCode = 'en';
 const _prefEffectKey = 'window_effect';
@@ -39,6 +40,19 @@ const _prefDarkKey = 'window_dark';
 String currentLang = kDefaultLangCode;
 Map<String, String> lang = {};
 bool gNativeAcrylicAvailable = false;
+
+/// La app usa su propia barra de título en los 3 SO (unificada).
+/// Este getter se mantiene como false siempre; se conserva por compatibilidad
+/// con los guards existentes (los listeners de window_manager siempre activos).
+bool get gUseNativeFrame => false;
+
+/// true si la app dibuja sus propios botones de ventana (min/max/cerrar).
+/// En macOS los pone el sistema (traffic lights), así que ahí se ocultan.
+bool get gShowWindowButtons => !Platform.isMacOS;
+
+/// Espacio a la izquierda de la barra de título en macOS para no solapar
+/// los traffic lights nativos.
+double get gMacTrafficLightInset => Platform.isMacOS ? 78 : 0;
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -91,15 +105,29 @@ Future<void> main() async {
     gNativeAcrylicAvailable = false;
   }
 
-  // Inicializar window_manager
+  // Inicializar window_manager en los 3 SO con la barra de título propia:
+  //  - Windows/Linux: ventana sin marco (setAsFrameless) + controles propios.
+  //  - macOS: barra nativa oculta (TitleBarStyle.hidden); los traffic lights
+  //    se mantienen y la app dibuja su barra respetando su espacio.
   try {
     await windowManager.ensureInitialized();
-    await DownloadManager().loadPersisted();
-    await windowManager.setAsFrameless();
+    if (Platform.isMacOS) {
+      await windowManager.setTitleBarStyle(
+        TitleBarStyle.hidden,
+        windowButtonVisibility: true,
+      );
+    } else {
+      await windowManager.setAsFrameless();
+    }
+    // IMPORTANTE: titleBarStyle SOLO se pasa en macOS (hidden).
+    // En Windows/Linux dejarlo en null: waitUntilReadyToShow llama a
+    // setTitleBarStyle() con este valor, y setTitleBarStyle(normal)
+    // DESHACE el setAsFrameless() anterior (reactiva la barra nativa).
     final options = WindowOptions(
       size: const Size(1024, 600),
       center: true,
       title: 'Forawn',
+      titleBarStyle: Platform.isMacOS ? TitleBarStyle.hidden : null,
     );
     windowManager.waitUntilReadyToShow(options, () async {
       await windowManager.setResizable(true);
@@ -107,7 +135,16 @@ Future<void> main() async {
       await windowManager.show();
       await windowManager.focus();
     });
-  } catch (_) {}
+  } catch (e) {
+    debugPrint('[Main] window_manager init error: $e');
+  }
+
+  // Cargar descargas persistidas
+  try {
+    await DownloadManager().loadPersisted();
+  } catch (e) {
+    debugPrint('[Main] Error loading persisted downloads: $e');
+  }
 
   // Cargar preferencia de idioma antes de runApp
   final prefs = await SharedPreferences.getInstance();
@@ -117,9 +154,12 @@ Future<void> main() async {
 
 
 
-  // Descargar herramientas (ffmpeg, yt-dlp) si faltan
+  // Descargar herramientas (ffmpeg, yt-dlp) si faltan, EN SEGUNDO PLANO.
+  // No se espera: si la descarga tarda (o falla), la UI ya está visible y
+  // funcional; las descargas de música/video simplemente quedarán pendientes
+  // hasta que los tools estén listos.
   try {
-    await ToolsService().initialize();
+    unawaited(ToolsService().initialize());
   } catch (e) {
     debugPrint('[Main] Error initializing tools: $e');
   }
@@ -273,6 +313,11 @@ class _ForawnAppRootState extends State<ForawnAppRoot> {
   late FocusNode _globalFocusNode;
   bool _isDarkBackground = true; // Track if background is dark or light
 
+  /// Color real de fondo de la ventana. En Windows es el color del acrílico
+  /// elegido por el usuario; en Linux/macOS el fondo sólido de la app.
+  /// Se usa para calcular el contraste de la title bar (texto/iconos).
+  Color _windowBackgroundColor = const Color(0xFF1E1E1E);
+
   @override
   void initState() {
     super.initState();
@@ -306,9 +351,18 @@ class _ForawnAppRootState extends State<ForawnAppRoot> {
   Future<void> _loadBackgroundBrightness() async {
     final prefs = await SharedPreferences.getInstance();
     final isDark = prefs.getBool(_prefDarkKey) ?? true;
+    Color bg;
+    if (Platform.isWindows) {
+      // Windows: el fondo real es el color del acrílico guardado.
+      bg = Color(prefs.getInt(_prefColorKey) ?? 0xCC222222);
+    } else {
+      // Linux/macOS: fondo sólido de la app.
+      bg = isDark ? const Color(0xFF1E1E1E) : const Color(0xFFF5F5F5);
+    }
     if (mounted) {
       setState(() {
         _isDarkBackground = isDark;
+        _windowBackgroundColor = bg;
       });
     }
   }
@@ -350,9 +404,18 @@ class _ForawnAppRootState extends State<ForawnAppRoot> {
         final keyboardService = GlobalKeyboardService();
         keyboardService.handleKeyboardEvent(event);
       },
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(0),
-        child: MaterialApp(
+      child: ColoredBox(
+        // En Linux/macOS (o si el acrílico nativo falla) la ventana no tiene
+        // efecto de fondo del SO: la escena es transparente y se vería negra.
+        // Pintamos un fondo sólido acorde al tema en esos casos.
+        color: gNativeAcrylicAvailable
+            ? Colors.transparent
+            : _isDarkBackground
+            ? const Color(0xFF1E1E1E)
+            : const Color(0xFFF5F5F5),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(0),
+          child: MaterialApp(
           title: 'Forawn',
           theme: _isDarkBackground
               ? ThemeData.dark(useMaterial3: true).copyWith(
@@ -427,7 +490,9 @@ class _ForawnAppRootState extends State<ForawnAppRoot> {
             onRequestLanguageChange: _changeLanguage,
             currentLangCode: _langCode,
             isDarkBackground: _isDarkBackground,
+            windowBackgroundColor: _windowBackgroundColor,
           ),
+        ),
         ),
       ),
     );
@@ -440,12 +505,17 @@ class HomeScreen extends StatefulWidget {
   final String Function(String key, {String? fallback}) getText;
   final bool isDarkBackground;
 
+  /// Color real del fondo de la ventana (acrílico en Windows, sólido en
+  /// Linux/macOS). Se usa para calcular el contraste de la title bar.
+  final Color windowBackgroundColor;
+
   const HomeScreen({
     super.key,
     required this.getText,
     required this.onRequestLanguageChange,
     required this.currentLangCode,
     required this.isDarkBackground,
+    required this.windowBackgroundColor,
   });
 
   @override
@@ -464,7 +534,9 @@ class _HomeScreenState extends State<HomeScreen> with WindowListener {
   @override
   void initState() {
     super.initState();
-    windowManager.addListener(this);
+    if (!gUseNativeFrame) {
+      windowManager.addListener(this);
+    }
     _loadNsfwPref(); // This will call _initializeScreens after loading
     _loadRecentScreens();
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -602,7 +674,9 @@ class _HomeScreenState extends State<HomeScreen> with WindowListener {
 
   @override
   void dispose() {
-    windowManager.removeListener(this);
+    if (!gUseNativeFrame) {
+      windowManager.removeListener(this);
+    }
     // Guardar estado del reproductor al destruir (inmediato)
     GlobalMusicPlayer().savePlayerStateImmediate();
     super.dispose();
@@ -707,6 +781,7 @@ class _HomeScreenState extends State<HomeScreen> with WindowListener {
   }
 
   Widget _windowButtons() {
+    if (!gShowWindowButtons) return const SizedBox.shrink();
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
@@ -788,22 +863,51 @@ class _HomeScreenState extends State<HomeScreen> with WindowListener {
                         Expanded(
                           child: Column(
                             children: [
-                              // Title bar with Screen Title and Controls
+                              // Title bar with Screen Title and Controls.
+                              // Fondo transparente (deja ver el acrílico en
+                              // Windows o el fondo de la app en Linux/macOS) y
+                              // contraste automático: el color del texto e
+                              // iconos se calcula desde el fondo real de la
+                              // ventana (blanco sobre oscuro, negro sobre
+                              // claro) para garantizar legibilidad.
                               GestureDetector(
                                 behavior: HitTestBehavior.translucent,
                                 onPanStart: (_) =>
                                     windowManager.startDragging(),
-                                child: AnimatedContainer(
-                                  duration: const Duration(milliseconds: 500),
-                                  height: 42,
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 10,
-                                  ),
-                                  decoration: BoxDecoration(
-                                    color: Colors.transparent,
-                                  ),
-                                  child: Row(
+                                child: Builder(
+                                  builder: (titleBarContext) {
+                                    final titleBarFg =
+                                        readableTextColorFor(
+                                          widget.windowBackgroundColor,
+                                        );
+                                    return AnimatedContainer(
+                                      duration: const Duration(
+                                        milliseconds: 500,
+                                      ),
+                                      height: 42,
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 10,
+                                      ),
+                                      decoration: BoxDecoration(
+                                        // Transparente: la ventana (o el
+                                        // acrílico) se ve a través.
+                                        color: Colors.transparent,
+                                        border: Border(
+                                          bottom: BorderSide(
+                                            // Separación sutil con el
+                                            // contenido, adaptada al tema.
+                                            color: titleBarFg.withOpacity(0.12),
+                                            width: 0.5,
+                                          ),
+                                        ),
+                                      ),
+                                      child: IconTheme(
+                                        data: IconThemeData(color: titleBarFg),
+                                        child: Row(
                                     children: [
+                                      // Espacio para traffic lights nativos en macOS
+                                      if (gMacTrafficLightInset > 0)
+                                        SizedBox(width: gMacTrafficLightInset),
                                       // Home button
                                       if (_currentScreen != 'home')
                                         IconButton(
@@ -822,9 +926,12 @@ class _HomeScreenState extends State<HomeScreen> with WindowListener {
                                       // Screen title
                                       Text(
                                         _getScreenTitle(),
-                                        style: const TextStyle(
+                                        style: TextStyle(
                                           fontSize: 16,
                                           fontWeight: FontWeight.w600,
+                                          // Contraste garantizado contra el
+                                          // fondo real de la ventana.
+                                          color: titleBarFg,
                                         ),
                                       ),
                                       const Spacer(),
@@ -983,7 +1090,10 @@ class _HomeScreenState extends State<HomeScreen> with WindowListener {
                                       ),
                                       _windowButtons(),
                                     ],
-                                  ),
+                                        ),
+                                      ),
+                                    );
+                                  },
                                 ),
                               ),
 

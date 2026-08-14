@@ -1,6 +1,7 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:window_manager/window_manager.dart';
+import '../main.dart' show gUseNativeFrame, gShowWindowButtons, gMacTrafficLightInset;
 import '../services/download_manager.dart';
 import '../models/download_task.dart';
 
@@ -46,7 +47,9 @@ class _DownloadsScreenState extends State<DownloadsScreen>
       debugPrint('[DownloadsScreen] Error removing observer: $e');
     }
     try {
-      windowManager.removeListener(this);
+      if (!gUseNativeFrame) {
+        windowManager.removeListener(this);
+      }
     } catch (e) {
       debugPrint('[DownloadsScreen] Error removing window listener: $e');
     }
@@ -80,7 +83,9 @@ class _DownloadsScreenState extends State<DownloadsScreen>
   void initState() {
     super.initState();
     try {
-      windowManager.addListener(this);
+      if (!gUseNativeFrame) {
+        windowManager.addListener(this);
+      }
     } catch (e) {
       debugPrint('[DownloadsScreen] Error adding window listener: $e');
     }
@@ -133,6 +138,9 @@ class _DownloadsScreenState extends State<DownloadsScreen>
           color: Colors.transparent,
           child: Row(
             children: [
+              // Espacio para traffic lights nativos en macOS
+              if (gMacTrafficLightInset > 0)
+                SizedBox(width: gMacTrafficLightInset),
               SizedBox(
                 width: 36,
                 height: 36,
@@ -157,33 +165,35 @@ class _DownloadsScreenState extends State<DownloadsScreen>
                   ).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w600),
                 ),
               ),
-              IconButton(
-                tooltip: get('minimize', fallback: 'Minimize'),
-                icon: const Icon(Icons.remove, size: 18),
-                onPressed: () {
-                  try {
-                    windowManager.minimize();
-                  } catch (e) {
-                    debugPrint('[DownloadsScreen] Error minimizing: $e');
-                  }
-                },
-              ),
-              IconButton(
-                tooltip: get('maximize', fallback: 'Maximize'),
-                icon: const Icon(Icons.crop_square, size: 18),
-                onPressed: () async {
-                  try {
-                    final isMax = await windowManager.isMaximized();
-                    if (isMax) {
-                      await windowManager.unmaximize();
-                    } else {
-                      await windowManager.maximize();
+              if (gShowWindowButtons) ...[
+                IconButton(
+                  tooltip: get('minimize', fallback: 'Minimize'),
+                  icon: const Icon(Icons.remove, size: 18),
+                  onPressed: () {
+                    try {
+                      windowManager.minimize();
+                    } catch (e) {
+                      debugPrint('[DownloadsScreen] Error minimizing: $e');
                     }
-                  } catch (e) {
-                    debugPrint('[DownloadsScreen] Error maximizing: $e');
-                  }
-                },
-              ),
+                  },
+                ),
+                IconButton(
+                  tooltip: get('maximize', fallback: 'Maximize'),
+                  icon: const Icon(Icons.crop_square, size: 18),
+                  onPressed: () async {
+                    try {
+                      final isMax = await windowManager.isMaximized();
+                      if (isMax) {
+                        await windowManager.unmaximize();
+                      } else {
+                        await windowManager.maximize();
+                      }
+                    } catch (e) {
+                      debugPrint('[DownloadsScreen] Error maximizing: $e');
+                    }
+                  },
+                ),
+              ],
               IconButton(
                 tooltip: get('back', fallback: 'Back'),
                 icon: const Icon(Icons.arrow_back, size: 18),
@@ -389,8 +399,13 @@ class _DownloadsScreenState extends State<DownloadsScreen>
   Future<void> _openFile(String path) async {
     try {
       if (Platform.isWindows) {
+        // Abre el explorador con el archivo seleccionado
         await Process.run('explorer', ['/select,', path]);
+      } else if (Platform.isMacOS) {
+        // Revela el archivo en Finder
+        await Process.run('open', ['-R', path]);
       } else {
+        // Linux: abre la carpeta contenedora
         final dir = Directory(path).parent.path;
         await Process.run('xdg-open', [dir]);
       }

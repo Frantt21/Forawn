@@ -4,7 +4,6 @@
 
 list(APPEND FLUTTER_PLUGIN_LIST
   audioplayers_linux
-  bitsdojo_window_linux
   file_selector_linux
   flutter_acrylic
   hotkey_manager_linux
