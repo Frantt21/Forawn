@@ -1,307 +1,288 @@
-# 📝 Forawn
+# Forawn
 
-**Forawn** is a modular and multilingual desktop application for Windows, designed to offer clarity, speed, and customization. Built with Flutter and SQLite, it provides a refined experience for organizing notes, managing categories, and accessing powerful tools such as music downloading, AI image generation, video downloading, translation, and more.
+Forawn is a cross-platform desktop application for **Windows**, **Linux** and **macOS**, built with Flutter. It combines a local music player with a music/video downloader and a set of everyday tools, all in a single multilingual interface.
 
----
+The app downloads and manages its own audio/video tools (`yt-dlp` and `ffmpeg`) automatically, so downloads keep working on every platform without manual setup.
 
-## 🚀 Features
-
-### 📋 Core Note System
-- **Create, edit, archive, and delete notes** with rich text support
-- **Pin important notes** to keep them at the top
-- **Organize with categories** and powerful search functionality
-- **Attach images** to your notes for visual context
-- **Undo/redo actions** with confirmation dialogs for safety
-- **Trash system** with recovery options before permanent deletion
-- **Markdown support** for formatted notes
-- **Fully localized interface** with 10 language support
-
-### 🎨 Bonus Tools & Features
-- 🎧 **Spotify Music Downloader** - Search and download music from Spotify with YouTube fallback
-- 📥 **Download Manager** - Track and manage all your downloads with progress indicators
-- 🖼️ **AI Image Generator (ForaAI)** - Generate creative visuals using AI
-- 🎬 **Video Downloader** - Download videos from various platforms
-- 🌐 **Text Translator** - Multi-language translation support
-- 📱 **QR Code Generator** - Create QR codes for any text or URL
-- 🔞 **NSFW Content Search (R34)** - Optional feature (disabled by default for safety)
-
-### 🎨 UI/UX Features
-- **Acrylic/Blur effects** for modern Windows 11 aesthetic
-- **Custom window controls** with minimize, maximize, and close buttons
-- **Sidebar navigation** with recent screens tracking
-- **Dark mode support** with customizable themes
-- **Smooth transitions** and animations
-- **Responsive design** that adapts to window size
+Current version: **v1.0.6**
 
 ---
 
-## 📁 Project Structure
+## Features
+
+### Music Player
+
+- Local music library with automatic metadata and artwork extraction
+- Audio playback with position, seek, volume, shuffle, repeat and queue controls
+- Synchronized lyrics with auto-scroll, tap-to-seek and manual offset adjustment
+- Playlists and favorites, persisted locally
+- Mini player overlay across screens
+- Album-art based color themes (dominant color per song)
+- Background playback and media key integration
+
+### Download Manager
+
+- **Music downloader**: search and download tracks (metadata from Deezer API, audio from yt-dlp with YouTube fallback)
+- **Video downloader**: download videos from supported platforms
+- Download queue with progress, status and history
+- Automatic installation of `yt-dlp` and `ffmpeg` per platform, with integrity validation and re-download on failure
+- ID3 tags and embedded artwork after conversion
+
+### Tools
+
+- Text translator with multiple target languages
+- QR code generator
+- Global keyboard shortcuts
+- Discord Rich Presence integration
+- Windows System Media Transport Controls (SMTC) integration
+
+### Interface
+
+- Unified custom title bar across all platforms (frameless on Windows/Linux, native traffic lights on macOS)
+- Acrylic/blur window effects on Windows 11
+- Dark and light backgrounds with adaptive contrast
+- Sidebar navigation with recent screens tracking
+- Localized UI with 10 languages
+
+---
+
+## Project Structure
 
 ```
-Forawn/
+forawn/
+├── assets/
+│   └── lang/                     # Built-in language files (JSON)
 ├── lib/
-│   ├── main.dart                      # App entry point & main navigation
-│   ├── version.dart                   # Version information
-│   ├── language_controller.dart       # Language management
-│   │
-│   ├── screen/                        # Main application screens
-│   │   ├── home_content.dart          # Home dashboard
-│   │   ├── notes_screen.dart          # Notes management
-│   │   ├── archived_screen.dart       # Archived notes view
-│   │   ├── trash_screen.dart          # Trash/recycle bin
-│   │   ├── spotify_screen.dart        # Music downloader
+│   ├── main.dart                 # App entry point, window setup, main navigation
+│   ├── settings.dart             # Settings screen
+│   ├── translate.dart            # Translator screen
+│   ├── version.dart              # Version constant
+│   ├── language_controller.dart  # Language loading helpers
+│   ├── config/                   # Runtime configuration
+│   ├── lang/                     # Language files copied next to the binary
+│   ├── models/                   # Data models (songs, playlists, downloads, lyrics)
+│   ├── screen/
+│   │   ├── music_player_screen.dart   # Library, playlists, favorites
+│   │   ├── player_screen.dart         # Full player with lyrics view
+│   │   ├── playlist_detail_screen.dart# Single playlist view
+│   │   ├── music_downloader_screen.dart
+│   │   ├── video_downloader.dart
 │   │   ├── downloads_screen.dart      # Download manager
-│   │   ├── foraai_screen.dart         # AI image generator
-│   │   ├── video_downloader.dart      # Video download tool
-│   │   ├── qrcode_generator.dart      # QR code creation
-│   │   └── settings_screen.dart       # App settings
-│   │
-│   ├── widgets/                       # Reusable UI components
-│   │   ├── sidebar_navigation.dart    # App sidebar
-│   │   ├── note_card.dart             # Note display card
-│   │   ├── note_popup.dart            # Note editor dialog
-│   │   └── fade_transition_screen.dart # Screen transitions
-│   │
-│   ├── models/                        # Data models
-│   │   ├── note.dart                  # Note data structure
-│   │   └── download_task.dart         # Download task model
-│   │
-│   ├── db/                            # Database layer
-│   │   └── notes_database.dart        # SQLite database handler
-│   │
-│   ├── services/                      # Business logic services
-│   │   └── download_manager.dart      # Download management service
-│   │
-│   ├── utils/                         # Utility functions
-│   │   └── color_utils.dart           # Color manipulation helpers
-│   │
-│   ├── lang/                          # Localization files (JSON)
-│   │   ├── en.json                    # English
-│   │   ├── es.json                    # Spanish
-│   │   ├── fr.json                    # French
-│   │   ├── de-CH.json                 # German (Switzerland)
-│   │   ├── pt.json                    # Portuguese
-│   │   ├── ru.json                    # Russian
-│   │   ├── ja.json                    # Japanese
-│   │   ├── ko.json                    # Korean
-│   │   ├── zh.json                    # Chinese
-│   │   └── pl.json                    # Polish
-│   │
-│   ├── settings.dart                  # Settings management
-│   ├── translate.dart                 # Translation tool
-│   ├── imgia_screen.dart              # Image handling
-│   └── r34.dart                       # NSFW search (optional)
-│
-├── assets/                            # Static assets
-├── windows/                           # Windows platform specific code
-├── android/                           # Android platform code (future)
-├── ios/                               # iOS platform code (future)
-├── linux/                             # Linux platform code (future)
-├── macos/                             # macOS platform code (future)
-├── web/                               # Web platform code (future)
-│
-├── pubspec.yaml                       # Dependencies & configuration
-├── analysis_options.yaml              # Dart linter configuration
-└── README.md                          # This file
+│   │   ├── qrcode_generator.dart
+│   │   ├── home_content.dart
+│   │   └── lyrics_display_widget.dart
+│   ├── services/
+│   │   ├── tools_service.dart         # yt-dlp/ffmpeg download & validation
+│   │   ├── download_manager.dart      # Download queue
+│   │   ├── metadata_service.dart      # Deezer API metadata
+│   │   ├── global_music_player.dart   # Shared player state
+│   │   ├── local_music_database.dart  # Local library database
+│   │   ├── playlist_service.dart
+│   │   ├── lyrics_service.dart
+│   │   ├── lyrics_adjuster.dart
+│   │   ├── discord_service.dart
+│   │   ├── window_media_service.dart  # Windows SMTC
+│   │   ├── global_keyboard_service.dart
+│   │   └── native_media_service.dart
+│   ├── utils/
+│   │   └── color_utils.dart           # Contrast helpers (WCAG)
+│   └── widgets/
+│       ├── app_title_bar.dart         # Reusable custom title bar
+│       ├── sidebar_navigation.dart
+│       ├── mini_player.dart
+│       └── elegant_notification.dart
+├── windows/                      # Windows runner
+├── linux/                        # Linux runner
+├── macos/                        # macOS runner
+├── pubspec.yaml                  # Dependencies & configuration
+├── analysis_options.yaml         # Linter configuration
+└── README.md
 ```
 
 ---
 
-## 🧩 Architecture & Logic
+## Platforms
 
-### Database Layer
-- **SQLite** for local data persistence
-- **Notes Database** handles CRUD operations for notes
-- **Categories** system for organization
-- **Soft delete** with trash functionality before permanent removal
-- **Image attachments** stored with file paths
+| Platform | Status | Notes |
+|----------|--------|-------|
+| Windows | Supported | Acrylic effects, SMTC integration |
+| Linux | Supported | Requires GStreamer and keybinder dev packages |
+| macOS | Supported | Requires network entitlement for tool downloads |
 
-### Download Management
-- **Asynchronous download handling** with progress tracking
-- **Queue system** for managing multiple downloads
-- **Spotify integration** with YouTube fallback for music
-- **Video platform support** for various sources
-- **Download history** and status tracking
-
-### Localization System
-- **Dynamic language loading** from JSON files
-- **External language files** can be edited without recompiling
-- **Fallback mechanism** to default language if translation missing
-- **10 languages supported** out of the box
-- **Easy to extend** with new languages
-
-### Window Management
-- **Custom window controls** for native Windows feel
-- **Acrylic/blur effects** using flutter_acrylic
-- **Window state persistence** (size, position)
-- **Effect customization** (transparency, blur intensity)
-
-### Navigation System
-- **Sidebar-based navigation** with icons and labels
-- **Recent screens tracking** for quick access
-- **Screen state management** with proper lifecycle
-- **Smooth transitions** between screens
+The Android, iOS and web folders are not part of the desktop feature set.
 
 ---
 
-## 🛠️ Technologies & Dependencies
+## Dependencies
 
-### Core Framework
-- **Flutter SDK** ^3.9.2 - Cross-platform UI framework
-- **Dart** - Programming language
+### Framework
 
-### Database & Storage
-- **sqflite** ^2.3.0 - SQLite database
-- **sqflite_common_ffi** ^2.3.6 - FFI support for desktop
-- **path_provider** ^2.1.1 - File system paths
-- **shared_preferences** ^2.0.0 - Key-value storage
+| Package | Version | Purpose |
+|---------|---------|---------|
+| Flutter SDK | >= 3.9.2 | UI framework |
+| sqflite_common_ffi | ^2.3.6 | SQLite for desktop (FFI) |
 
-### UI & Visual
-- **flutter_acrylic** ^1.1.0 - Acrylic/blur effects
-- **bitsdojo_window** ^0.1.6 - Custom window controls
-- **window_manager** ^0.5.1 - Window management
-- **flutter_markdown** ^0.6.14 - Markdown rendering
-- **qr_flutter** ^4.0.0 - QR code generation
+### Media & Download
 
-### Media & Downloads
-- **http** ^1.1.0 - HTTP requests
-- **just_audio** ^0.9.34 - Audio playback
-- **just_audio_background** ^0.0.1-beta.17 - Background audio
-- **url_launcher** ^6.1.10 - Open URLs
+| Package | Version | Purpose |
+|---------|---------|---------|
+| audioplayers | ^5.2.1 | Audio playback |
+| audio_service | ^0.18.18 | Background media session |
+| audio_metadata_reader | ^1.4.2 | Metadata extraction |
+| palette_generator | ^0.3.3+3 | Album-art dominant color |
+| dio | ^5.9.0 | HTTP downloads |
+| http | ^1.1.0 | HTTP requests |
+| file_picker | ^6.1.1 | File selection |
+| image | ^4.0.17 | Image processing |
 
-### File Handling
-- **file_picker** ^6.1.1 - File selection dialogs
-- **image_picker** ^1.0.4 - Image selection
-- **image** ^4.0.17 - Image processing
-- **share_plus** ^12.0.1 - Share functionality
+### Window & System
+
+| Package | Version | Purpose |
+|---------|---------|---------|
+| window_manager | ^0.5.2 | Frameless window, custom title bar |
+| flutter_acrylic | ^1.1.0 | Acrylic/blur effects (Windows) |
+| hotkey_manager | ^0.2.3 | Global keyboard shortcuts |
+| smtc_windows | ^1.1.0 | Windows media transport controls |
+| discord_rich_presence | ^1.0.0 | Discord status |
 
 ### Utilities
-- **path** ^1.8.3 - Path manipulation
-- **logging** ^1.2.0 - Logging system
-- **cupertino_icons** ^1.0.8 - iOS-style icons
+
+| Package | Version | Purpose |
+|---------|---------|---------|
+| shared_preferences | ^2.0.0 | Key-value storage |
+| path_provider | ^2.1.1 | Filesystem paths |
+| sqflite | ^2.3.0 | SQLite |
+| url_launcher | ^6.1.10 | Open external links |
+| share_plus | ^12.0.1 | Sharing |
+| qr_flutter | ^4.0.0 | QR code generation |
+| translator | ^1.0.4+1 | Translation engine |
+| uuid | ^4.5.2 | Unique identifiers |
+| image_picker | ^1.0.4 | Image selection |
+| flutter_markdown | ^0.6.14 | Markdown rendering |
+| logging | ^1.2.0 | Logging |
+| path | ^1.8.3 | Path handling |
 
 ---
 
-## 📦 Installation
+## Installation
 
-### For Users
-Download the latest installer from the [Releases](https://github.com/Frantt21/forawn/releases) page.
+### Requirements
 
-#### 🛡️ Windows Security Alert
-If Windows shows a security warning:
+- **Windows**: Windows 10 or later (64-bit)
+- **Linux**: GStreamer and keybinder development packages (see below)
+- **macOS**: macOS with Xcode command line tools
+- **RAM**: 4 GB minimum, 8 GB recommended
+- **Internet**: required on first run to download `yt-dlp` and `ffmpeg` (about 150 MB), and for download features
 
-![Screenshot](assets/warning_windows.jpg)
+### Linux system dependencies
 
-- This happens because the installer is not digitally signed
-- Click "More info" → "Run anyway" to proceed
-- The app is safe and open-source
+The `audioplayers` and `hotkey_manager` plugins require system libraries. Install them with:
 
-#### 📁 Default Installation Location
+```bash
+# Fedora
+sudo dnf install -y gstreamer1-devel gstreamer1-plugins-base-devel keybinder3-devel
+
+# Ubuntu / Debian
+sudo apt install -y libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev libkeybinder-3.0-dev
 ```
-C:\Users\YourName\AppData\Roaming\Forawn
-```
-- Avoids permission issues
-- No administrator privileges required
-- User-specific installation
-
-#### System Requirements
-- **OS**: Windows 10 or later (64-bit)
-- **RAM**: 4GB minimum, 8GB recommended
-- **Storage**: 200MB for app + space for downloads
-- **Internet**: Required for download features and updates
 
 ---
 
-## 🔧 Development Setup
+## Development
 
 ### Prerequisites
-1. Install [Flutter SDK](https://flutter.dev/docs/get-started/install) (3.9.2 or higher)
-2. Install [Git](https://git-scm.com/)
-3. Install [Visual Studio Code](https://code.visualstudio.com/) or [Android Studio](https://developer.android.com/studio)
 
-### Clone & Run
+1. Install the [Flutter SDK](https://docs.flutter.dev/get-started/install) (3.9.2 or higher)
+2. Install Git
+
+### Clone and run
+
 ```bash
-# Clone the repository
 git clone https://github.com/Frantt21/forawn.git
 cd forawn
 
-# Install dependencies
 flutter pub get
 
-# Run on Windows
-flutter run -d windows
+# Run on your platform
+flutter run -d windows   # Windows
+flutter run -d linux     # Linux
+flutter run -d macos     # macOS
+```
 
-# Build release version
+### Build release binaries
+
+```bash
 flutter build windows --release
+flutter build linux --release
+flutter build macos --release
 ```
 
-### Building Installer
-The project uses **Inno Setup** for creating Windows installers.
-1. Install [Inno Setup](https://jrsoftware.org/isinfo.php)
-2. Build the Flutter app: `flutter build windows --release`
-3. Run the Inno Setup script (if available in the project)
+Build outputs:
 
----
-
-## 🌍 Adding New Languages
-
-1. Create a new JSON file in `lib/lang/` (e.g., `it.json` for Italian)
-2. Copy the structure from `en.json`
-3. Translate all keys to the target language
-4. The app will automatically detect and load the new language
-
-Example structure:
-```json
-{
-  "app_title": "Forawn",
-  "notes": "Notes",
-  "create_note": "Create Note",
-  ...
-}
+```
+build/windows/x64/runner/Release/forawn.exe
+build/linux/x64/release/bundle/forawn
+build/macos/Build/Products/Release/forawn.app
 ```
 
 ---
 
-## 🤝 Contributing
+## Tools (`yt-dlp` and `ffmpeg`)
 
-Contributions are welcome! Here's how you can help:
+The download features need `yt-dlp` and `ffmpeg`. On first launch the app downloads the correct binary for your platform into the `tools/` folder next to the executable:
 
-1. **Report bugs** - Open an issue with detailed reproduction steps
-2. **Suggest features** - Share your ideas for improvements
-3. **Submit PRs** - Fork, create a branch, and submit a pull request
-4. **Improve translations** - Help translate to more languages
-5. **Documentation** - Improve README, code comments, or wiki
+| Platform | yt-dlp binary | ffmpeg archive |
+|----------|---------------|----------------|
+| Windows | `yt-dlp.exe` | `win64-gpl.zip` |
+| Linux x64 | `yt-dlp_linux` | `linux64-gpl.tar.xz` |
+| Linux ARM | `yt-dlp_linux_aarch64` | `linuxarm64-gpl.tar.xz` |
+| macOS Intel | `yt-dlp_macos` | `macos64-gpl.zip` |
+| macOS ARM | `yt-dlp_macos` | `macos64-arm64-gpl.zip` |
 
-### Development Guidelines
-- Follow Dart/Flutter style guide
-- Write meaningful commit messages
-- Test your changes thoroughly
-- Update documentation when needed
+Binaries are validated on startup (minimum size plus a real execution check). If a binary is missing or corrupt, it is re-downloaded automatically.
 
 ---
 
-## 📬 Feedback & Support
+## Localization
 
-- **Discord**: @frntts
-- **Issues**: [GitHub Issues](https://github.com/Frantt21/forawn/issues)
-- **Discussions**: [GitHub Discussions](https://github.com/Frantt21/forawn/discussions)
+The UI is translated into 10 languages:
 
-Don't hesitate to report errors, bugs, or ideas that can help in the development progress of Forawn!
+English, Spanish, French, German (Switzerland), Portuguese, Russian, Japanese, Korean, Chinese, Polish.
 
----
+### Adding a new language
 
-## 📜 License
+1. Copy `assets/lang/en.json` to `assets/lang/<code>.json` (for example `it.json`)
+2. Translate every key
+3. Add the file to the `assets:` section of `pubspec.yaml` if needed
+4. The language will be detected and selectable in Settings
 
-This project is licensed under the terms of the [LICENSE.txt](LICENSE.txt) file included in the repository.
-
----
-
-## 🙏 Acknowledgments
-
-- Flutter team for the amazing framework
-- All contributors and testers
-- Open-source community for libraries and tools
+Language files can also be placed next to the executable in a `lang/` folder, so translations can be updated without recompiling.
 
 ---
 
-**Made with ❤️ by Frantt21**
+## Contributing
+
+1. **Report bugs** — open an issue with reproduction steps
+2. **Suggest features** — describe the use case and expected behavior
+3. **Submit pull requests** — fork, branch, implement, and open a PR
+4. **Improve translations** — extend or fix the JSON language files
+
+### Guidelines
+
+- Follow the Dart/Flutter style guide
+- Run `flutter analyze` and `flutter test` before submitting
+- Keep changes focused and write meaningful commit messages
+
+---
+
+## Feedback and Support
+
+- Discord: @frntts
+- Issues: [GitHub Issues](https://github.com/Frantt21/forawn/issues)
+- Discussions: [GitHub Discussions](https://github.com/Frantt21/forawn/discussions)
+
+---
+
+## License
+
+This project is licensed under the terms of the [LICENSE](LICENSE) file included in the repository.
