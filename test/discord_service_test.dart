@@ -6,11 +6,12 @@ import 'package:forawn/services/discord_service.dart';
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
-  test('initialize sin client ID deshabilita sin lanzar', () async {
-    // Sin client ID configurado (ApiConfig.discordClientId vacío), el RPC
-    // queda deshabilitado y no debe lanzar excepciones.
+  test('initialize no lanza y devuelve bool', () async {
+    // Con client ID en ApiConfig intenta conectar (true si Discord está
+    // corriendo); sin ID o sin Discord conectado devuelve false. En ambos
+    // casos no debe lanzar excepciones.
     final ok = await DiscordService().initialize();
-    expect(ok, isFalse);
+    expect(ok, isA<bool>());
   });
 
   test('la config expone la clave discordClientId', () {

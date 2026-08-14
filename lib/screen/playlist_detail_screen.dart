@@ -250,9 +250,9 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen>
   @override
   Widget build(BuildContext context) {
     final playlist = _currentPlaylist;
-    // Para favoritos, usar morado como color dominante
+    // Para favoritos, fondo gris neutro (sin el morado)
     final themeColor = playlist.id == 'favorites'
-        ? Colors.purpleAccent
+        ? const Color(0xFF2C2C2E)
         : (_dominantColor ?? const Color(0xFF1C1C1E));
     final isDark = themeColor.computeLuminance() < 0.5;
     final textColor = isDark ? Colors.white : Colors.black;

@@ -48,6 +48,11 @@ class _PlayerScreenState extends State<PlayerScreen> with WindowListener {
   bool _useBlurBackground = false;
   bool _toggleLocked = false;
 
+  // Posición de la barra de progreso durante un arrastre
+  // (en segundos). Mientras se arrastra se muestra esta
+  // posición; el seek se aplica al soltar (onChangeEnd).
+  double? _dragSeekValue;
+
   // UI colors/state
   Color? _dominantColor;
   Uint8List? _currentArt;
@@ -1861,9 +1866,20 @@ class _PlayerScreenState extends State<PlayerScreen> with WindowListener {
                                               mainAxisSize: MainAxisSize.min,
                                               children: [
                                                 Row(
-                                                  mainAxisAlignment:
-                                                      MainAxisAlignment.center,
                                                   children: [
+                                                    // Spacer izquierdo: igual que el área derecha (con el
+                                                    // volumen), así los controles quedan perfectamente
+                                                    // centrados y el volumen no los empuja.
+                                                    Expanded(
+                                                      child: SizedBox(),
+                                                    ),
+                                                    Row(
+                                                      mainAxisSize:
+                                                          MainAxisSize.min,
+                                                      mainAxisAlignment:
+                                                          MainAxisAlignment
+                                                              .center,
+                                                      children: [
                                                     IconButton(
                                                       icon: Icon(
                                                         Icons.shuffle,
@@ -2019,8 +2035,7 @@ class _PlayerScreenState extends State<PlayerScreen> with WindowListener {
 
                                                     const SizedBox(width: 8),
 
-                                                    // Gear / Settings Menu
-                                                    // Gear / Settings Menu
+                                                    // Heart / Like: fuera del menú, al lado del de lyrics
                                                     AnimatedBuilder(
                                                       animation:
                                                           PlaylistService(),
@@ -2032,165 +2047,124 @@ class _PlayerScreenState extends State<PlayerScreen> with WindowListener {
                                                                 .isLiked(
                                                                   song.id,
                                                                 );
-
-                                                        return PopupMenuButton<
-                                                          String
-                                                        >(
-                                                          color: const Color(
-                                                            0xFF1F1F1F,
-                                                          ),
-                                                          shape: RoundedRectangleBorder(
-                                                            borderRadius:
-                                                                BorderRadius.circular(
-                                                                  12,
-                                                                ),
+                                                        return IconButton(
+                                                          tooltip: widget.getText(
+                                                            isLiked
+                                                                ? 'remove_favorites'
+                                                                : 'add_favorites',
+                                                            fallback: isLiked
+                                                                ? 'Remove from favorites'
+                                                                : 'Add to favorites',
                                                           ),
                                                           icon: Icon(
-                                                            Icons
-                                                                .settings_outlined,
-                                                            color:
-                                                                _adjustColorForControls(
-                                                                  _dominantColor,
-                                                                ),
+                                                            isLiked
+                                                                ? Icons.favorite
+                                                                : Icons
+                                                                    .favorite_border,
+                                                            color: isLiked
+                                                                ? Colors
+                                                                    .purpleAccent
+                                                                : _adjustColorForControls(
+                                                                    _dominantColor,
+                                                                  ),
                                                           ),
-                                                          onSelected: (value) async {
-                                                            if (value ==
-                                                                'edit_metadata') {
-                                                              _showEditMetadataDialog(
-                                                                context,
-                                                              );
-                                                            } else if (value ==
-                                                                'add_playlist') {
-                                                              _showAddToPlaylistDialog(
-                                                                context,
-                                                              );
-                                                            } else if (value ==
-                                                                'add_favorites') {
-                                                              await PlaylistService()
-                                                                  .toggleLike(
-                                                                    song.id,
-                                                                  );
-                                                            }
+                                                          onPressed: () {
+                                                            PlaylistService()
+                                                                .toggleLike(
+                                                                  song.id,
+                                                                );
+                                                            setState(() {});
                                                           },
-                                                          itemBuilder: (BuildContext context) =>
-                                                              <
-                                                                PopupMenuEntry<
-                                                                  String
-                                                                >
-                                                              >[
-                                                                PopupMenuItem<
-                                                                  String
-                                                                >(
-                                                                  value:
-                                                                      'add_favorites',
-                                                                  child: Row(
-                                                                    children: [
-                                                                      Icon(
-                                                                        isLiked
-                                                                            ? Icons.favorite
-                                                                            : Icons.favorite_border,
-                                                                        color:
-                                                                            isLiked
-                                                                            ? Colors.purpleAccent
-                                                                            : Colors.white,
-                                                                        size:
-                                                                            20,
-                                                                      ),
-                                                                      const SizedBox(
-                                                                        width:
-                                                                            8,
-                                                                      ),
-                                                                      Text(
-                                                                        isLiked
-                                                                            ? widget.getText(
-                                                                                'remove_favorites',
-                                                                                fallback: 'Remove from favorites',
-                                                                              )
-                                                                            : widget.getText(
-                                                                                'add_favorites',
-                                                                                fallback: 'Add to favorites',
-                                                                              ),
-                                                                        style: TextStyle(
-                                                                          color:
-                                                                              isLiked
-                                                                              ? Colors.purpleAccent
-                                                                              : Colors.white,
-                                                                        ),
-                                                                      ),
-                                                                    ],
-                                                                  ),
-                                                                ),
-                                                                PopupMenuItem<
-                                                                  String
-                                                                >(
-                                                                  value:
-                                                                      'add_playlist',
-                                                                  child: Row(
-                                                                    children: [
-                                                                      const Icon(
-                                                                        Icons
-                                                                            .playlist_add,
-                                                                        color: Colors
-                                                                            .white,
-                                                                        size:
-                                                                            20,
-                                                                      ),
-                                                                      const SizedBox(
-                                                                        width:
-                                                                            8,
-                                                                      ),
-                                                                      Text(
-                                                                        widget.getText(
-                                                                          'add_playlist',
-                                                                          fallback:
-                                                                              'Añadir a playlist',
-                                                                        ),
-                                                                        style: const TextStyle(
-                                                                          color:
-                                                                              Colors.white,
-                                                                        ),
-                                                                      ),
-                                                                    ],
-                                                                  ),
-                                                                ),
-                                                                PopupMenuItem<
-                                                                  String
-                                                                >(
-                                                                  value:
-                                                                      'edit_metadata',
-                                                                  child: Row(
-                                                                    children: [
-                                                                      const Icon(
-                                                                        Icons
-                                                                            .edit,
-                                                                        color: Colors
-                                                                            .white,
-                                                                        size:
-                                                                            20,
-                                                                      ),
-                                                                      const SizedBox(
-                                                                        width:
-                                                                            8,
-                                                                      ),
-                                                                      Text(
-                                                                        widget.getText(
-                                                                          'edit_metadata',
-                                                                          fallback:
-                                                                              'Editar metadatos',
-                                                                        ),
-                                                                        style: const TextStyle(
-                                                                          color:
-                                                                              Colors.white,
-                                                                        ),
-                                                                      ),
-                                                                    ],
-                                                                  ),
-                                                                ),
-                                                              ],
                                                         );
                                                       },
                                                     ),
-
+                                                        ],
+                                                      ),
+                                                    // Volumen: misma fila, pero sin empujar los controles:
+                                                    // quedan centrados y el volumen anclado a la derecha.
+                                                    Expanded(
+                                                      child: Row(
+                                                        mainAxisAlignment:
+                                                            MainAxisAlignment
+                                                                .end,
+                                                        children: [
+                                                          Icon(
+                                                            Icons.volume_up,
+                                                            color: _adjustColorForControls(
+                                                              _dominantColor,
+                                                            ).withOpacity(
+                                                              0.7,
+                                                            ),
+                                                            size: 20,
+                                                          ),
+                                                          const SizedBox(
+                                                            width: 8,
+                                                          ),
+                                                          SizedBox(
+                                                            width: 80,
+                                                            // Zona clickeable más alta (48 px = altura de la
+                                                            // fila de controles) sin engrosar la barra: el
+                                                            // track se mantiene centrado y de 2 px.
+                                                            height: 48,
+                                                            child:
+                                                                SliderTheme(
+                                                              data: SliderTheme.of(
+                                                                context,
+                                                              ).copyWith(
+                                                                trackHeight: 2,
+                                                                thumbShape:
+                                                                    const RoundSliderThumbShape(
+                                                                      enabledThumbRadius:
+                                                                          0,
+                                                                    ),
+                                                                overlayShape:
+                                                                    const RoundSliderOverlayShape(
+                                                                      overlayRadius:
+                                                                          0,
+                                                                    ),
+                                                                activeTrackColor:
+                                                                    _adjustColorForControls(
+                                                                      _dominantColor,
+                                                                    ).withOpacity(
+                                                                      0.7,
+                                                                    ),
+                                                                inactiveTrackColor:
+                                                                    Colors
+                                                                        .white10,
+                                                                thumbColor:
+                                                                    _adjustColorForControls(
+                                                                      _dominantColor,
+                                                                    ),
+                                                              ),
+                                                              child: Slider(
+                                                                value:
+                                                                    _musicPlayer
+                                                                        .volume
+                                                                        .value,
+                                                                onChanged:
+                                                                    (v) async {
+                                                                  _musicPlayer
+                                                                          .volume
+                                                                          .value =
+                                                                      v;
+                                                                  _musicPlayer
+                                                                          .isMuted
+                                                                          .value =
+                                                                      v == 0;
+                                                                  await _player
+                                                                      .setVolume(
+                                                                        v,
+                                                                      );
+                                                                  setState(
+                                                                    () {},
+                                                                  );
+                                                                },
+                                                              ),
+                                                            ),
+                                                          ),
+                                                        ],
+                                                      ),
+                                                    ),
                                                   ],
                                                 ),
 
@@ -2208,20 +2182,28 @@ class _PlayerScreenState extends State<PlayerScreen> with WindowListener {
                                                             .duration
                                                             .value;
                                                     // Barra de progreso: centrada, con ancho máximo
-                                                    // acotado (no ocupa todo el espacio) y el tiempo
-                                                    // en la misma línea que la barra. Al final de la
-                                                    // fila va el control de volumen (corto y separado).
+                                                    // acotado y el tiempo en la misma línea que la barra.
+                                                    // El volumen vive en la fila de controles.
                                                     return Center(
                                                       child: ConstrainedBox(
                                                         constraints:
                                                             const BoxConstraints(
-                                                              maxWidth: 560,
+                                                              maxWidth: 420,
                                                             ),
                                                         child: Row(
                                                           children: [
                                                             Text(
+                                                              // Durante el arrastre se muestra la posición
+                                                              // del dedo en vez de la reproducción.
                                                               _formatDuration(
-                                                                position,
+                                                                _dragSeekValue !=
+                                                                        null
+                                                                    ? Duration(
+                                                                        seconds:
+                                                                            _dragSeekValue!
+                                                                                .toInt(),
+                                                                      )
+                                                                    : position,
                                                               ),
                                                               style: const TextStyle(
                                                                 color: Colors
@@ -2233,62 +2215,83 @@ class _PlayerScreenState extends State<PlayerScreen> with WindowListener {
                                                               width: 8,
                                                             ),
                                                             Expanded(
-                                                              child: SliderTheme(
-                                                                data: SliderTheme.of(context).copyWith(
-                                                                  trackHeight: 2,
-                                                                  // Sin dot: thumb invisible (radio 0) y sin overlay,
-                                                                  // igual que la barra de volumen.
-                                                                  thumbShape:
-                                                                      const RoundSliderThumbShape(
-                                                                        enabledThumbRadius:
-                                                                            0,
-                                                                      ),
-                                                                  overlayShape:
-                                                                      const RoundSliderOverlayShape(
-                                                                        overlayRadius:
-                                                                            0,
-                                                                      ),
-                                                                  // Sin padding lateral interno: los tiempos
-                                                                  // quedan pegados a la barra.
-                                                                  padding:
-                                                                      EdgeInsets.zero,
-                                                                  activeTrackColor:
-                                                                      _adjustColorForControls(
-                                                                        _dominantColor,
-                                                                      ),
-                                                                  inactiveTrackColor:
-                                                                      Colors.white10,
-                                                                  thumbColor:
-                                                                      _adjustColorForControls(
-                                                                        _dominantColor,
-                                                                      ),
-                                                                ),
-                                                                child: Slider(
-                                                                  value: position
-                                                                      .inSeconds
-                                                                      .toDouble()
-                                                                      .clamp(
-                                                                        0.0,
-                                                                        duration
-                                                                            .inSeconds
-                                                                            .toDouble(),
-                                                                      ),
-                                                                  max:
-                                                                      duration
+                                                              // Zona clickeable más alta (28 px) sin engrosar
+                                                              // la barra: el track se mantiene centrado y de
+                                                              // 2 px, con los tiempos alineados a su centro.
+                                                              child: SizedBox(
+                                                                height: 28,
+                                                                child: SliderTheme(
+                                                                  data: SliderTheme.of(context).copyWith(
+                                                                    trackHeight: 2,
+                                                                    // Sin dot: thumb invisible (radio 0) y sin
+                                                                    // overlay, igual que la barra de volumen.
+                                                                    thumbShape:
+                                                                        const RoundSliderThumbShape(
+                                                                          enabledThumbRadius:
+                                                                              0,
+                                                                        ),
+                                                                    overlayShape:
+                                                                        const RoundSliderOverlayShape(
+                                                                          overlayRadius:
+                                                                              0,
+                                                                        ),
+                                                                    // Sin padding lateral interno: los tiempos
+                                                                    // quedan pegados a la barra.
+                                                                    padding:
+                                                                        EdgeInsets.zero,
+                                                                    activeTrackColor:
+                                                                        _adjustColorForControls(
+                                                                          _dominantColor,
+                                                                        ),
+                                                                    inactiveTrackColor:
+                                                                        Colors.white10,
+                                                                    thumbColor:
+                                                                        _adjustColorForControls(
+                                                                          _dominantColor,
+                                                                        ),
+                                                                  ),
+                                                                  child: Slider(
+                                                                    value: (_dragSeekValue ??
+                                                                            position
+                                                                                .inSeconds
+                                                                                .toDouble())
+                                                                        .clamp(
+                                                                          0.0,
+                                                                          duration
                                                                               .inSeconds
-                                                                              .toDouble() >
-                                                                          0
-                                                                      ? duration
-                                                                            .inSeconds
-                                                                            .toDouble()
-                                                                      : 1.0,
-                                                                  onChanged: (v) =>
+                                                                              .toDouble(),
+                                                                        ),
+                                                                    max:
+                                                                        duration
+                                                                                .inSeconds
+                                                                                .toDouble() >
+                                                                            0
+                                                                        ? duration
+                                                                              .inSeconds
+                                                                              .toDouble()
+                                                                        : 1.0,
+                                                                    // Durante el arrastre solo se muestra la
+                                                                    // posición del dedo; el seek se aplica
+                                                                    // al soltar (onChangeEnd).
+                                                                    onChanged: (v) =>
+                                                                        setState(() {
+                                                                          _dragSeekValue =
+                                                                              v;
+                                                                        }),
+                                                                    onChangeEnd:
+                                                                        (v) {
                                                                       _player.seek(
                                                                         Duration(
                                                                           seconds:
                                                                               v.toInt(),
                                                                         ),
-                                                                      ),
+                                                                      );
+                                                                      setState(() {
+                                                                        _dragSeekValue =
+                                                                            null;
+                                                                      });
+                                                                    },
+                                                                  ),
                                                                 ),
                                                               ),
                                                             ),
@@ -2303,79 +2306,6 @@ class _PlayerScreenState extends State<PlayerScreen> with WindowListener {
                                                                 color: Colors
                                                                     .white54,
                                                                 fontSize: 12,
-                                                              ),
-                                                            ),
-                                                            // Volumen: separado de la barra de progreso,
-                                                            // más corto que antes y en la misma línea.
-                                                            const SizedBox(
-                                                              width: 24,
-                                                            ),
-                                                            Icon(
-                                                              Icons.volume_up,
-                                                              color:
-                                                                  _adjustColorForControls(
-                                                                    _dominantColor,
-                                                                  ).withOpacity(
-                                                                    0.7,
-                                                                  ),
-                                                              size: 20,
-                                                            ),
-                                                            const SizedBox(
-                                                              width: 8,
-                                                            ),
-                                                            SizedBox(
-                                                              width: 80,
-                                                              child: SliderTheme(
-                                                                data: SliderTheme.of(context).copyWith(
-                                                                  trackHeight: 2,
-                                                                  // Sin dot: thumb invisible (radio 0) y sin
-                                                                  // overlay, igual que la barra de progreso.
-                                                                  thumbShape:
-                                                                      const RoundSliderThumbShape(
-                                                                        enabledThumbRadius:
-                                                                            0,
-                                                                      ),
-                                                                  overlayShape:
-                                                                      const RoundSliderOverlayShape(
-                                                                        overlayRadius:
-                                                                            0,
-                                                                      ),
-                                                                  activeTrackColor:
-                                                                      _adjustColorForControls(
-                                                                        _dominantColor,
-                                                                      ).withOpacity(
-                                                                        0.7,
-                                                                      ),
-                                                                  inactiveTrackColor:
-                                                                      Colors.white10,
-                                                                  thumbColor:
-                                                                      _adjustColorForControls(
-                                                                        _dominantColor,
-                                                                      ),
-                                                                ),
-                                                                child: Slider(
-                                                                  value:
-                                                                      _musicPlayer
-                                                                          .volume
-                                                                          .value,
-                                                                  onChanged: (v) async {
-                                                                    _musicPlayer
-                                                                            .volume
-                                                                            .value =
-                                                                        v;
-                                                                    _musicPlayer
-                                                                            .isMuted
-                                                                            .value =
-                                                                        v == 0;
-                                                                    await _player
-                                                                        .setVolume(
-                                                                          v,
-                                                                        );
-                                                                    setState(
-                                                                      () {},
-                                                                    );
-                                                                  },
-                                                                ),
                                                               ),
                                                             ),
                                                           ],
@@ -2624,6 +2554,73 @@ class _PlayerScreenState extends State<PlayerScreen> with WindowListener {
                                 color: Colors.white,
                               ),
                         ),
+                      ),
+                      // Dots menu (añadir a playlist / editar metadatos):
+                      // movido a la title bar.
+                      PopupMenuButton<String>(
+                        color: const Color(0xFF1F1F1F),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        icon: const Icon(
+                          Icons.more_vert,
+                          size: 18,
+                          color: Colors.white,
+                        ),
+                        onSelected: (value) async {
+                          if (value == 'edit_metadata') {
+                            _showEditMetadataDialog(context);
+                          } else if (value == 'add_playlist') {
+                            _showAddToPlaylistDialog(context);
+                          }
+                        },
+                        itemBuilder: (BuildContext context) =>
+                            <PopupMenuEntry<String>>[
+                          PopupMenuItem<String>(
+                            value: 'add_playlist',
+                            child: Row(
+                              children: [
+                                const Icon(
+                                  Icons.playlist_add,
+                                  color: Colors.white,
+                                  size: 20,
+                                ),
+                                const SizedBox(width: 8),
+                                Text(
+                                  widget.getText(
+                                    'add_playlist',
+                                    fallback: 'Añadir a playlist',
+                                  ),
+                                  style: const TextStyle(
+                                    color: Colors.white,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          PopupMenuItem<String>(
+                            value: 'edit_metadata',
+                            child: Row(
+                              children: [
+                                const Icon(
+                                  Icons.edit,
+                                  color: Colors.white,
+                                  size: 20,
+                                ),
+                                const SizedBox(width: 8),
+                                Text(
+                                  widget.getText(
+                                    'edit_metadata',
+                                    fallback: 'Editar metadatos',
+                                  ),
+                                  style: const TextStyle(
+                                    color: Colors.white,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
                       ),
                       if (gShowWindowButtons) ...[
                         IconButton(

@@ -1818,16 +1818,11 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen>
         decoration: BoxDecoration(
           color: const Color(0xFF1C1C1E),
           borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: Colors.white.withOpacity(0.1)),
-          boxShadow: isFavorite
-              ? [
-                  BoxShadow(
-                    color: Colors.purpleAccent.withOpacity(0.2),
-                    blurRadius: 8,
-                    offset: const Offset(0, 4),
-                  ),
-                ]
-              : null,
+          // Sin sombra ni borde en la tarjeta de favoritos.
+          border: isFavorite
+              ? null
+              : Border.all(color: Colors.white.withOpacity(0.1)),
+          boxShadow: null,
         ),
         child: ClipRRect(
           borderRadius: BorderRadius.circular(12),
