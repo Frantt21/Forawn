@@ -23,7 +23,6 @@ import '../models/song_model.dart';
 
 import 'player_screen.dart';
 import 'playlist_detail_screen.dart';
-import '../widgets/mini_player.dart';
 
 typedef TextGetter = String Function(String key, {String? fallback});
 
@@ -1322,13 +1321,6 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen>
             ],
           ),
 
-          // Mini Player at the bottom
-          Positioned(
-            left: 32,
-            right: 32,
-            bottom: 32,
-            child: MiniPlayer(getText: widget.getText),
-          ),
         ],
       ),
     );
@@ -1783,6 +1775,7 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen>
                           right: 8,
                           child: _AnimatedAudioBars(
                             size: 16,
+                            color: accentColor,
                             playing: GlobalMusicPlayer().isPlaying.value,
                           ),
                         ),
@@ -1801,21 +1794,22 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen>
                                     title,
                                     maxLines: 1,
                                     overflow: TextOverflow.ellipsis,
-                                    style: TextStyle(
+                                    style: const TextStyle(
                                       fontWeight: FontWeight.bold,
                                       fontSize: 13,
-                                      color: accentColor?.withOpacity(1.0) ?? Colors.white,
+                                      color: Colors.white,
                                       shadows: [
                                         Shadow(blurRadius: 2, color: Colors.black),
                                       ],
                                     ),
                                   ),
                                 ),
-                                if (isCurrentSong && GlobalMusicPlayer().isPlaying.value)
+                                if (isPlaying)
                                   Padding(
                                     padding: const EdgeInsets.only(left: 6),
                                     child: _AnimatedAudioBars(
                                       size: 14,
+                                      color: accentColor,
                                       playing: GlobalMusicPlayer().isPlaying.value,
                                     ),
                                   ),
@@ -1837,7 +1831,7 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen>
                           ],
                         ),
                       ),
-                      if (isCurrentSong && GlobalMusicPlayer().isPlaying.value)
+                      if (isPlaying)
                         Positioned(
                           bottom: 8,
                           right: 8,
@@ -1849,6 +1843,7 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen>
                             ),
                             child: _AnimatedAudioBars(
                               size: 14,
+                              color: accentColor,
                               playing: GlobalMusicPlayer().isPlaying.value,
                             ),
                           ),
@@ -1903,10 +1898,7 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen>
         decoration: BoxDecoration(
           color: const Color(0xFF1C1C1E),
           borderRadius: BorderRadius.circular(12),
-          // Sin sombra ni borde en la tarjeta de favoritos.
-          border: isFavorite
-              ? null
-              : Border.all(color: Colors.white.withOpacity(0.1)),
+          // Sin borde ni sombra en las tarjetas de playlist.
           boxShadow: null,
         ),
         child: ClipRRect(
@@ -2080,6 +2072,7 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen>
                       padding: const EdgeInsets.only(left: 8),
                       child: _AnimatedAudioBars(
                         size: 16,
+                        color: accentColor,
                         playing: GlobalMusicPlayer().isPlaying.value,
                       ),
                     ),
@@ -2687,8 +2680,13 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen>
 class _AnimatedAudioBars extends StatefulWidget {
   final double size;
   final bool playing;
+  final Color? color;
 
-  const _AnimatedAudioBars({required this.size, required this.playing});
+  const _AnimatedAudioBars({
+    required this.size,
+    required this.playing,
+    this.color,
+  });
 
   @override
   State<_AnimatedAudioBars> createState() => _AnimatedAudioBarsState();
@@ -2738,7 +2736,10 @@ class _AnimatedAudioBarsState extends State<_AnimatedAudioBars>
         builder: (context, child) {
           return Row(
             mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-            crossAxisAlignment: CrossAxisAlignment.end,
+            // Barras centradas verticalmente para alinear con el centro
+            // del texto (antes crecían desde el borde inferior y se veían
+            // desalineadas respecto al centro vertical).
+            crossAxisAlignment: CrossAxisAlignment.center,
             children: [
               _buildBar(0.3 + (_controller.value * 0.7)),
               _buildBar(0.5 + (_controller.value * 0.5)),
@@ -2755,7 +2756,7 @@ class _AnimatedAudioBarsState extends State<_AnimatedAudioBars>
       width: widget.size / 5,
       height: widget.size * heightFactor,
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: widget.color ?? Colors.white,
         borderRadius: BorderRadius.circular(widget.size / 10),
       ),
     );

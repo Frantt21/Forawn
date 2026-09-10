@@ -23,6 +23,7 @@ import 'package:window_manager/window_manager.dart';
 import '../main.dart' show gUseNativeFrame, gShowWindowButtons, gMacTrafficLightInset;
 import '../services/metadata_service.dart';
 import '../services/playlist_service.dart';
+import '../widgets/mini_player.dart' show MiniPlayerVisibility;
 import '../models/song_model.dart';
 import 'package:file_picker/file_picker.dart';
 import '../models/lyrics_search_result.dart';
@@ -106,6 +107,8 @@ class _PlayerScreenState extends State<PlayerScreen> with WindowListener {
   @override
   void initState() {
     super.initState();
+    // El reproductor completo está abierto: ocultar el MiniPlayer global.
+    MiniPlayerVisibility.pushFullPlayer();
     if (!gUseNativeFrame) {
       windowManager.addListener(this);
     }
@@ -146,6 +149,8 @@ class _PlayerScreenState extends State<PlayerScreen> with WindowListener {
 
   @override
   void dispose() {
+    // Restaurar el MiniPlayer global al cerrar el reproductor completo.
+    MiniPlayerVisibility.popFullPlayer();
     GlobalThemeService().blurBackground.removeListener(_onBlurChanged);
     GlobalThemeService().dominantColor.removeListener(_onColorChanged);
     _musicPlayer.filesList.removeListener(_onFilesChanged);
@@ -2015,23 +2020,9 @@ class _PlayerScreenState extends State<PlayerScreen> with WindowListener {
                                                               BorderRadius.circular(
                                                                 20,
                                                               ),
-                                                          boxShadow: [
-                                                            if (_dominantColor !=
-                                                                null)
-                                                              BoxShadow(
-                                                                color: _dominantColor!
-                                                                    .withOpacity(
-                                                                      0.5,
-                                                                    ),
-                                                                blurRadius: 40,
-                                                                spreadRadius: 5,
-                                                              ),
-                                                            const BoxShadow(
-                                                              color: Colors
-                                                                  .black45,
-                                                              blurRadius: 20,
-                                                            ),
-                                                          ],
+                                                          // Sin sombra: el
+                                                          // artwork se muestra
+                                                          // limpio.
                                                           color: Colors.white12,
                                                         ),
                                                         child: ClipRRect(

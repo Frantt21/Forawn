@@ -1,6 +1,8 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 
+import '../services/global_theme_service.dart';
+
 class HomeContent extends StatefulWidget {
   final String Function(String key, {String? fallback}) getText;
   final List<String> recentScreens;
@@ -89,43 +91,84 @@ class _HomeContentState extends State<HomeContent> {
     return months[_now.month - 1];
   }
 
-  String _getScreenName(String id) {
-    switch (id) {
-      case 'music':
-        return widget.getText('download_button', fallback: 'Música');
-      case 'video':
-        return widget.getText('vid_title', fallback: 'Video');
-      case 'notes':
-        return widget.getText('notes_title', fallback: 'Notas');
-      case 'translate':
-        return widget.getText('translate_title', fallback: 'Traductor');
-      case 'qr':
-        return widget.getText('qr_title', fallback: 'Generador QR');
-      case 'player':
-        return widget.getText('music_player_title', fallback: 'Reproductor');
-      default:
-        return id;
-    }
+  /// Botones de la sección principal, como en forawn_mobile: el
+  /// reproductor de música y el descargador de música.
+  List<Map<String, Object?>> get _mainButtons => [
+    {
+      'id': 'player',
+      'icon': Icons.play_circle_fill,
+      'color': Colors.purpleAccent,
+      'label': widget.getText('music_player_title', fallback: 'Reproductor'),
+    },
+    {
+      'id': 'music',
+      'icon': Icons.music_note,
+      'color': accentColor,
+      'label': widget.getText('download_button', fallback: 'Música'),
+    },
+  ];
+
+  /// Botones de acceso rápido: descargador de video, traductor y QR.
+  List<Map<String, Object?>> get _quickButtons => [
+    {
+      'id': 'video',
+      'icon': Icons.video_library,
+      'color': Colors.blueAccent,
+      'label': widget.getText('vid_title', fallback: 'Video'),
+    },
+    {
+      'id': 'translate',
+      'icon': Icons.translate,
+      'color': Colors.greenAccent,
+      'label': widget.getText('translate_title', fallback: 'Traductor'),
+    },
+    {
+      'id': 'qr',
+      'icon': Icons.qr_code,
+      'color': Colors.orangeAccent,
+      'label': widget.getText('qr_title', fallback: 'Generador QR'),
+    },
+  ];
+
+  /// Card de navegación con el estilo de forawn_mobile.
+  Widget _buildNavCard(Map<String, Object?> item) {
+    return InkWell(
+      onTap: () => widget.onNavigate(item['id'] as String),
+      borderRadius: BorderRadius.circular(12),
+      splashColor: Colors.transparent,
+      highlightColor: Colors.transparent,
+      child: Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          // Mismo color de card que forawn_mobile.
+          color: const Color.fromARGB(255, 45, 45, 45),
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(item['icon'] as IconData, size: 32, color: item['color'] as Color?),
+            const SizedBox(height: 12),
+            Text(
+              item['label'] as String,
+              // En forawn_mobile el título usa el mismo color del icono.
+              style: TextStyle(
+                color: item['color'] as Color?,
+                fontSize: 14,
+                fontWeight: FontWeight.bold,
+              ),
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
-  IconData _getScreenIcon(String id) {
-    switch (id) {
-      case 'music':
-        return Icons.music_note;
-      case 'video':
-        return Icons.video_library;
-      case 'notes':
-        return Icons.note;
-      case 'translate':
-        return Icons.translate;
-      case 'qr':
-        return Icons.qr_code;
-      case 'player':
-        return Icons.play_circle_fill;
-      default:
-        return Icons.circle;
-    }
-  }
+  /// Color acento global (dominante del artwork en reproducción).
+  Color? get accentColor => GlobalThemeService().dominantColor.value;
 
   @override
   Widget build(BuildContext context) {
@@ -187,70 +230,54 @@ class _HomeContentState extends State<HomeContent> {
                     ),
                   ),
                 ],
+              ),              const SizedBox(height: 60),
+
+              // Accesos a las screens hardcodeados, organizados en dos
+              // secciones como en forawn_mobile (Android).
+              Text(
+                widget.getText('main_sections', fallback: 'Main Sections'),
+                style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.w600,
+                  color: Theme.of(
+                    context,
+                  ).textTheme.bodyLarge?.color?.withOpacity(0.9),
+                ),
+              ),
+              const SizedBox(height: 12),
+              Row(
+                children: [
+                  Expanded(child: _buildNavCard(_mainButtons[0])),
+                  const SizedBox(width: 16),
+                  Expanded(child: _buildNavCard(_mainButtons[1])),
+                ],
               ),
 
-              const SizedBox(height: 60),
+              const SizedBox(height: 24),
 
-              // Recent Screens
-              if (widget.recentScreens.isNotEmpty) ...[
-                Text(
-                  widget.getText('recent_screens', fallback: 'Recientes'),
-                  style: TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.w600,
-                    color: Theme.of(
-                      context,
-                    ).textTheme.bodyLarge?.color?.withOpacity(0.9),
-                  ),
+              Text(
+                widget.getText('quick_access', fallback: 'Quick Access'),
+                style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.w600,
+                  color: Theme.of(
+                    context,
+                  ).textTheme.bodyLarge?.color?.withOpacity(0.9),
                 ),
-                const SizedBox(height: 20),
-                Wrap(
-                  spacing: 16,
-                  runSpacing: 16,
-                  children: widget.recentScreens.map((id) {
-                    return InkWell(
-                      onTap: () => widget.onNavigate(id),
-                      borderRadius: BorderRadius.circular(16),
-                      child: Container(
-                        width: 140,
-                        padding: const EdgeInsets.all(16),
-                        decoration: BoxDecoration(
-                          color: Theme.of(context).cardTheme.color,
-                          borderRadius: BorderRadius.circular(16),
-                          border: Border.all(
-                            color: Theme.of(context).dividerColor,
-                          ),
-                        ),
-                        child: Column(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Icon(
-                              _getScreenIcon(id),
-                              size: 32,
-                              color: Colors.purpleAccent,
-                            ),
-                            const SizedBox(height: 12),
-                            Text(
-                              _getScreenName(id),
-                              style: const TextStyle(
-                                fontSize: 14,
-                                fontWeight: FontWeight.w500,
-                              ),
-                              textAlign: TextAlign.center,
-                              maxLines: 2,
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                          ],
-                        ),
-                      ),
-                    );
-                  }).toList(),
-                ),
-              ],
+              ),
+              const SizedBox(height: 12),
+              Row(
+                children: [
+                  Expanded(child: _buildNavCard(_quickButtons[0])),
+                  const SizedBox(width: 16),
+                  Expanded(child: _buildNavCard(_quickButtons[1])),
+                  const SizedBox(width: 16),
+                  Expanded(child: _buildNavCard(_quickButtons[2])),
+                ],
+              ),
             ],
           ),
         ),
-
 
       ],
     );

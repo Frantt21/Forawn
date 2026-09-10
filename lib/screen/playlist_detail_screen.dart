@@ -13,7 +13,6 @@ import '../services/global_music_player.dart';
 import '../services/local_music_database.dart';
 import '../widgets/app_title_bar.dart';
 import '../widgets/add_songs_sheet.dart';
-import '../widgets/mini_player.dart';
 
 class PlaylistDetailScreen extends StatefulWidget {
   final Playlist playlist;
@@ -642,16 +641,8 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen>
               const SliverToBoxAdapter(child: SizedBox(height: 100)),
             ],
           ),
-
-              // Mini Player
-              Positioned(
-                bottom: 16,
-                left: 16,
-                right: 16,
-                child: SafeArea(child: MiniPlayer(getText: widget.getText)),
-              ),
-            ],
-          ),
+              ],
+            ),
         ),
       ],
     ),

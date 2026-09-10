@@ -396,7 +396,7 @@ class _SettingsScreenState extends State<SettingsScreen> with WindowListener {
                           builder: (ctx) {
                             return _SettingsTile(
                               leadingIcon: Icons.language,
-                              leadingColor: Colors.blueAccent,
+                              leadingColor: Colors.green,
                               title: get('language', fallback: 'Language'),
                               subtitle: get(
                                 'language_subtitle',
@@ -428,7 +428,7 @@ class _SettingsScreenState extends State<SettingsScreen> with WindowListener {
                         Divider(height: 1, color: currentTheme.dividerColor),
                         _SettingsTile(
                           leadingIcon: Icons.system_update,
-                          leadingColor: Colors.greenAccent,
+                          leadingColor: Colors.blueAccent,
                           title: get(
                             'check_update',
                             fallback: 'Check for updates',
@@ -448,7 +448,7 @@ class _SettingsScreenState extends State<SettingsScreen> with WindowListener {
                         Divider(height: 1, color: currentTheme.dividerColor),
                         _SettingsTile(
                           leadingIcon: Icons.info_outline,
-                          leadingColor: Colors.blueGrey,
+                          leadingColor: Colors.blueAccent,
                           title: get('version_title', fallback: 'Version'),
                           subtitle:
                               '${get('version_subtitle', fallback: 'Current: ')} $currentVersion',
@@ -583,8 +583,8 @@ class _SettingsScreenState extends State<SettingsScreen> with WindowListener {
                         ),
                         Divider(height: 1, color: currentTheme.dividerColor),
                         _SettingsTile(
-                          leadingIcon: Icons.graphic_eq,
-                          leadingColor: Colors.pinkAccent,
+                          leadingIcon: Icons.animation,
+                          leadingColor: Colors.blueAccent,
                           title: get(
                             'lyrics_sweep_title',
                             fallback: 'Karaoke Sweep',
@@ -597,13 +597,13 @@ class _SettingsScreenState extends State<SettingsScreen> with WindowListener {
                           trailing: Switch(
                             value: _lyricsSweepEnabled,
                             onChanged: _toggleLyricsSweep,
-                            activeColor: Colors.purpleAccent,
+                            activeColor: Colors.blueAccent,
                           ),
                         ),
                         Divider(height: 1, color: currentTheme.dividerColor),
                         _SettingsTile(
                           leadingIcon: Icons.palette,
-                          leadingColor: Colors.amberAccent,
+                          leadingColor: Colors.purpleAccent,
                           title: get(
                             'reload_missing_colors',
                             fallback: 'Reload Missing Colors',
@@ -632,7 +632,7 @@ class _SettingsScreenState extends State<SettingsScreen> with WindowListener {
                         ),
                         Divider(height: 1, color: currentTheme.dividerColor),
                         _SettingsTile(
-                          leadingIcon: Icons.lyrics_outlined,
+                          leadingIcon: Icons.lyrics,
                           leadingColor: Colors.pinkAccent,
                           title: get(
                             'clear_all_lyrics',
@@ -658,8 +658,8 @@ class _SettingsScreenState extends State<SettingsScreen> with WindowListener {
                       title: get('storage', fallback: 'Storage'),
                       children: [
                         _SettingsTile(
-                          leadingIcon: Icons.storage,
-                          leadingColor: Colors.redAccent,
+                          leadingIcon: Icons.music_note,
+                          leadingColor: Colors.purpleAccent,
                           title: get(
                             'clear_music_database',
                             fallback: 'Clear Music Database',
@@ -693,8 +693,8 @@ class _SettingsScreenState extends State<SettingsScreen> with WindowListener {
                         ),
                         Divider(height: 1, color: currentTheme.dividerColor),
                         _SettingsTile(
-                          leadingIcon: Icons.delete_forever,
-                          leadingColor: Colors.orangeAccent,
+                          leadingIcon: Icons.restore,
+                          leadingColor: Colors.redAccent,
                           title: get(
                             'reset_app_data',
                             fallback: 'Restablecer datos de la App',
@@ -706,8 +706,8 @@ class _SettingsScreenState extends State<SettingsScreen> with WindowListener {
                           ),
                           trailing: IconButton(
                             icon: const Icon(
-                              Icons.restore_page,
-                              color: Colors.orangeAccent,
+                              Icons.restore,
+                              color: Colors.redAccent,
                             ),
                             onPressed: _resetAppData,
                           ),
@@ -978,14 +978,8 @@ class _SettingsTile extends StatelessWidget {
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
           child: Row(
             children: [
-              Container(
-                padding: const EdgeInsets.all(8),
-                decoration: BoxDecoration(
-                  color: leadingColor.withOpacity(0.1),
-                  shape: BoxShape.circle,
-                ),
-                child: Icon(leadingIcon, color: leadingColor, size: 20),
-              ),
+              // Estilo forawn_mobile: icono plano con su color, sin círculo.
+              Icon(leadingIcon, color: leadingColor, size: 24),
               const SizedBox(width: 16),
               Expanded(
                 child: Column(

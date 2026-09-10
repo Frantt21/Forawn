@@ -21,7 +21,6 @@ import 'version.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import 'screen/video_downloader.dart';
-import 'widgets/sidebar_navigation.dart';
 
 import 'screen/home_content.dart';
 
@@ -29,6 +28,7 @@ import 'services/global_music_player.dart';
 import 'services/local_music_database.dart';
 import 'services/tools_service.dart';
 import 'services/window_media_service.dart';
+import 'widgets/mini_player.dart';
 import 'utils/color_utils.dart';
 
 const String kDefaultLangCode = 'en';
@@ -468,6 +468,23 @@ class _ForawnAppRootState extends State<ForawnAppRoot> {
                   dividerColor: Colors.black.withOpacity(0.1),
                 ),
           debugShowCheckedModeBanner: false,
+          builder: (context, child) {
+            // MiniPlayer único para toda la app: se monta una sola vez
+            // aquí (encima del Navigator) y decide su visibilidad según
+            // la screen activa. Ninguna screen instancia su propio
+            // MiniPlayer.
+            return Stack(
+              children: [
+                child!,
+                Positioned(
+                  left: 32,
+                  right: 32,
+                  bottom: 32,
+                  child: MiniPlayerHost(getText: t),
+                ),
+              ],
+            );
+          },
           home: HomeScreen(
             getText: t,
             onRequestLanguageChange: _changeLanguage,
@@ -592,6 +609,9 @@ class _HomeScreenState extends State<HomeScreen> with WindowListener {
       debugPrint(
         '[Main] Navigated to $screenId, folder action: ${_onFolderAction != null}',
       );
+      // El MiniPlayer (componente único global) solo se muestra en el
+      // screen del reproductor de música.
+      MiniPlayerVisibility.playerTabActive.value = (screenId == 'player');
     });
 
   
@@ -707,9 +727,9 @@ class _HomeScreenState extends State<HomeScreen> with WindowListener {
   void _initializeScreens() {
     _screenKeys = [
       'home',
+      'player',
       'music',
       'video',
-      'player',
       'translate',
       'qr',
     ];
@@ -833,26 +853,10 @@ class _HomeScreenState extends State<HomeScreen> with WindowListener {
                     opacity: opacity,
                     child: Row(
                       children: [
-                        // Sidebar Navigation (Full Height)
-                        SidebarNavigation(
-                          key: ValueKey('sidebar_${widget.currentLangCode}'),
-                          onNavigate: _handleNavigation,
-                          currentScreen: _currentScreen,
-                          getText: widget.getText,
-                          nsfwEnabled: _nsfwEnabled,
-                        ),
-
                         // Main content area with Title Bar
                         Expanded(
                           child: Column(
                             children: [
-                              // Title bar with Screen Title and Controls.
-                              // Fondo transparente (deja ver el acrílico en
-                              // Windows o el fondo de la app en Linux/macOS) y
-                              // contraste automático: el color del texto e
-                              // iconos se calcula desde el fondo real de la
-                              // ventana (blanco sobre oscuro, negro sobre
-                              // claro) para garantizar legibilidad.
                               GestureDetector(
                                 behavior: HitTestBehavior.translucent,
                                 onPanStart: (_) =>
@@ -1027,6 +1031,9 @@ class _HomeScreenState extends State<HomeScreen> with WindowListener {
                                         ),
                                         onPressed: () async {
                                           backgroundOpacity.value = 0.0;
+                                          // Ocultar el MiniPlayer global
+                                          // mientras Settings está abierta.
+                                          MiniPlayerVisibility.blockedByOverlay.value = true;
 
                                           final selected =
                                               await Navigator.of(
@@ -1058,6 +1065,7 @@ class _HomeScreenState extends State<HomeScreen> with WindowListener {
                                                 ),
                                               );
                                           backgroundOpacity.value = 1.0;
+                                          MiniPlayerVisibility.blockedByOverlay.value = false;
                                           if (!mounted) return;
                                           setState(
                                             () {},

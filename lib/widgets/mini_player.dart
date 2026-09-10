@@ -8,6 +8,71 @@ import '../screen/player_screen.dart';
 
 typedef TextGetter = String Function(String key, {String? fallback});
 
+/// Estado global de visibilidad del MiniPlayer.
+///
+/// El MiniPlayer es un componente ÚNICO montado en la raíz de la app
+/// ([MiniPlayerHost]). Su visibilidad se controla con dos señales:
+///
+/// - [playerTabActive]: `true` cuando la tab/screen activa es la del
+///   reproductor de música (MusicPlayerScreen) o sus subrutas como
+///   PlaylistDetailScreen. Lo actualiza main.dart al navegar.
+/// - [fullPlayerDepth]: > 0 mientras el reproductor completo
+///   (PlayerScreen) está abierto sobre el music player. Lo actualiza
+///   PlayerScreen en su ciclo de vida.
+/// - [blockedByOverlay]: `true` mientras haya una screen opaca de la app
+///   (p.ej. Settings) abierta sobre el music player.
+class MiniPlayerVisibility {
+  static final ValueNotifier<bool> playerTabActive = ValueNotifier(false);
+  static final ValueNotifier<int> fullPlayerDepth = ValueNotifier(0);
+  static final ValueNotifier<bool> blockedByOverlay = ValueNotifier(false);
+
+  static void pushFullPlayer() => fullPlayerDepth.value++;
+  static void popFullPlayer() {
+    if (fullPlayerDepth.value > 0) fullPlayerDepth.value--;
+  }
+
+  static bool get isVisible =>
+      playerTabActive.value && fullPlayerDepth.value == 0;
+
+  MiniPlayerVisibility._();
+}
+
+/// Host único del MiniPlayer para toda la app.
+///
+/// Se monta UNA sola vez (en MaterialApp.builder, sobre el Navigator) y se
+/// muestra solo en el screen del reproductor de música y en las screens
+/// que se abren desde él (p.ej. el detalle de playlist). Ninguna screen
+/// instancia su propio MiniPlayer.
+class MiniPlayerHost extends StatelessWidget {
+  final TextGetter getText;
+
+  const MiniPlayerHost({super.key, required this.getText});
+
+  @override
+  Widget build(BuildContext context) {
+    return ValueListenableBuilder<bool>(
+      valueListenable: MiniPlayerVisibility.playerTabActive,
+      builder: (context, tabActive, _) {
+        return ValueListenableBuilder<int>(
+          valueListenable: MiniPlayerVisibility.fullPlayerDepth,
+          builder: (context, depth, _) {
+            return ValueListenableBuilder<bool>(
+              valueListenable: MiniPlayerVisibility.blockedByOverlay,
+              builder: (context, blocked, _) {
+                final visible = tabActive && depth == 0 && !blocked;
+                return Offstage(
+                  offstage: !visible,
+                  child: MiniPlayer(getText: getText),
+                );
+              },
+            );
+          },
+        );
+      },
+    );
+  }
+}
+
 class MiniPlayer extends StatefulWidget {
   final TextGetter getText;
 
@@ -48,55 +113,10 @@ class _MiniPlayerState extends State<MiniPlayer> {
           onVerticalDragUpdate: (details) {
             // Si arrastra hacia arriba (delta negativo), abrir reproductor
             if (details.primaryDelta! < -5) {
-              Navigator.of(context).push(
-                PageRouteBuilder(
-                  pageBuilder: (context, animation, secondaryAnimation) =>
-                      PlayerScreen(getText: widget.getText),
-                  transitionDuration: const Duration(milliseconds: 450),
-                  transitionsBuilder:
-                      (context, animation, secondaryAnimation, child) {
-                        final curved = CurvedAnimation(
-                          parent: animation,
-                          curve: Curves.easeOutCubic,
-                          reverseCurve: Curves.easeInCubic,
-                        );
-                        return SlideTransition(
-                          position: Tween<Offset>(
-                            begin: const Offset(0.0, 1.0),
-                            end: Offset.zero,
-                          ).animate(curved),
-                          child: child,
-                        );
-                      },
-                ),
-              );
+              _openFullPlayer(context);
             }
           },
-          onTap: () {
-            Navigator.push(
-              context,
-              PageRouteBuilder(
-                transitionDuration: const Duration(milliseconds: 450),
-                pageBuilder: (context, animation, secondaryAnimation) =>
-                    PlayerScreen(getText: widget.getText),
-                transitionsBuilder:
-                    (context, animation, secondaryAnimation, child) {
-                      final curved = CurvedAnimation(
-                        parent: animation,
-                        curve: Curves.easeOutCubic,
-                        reverseCurve: Curves.easeInCubic,
-                      );
-                      return SlideTransition(
-                        position: Tween<Offset>(
-                          begin: const Offset(0.0, 1.0),
-                          end: Offset.zero,
-                        ).animate(curved),
-                        child: child,
-                      );
-                    },
-              ),
-            );
-          },
+          onTap: () => _openFullPlayer(context),
           child: Container(
             height: 70,
             decoration: BoxDecoration(
@@ -267,6 +287,31 @@ class _MiniPlayerState extends State<MiniPlayer> {
           ),
         );
       },
+    );
+  }
+
+  void _openFullPlayer(BuildContext context) {
+    Navigator.push(
+      context,
+      PageRouteBuilder(
+        transitionDuration: const Duration(milliseconds: 450),
+        pageBuilder: (context, animation, secondaryAnimation) =>
+            PlayerScreen(getText: widget.getText),
+        transitionsBuilder: (context, animation, secondaryAnimation, child) {
+          final curved = CurvedAnimation(
+            parent: animation,
+            curve: Curves.easeOutCubic,
+            reverseCurve: Curves.easeInCubic,
+          );
+          return SlideTransition(
+            position: Tween<Offset>(
+              begin: const Offset(0.0, 1.0),
+              end: Offset.zero,
+            ).animate(curved),
+            child: child,
+          );
+        },
+      ),
     );
   }
 }
