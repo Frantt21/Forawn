@@ -73,7 +73,7 @@ class _QrGeneratorScreenState extends State<QrGeneratorScreen> {
   }
 
   Future<void> _selectSaveFolder() async {
-    final carpeta = await FilePicker.platform.getDirectoryPath();
+    final carpeta = await FilePicker.getDirectoryPath();
     if (carpeta == null) return;
     _saveFolder = carpeta;
     try {

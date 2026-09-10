@@ -12,6 +12,7 @@ import '../main.dart' show gUseNativeFrame;
 import '../models/download_task.dart';
 import '../widgets/elegant_notification.dart';
 import '../services/download_manager.dart';
+import '../services/innertube_service.dart';
 import 'downloads_screen.dart';
 
 typedef TextGetter = String Function(String key, {String? fallback});
@@ -48,6 +49,21 @@ class _MusicDownloaderScreenState extends State<MusicDownloaderScreen>
   List<Map<String, dynamic>> _recommendations = [];
   String? _lastSearchQuery;
   bool _loadingRecommendations = false;
+
+  // Estado de carga de playlist (URL de YouTube/YT Music o Spotify).
+  bool _loadingPlaylist = false;
+  String? _playlistName;
+  final List<Map<String, dynamic>> _playlistTracks = [];
+  int _playlistResolved = 0;
+  int _playlistFailed = 0;
+  bool _playlistAbort = false;
+  bool _resolveDialogOpen = false;
+
+  /// Estado por pista durante la resolución de una playlist de Spotify; se
+  /// muestra en el diálogo de progreso. `_resolveRevision` notifica cada
+  /// cambio para reconstruir el diálogo mientras esté abierto.
+  final List<_TrackResolveState> _resolveStates = [];
+  final ValueNotifier<int> _resolveRevision = ValueNotifier<int>(0);
 
   @override
   void initState() {
@@ -135,6 +151,11 @@ class _MusicDownloaderScreenState extends State<MusicDownloaderScreen>
       _controller.dispose();
     } catch (e) {
       debugPrint('[MusicDownloaderScreen] Error disposing controller: $e');
+    }
+    try {
+      _resolveRevision.dispose();
+    } catch (e) {
+      debugPrint('[MusicDownloaderScreen] Error disposing resolve notifier: $e');
     }
     super.dispose();
   }
@@ -267,39 +288,16 @@ class _MusicDownloaderScreenState extends State<MusicDownloaderScreen>
     setState(() => _loadingRecommendations = true);
 
     try {
-      final uri = Uri.parse('https://api.deezer.com/search').replace(
-        queryParameters: {'q': query, 'limit': '5'},
-      );
-      final response = await http.get(uri).timeout(const Duration(seconds: 10));
+      final tracks = await InnertubeService().searchTracks(query, limit: 5);
 
       if (!mounted) {
         setState(() => _loadingRecommendations = false);
         return;
       }
 
-      Map<String, dynamic>? data;
-      if (response.statusCode == 200) {
-        data = jsonDecode(response.body) as Map<String, dynamic>;
-      } else {
-        debugPrint(
-          '[MusicDownloaderScreen] Reco fetch failed: ${response.statusCode}',
-        );
-        data = null;
-      }
+      debugPrint('[MusicDownloaderScreen] Found ${tracks.length} results');
 
-      if (data == null) {
-        debugPrint(
-          '[MusicDownloaderScreen] Failed to fetch recommendations: null response',
-        );
-        if (mounted) setState(() => _loadingRecommendations = false);
-        return;
-      }
-
-      final resultsRaw = data['data'] as List<dynamic>? ?? [];
-
-      debugPrint('[MusicDownloaderScreen] Found ${resultsRaw.length} results');
-
-      final canciones = _processSearchResults(resultsRaw);
+      final canciones = _processInnertubeResults(tracks);
 
       if (mounted) {
         setState(() {
@@ -332,6 +330,13 @@ class _MusicDownloaderScreenState extends State<MusicDownloaderScreen>
     final query = _controller.text.trim();
     if (query.isEmpty) return;
 
+    // Si la entrada es una playlist de YouTube/YT Music o Spotify, carga la
+    // lista de pistas en lugar de buscar.
+    if (InnertubeService.playlistKind(query) != PlaylistKind.none) {
+      await _loadPlaylist(query);
+      return;
+    }
+
     if (!mounted) return;
 
     try {
@@ -351,75 +356,18 @@ class _MusicDownloaderScreenState extends State<MusicDownloaderScreen>
     debugPrint('[MusicDownloaderScreen] buscarCanciones: query="$query"');
 
     try {
-      final uri = Uri.parse('https://api.deezer.com/search').replace(
-        queryParameters: {'q': query, 'limit': '100'},
-      );
+      debugPrint('[MusicDownloaderScreen] Searching via Innertube: "$query"');
 
-      debugPrint('[MusicDownloaderScreen] Fetching from URI: $uri');
-
-      final response = await http.get(uri).timeout(const Duration(seconds: 15));
-      debugPrint(
-        '[MusicDownloaderScreen] Response received: ${response.statusCode}',
-      );
-
-      Map<String, dynamic>? data;
-      if (response.statusCode == 200) {
-        data = jsonDecode(response.body) as Map<String, dynamic>;
-
-        // Verificar si el backend devolvió un error
-        if (data.containsKey('error')) {
-          debugPrint('[MusicDownloaderScreen] Deezer API error: ${data['error']}');
-          if (mounted) {
-            setState(() => _searching = false);
-            showElegantNotification(
-              context,
-              widget.getText(
-                'backend_error',
-                fallback: 'Error del servidor: ${data['error']}',
-              ),
-              backgroundColor: const Color(0xFFE53935),
-              textColor: Colors.white,
-              icon: Icons.error_outline,
-              iconColor: Colors.white,
-            );
-          }
-          return;
-        }
-      } else {
-        data = null;
-      }
+      final tracks = await InnertubeService().searchTracks(query, limit: 100);
 
       if (!mounted) {
         debugPrint('[MusicDownloaderScreen] Widget unmounted after fetch');
         return;
       }
 
-      if (data == null) {
-        debugPrint('[MusicDownloaderScreen] Response is null - network error');
-        if (mounted) {
-          setState(() => _searching = false);
-          showElegantNotification(
-            context,
-            widget.getText(
-              'network_error',
-              fallback: 'Error de red. Verifica tu conexión.',
-            ),
-            backgroundColor: const Color(0xFFE53935),
-            textColor: Colors.white,
-            icon: Icons.wifi_off,
-            iconColor: Colors.white,
-          );
-        }
-        return;
-      }
+      debugPrint('[MusicDownloaderScreen] Found ${tracks.length} results');
 
-      debugPrint('[MusicDownloaderScreen] Response received, parsing data...');
-
-      final resultsRaw = data['data'] as List<dynamic>? ?? [];
-
-      debugPrint('[MusicDownloaderScreen] Found ${resultsRaw.length} results');
-
-      final canciones = _processSearchResults(resultsRaw);
+      final canciones = _processInnertubeResults(tracks);
 
       final mapped = List<Map<String, dynamic>>.from(canciones);
 
@@ -477,8 +425,241 @@ class _MusicDownloaderScreenState extends State<MusicDownloaderScreen>
     }
   }
 
+  // ---------------------------------------------------------------------------
+  // Playlists (YouTube / YT Music / Spotify)
+  // ---------------------------------------------------------------------------
+
+  Future<void> _loadPlaylist(String input) async {
+    final kind = InnertubeService.playlistKind(input);
+    if (kind == PlaylistKind.none) return;
+
+    setState(() {
+      _searching = false;
+      _loadingPlaylist = true;
+      _canciones = [];
+      _recommendations = [];
+      _playlistName = null;
+      _playlistTracks.clear();
+      _playlistResolved = 0;
+      _playlistFailed = 0;
+    });
+
+    try {
+      if (kind == PlaylistKind.youtube) {
+        await _loadYoutubePlaylist(input);
+      } else {
+        await _loadSpotifyPlaylist(input);
+      }
+    } catch (e, st) {
+      debugPrint('[MusicDownloaderScreen] playlist error: $e\n$st');
+      if (mounted) {
+        showElegantNotification(
+          context,
+          widget.getText(
+            'playlist_error',
+            fallback: 'No se pudo cargar la playlist',
+          ),
+          backgroundColor: const Color(0xFFE53935),
+          textColor: Colors.white,
+          icon: Icons.error_outline,
+          iconColor: Colors.white,
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _loadingPlaylist = false);
+    }
+  }
+
+  Future<void> _loadYoutubePlaylist(String input) async {
+    final playlist = await InnertubeService().fetchPlaylist(input);
+    if (!mounted) return;
+    final canciones = _processInnertubeResults(playlist.tracks);
+    setState(() {
+      _playlistName = playlist.name;
+      _playlistTracks
+        ..clear()
+        ..addAll(canciones);
+      _canciones = List<Map<String, dynamic>>.from(canciones);
+    });
+    debugPrint(
+      '[MusicDownloaderScreen] YT playlist "${playlist.name}": ${canciones.length} pistas',
+    );
+  }
+
+  /// Spotify: el embed solo da título+artistas; cada pista se resuelve a su
+  /// vídeo exacto buscando "<título> <artistas>" en YT Music (que devuelve el
+  /// videoId, artwork cuadrado y metadatos limpios para la descarga).
+  ///
+  /// Mientras resuelve, muestra un diálogo con el estado por pista; puede
+  /// cancelarse o enviarse a segundo plano (la resolución continúa).
+  Future<void> _loadSpotifyPlaylist(String input) async {
+    final playlist = await InnertubeService().fetchSpotifyPlaylist(input);
+    if (!mounted) return;
+
+    _playlistAbort = false;
+    setState(() {
+      _playlistName = playlist.name;
+      _playlistTracks.clear();
+      _playlistResolved = 0;
+      _playlistFailed = 0;
+      _resolveStates
+        ..clear()
+        ..addAll([
+          for (final t in playlist.spotifyTracks)
+            _TrackResolveState(t.title, t.artists),
+        ]);
+    });
+
+    // El diálogo aparece si la resolución tarda más de ~600 ms (para listas
+    // diminutas no molesta) y se cierra solo al terminar.
+    final dialogTimer = Timer(const Duration(milliseconds: 600), () {
+      if (!mounted || !_loadingPlaylist || _resolveDialogOpen) return;
+      _openResolveDialog();
+    });
+
+    // Cola de resolución con concurrencia limitada.
+    final pending = List<SpotifyPlaylistTrack>.from(playlist.spotifyTracks);
+    final results = <Map<String, dynamic>>[];
+
+    void bump() => _resolveRevision.value++;
+
+    Future<void> worker() async {
+      while (pending.isNotEmpty && mounted && !_playlistAbort) {
+        final index = playlist.spotifyTracks.length - pending.length;
+        final track = pending.removeAt(0);
+        if (index < 0 || index >= _resolveStates.length) continue;
+        final state = _resolveStates[index];
+        state.status = _ResolveStatus.resolving;
+        bump();
+
+        final query = '${track.title} ${track.artists}'.trim();
+        try {
+          final found = await InnertubeService().searchTracks(query, limit: 1);
+          if (found.isNotEmpty) {
+            final mapped = _processInnertubeResults(found);
+            if (mapped.isNotEmpty) {
+              results.add(mapped.first);
+              state.status = _ResolveStatus.done;
+              bump();
+              if (mounted) {
+                setState(() {
+                  _playlistTracks.add(mapped.first);
+                  _playlistResolved++;
+                });
+              }
+              continue;
+            }
+          }
+          state.status = _ResolveStatus.failed;
+          bump();
+          if (mounted) setState(() => _playlistFailed++);
+        } catch (_) {
+          state.status = _ResolveStatus.failed;
+          bump();
+          if (mounted) setState(() => _playlistFailed++);
+        }
+      }
+    }
+
+    await Future.wait([worker(), worker(), worker()]);
+    dialogTimer.cancel();
+
+    // Cierra el diálogo si sigue abierto (éxito o cancelación).
+    if (_resolveDialogOpen && mounted) {
+      Navigator.of(context, rootNavigator: true).pop();
+      _resolveDialogOpen = false;
+    }
+
+    if (!mounted || _playlistAbort) return;
+    setState(() {
+      _canciones = List<Map<String, dynamic>>.from(_playlistTracks);
+    });
+    debugPrint(
+      '[MusicDownloaderScreen] Spotify playlist "${playlist.name}": '
+      '${results.length}/${playlist.spotifyTracks.length} resueltas',
+    );
+  }
+
+  /// Abre el diálogo de progreso de resolución (no acumulativo).
+  void _openResolveDialog() {
+    if (_resolveDialogOpen || !mounted) return;
+    _resolveDialogOpen = true;
+    showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => _PlaylistResolveDialog(
+        name: _playlistName ?? '',
+        states: _resolveStates,
+        revision: _resolveRevision,
+        onCancel: () {
+          _playlistAbort = true;
+          if (_resolveDialogOpen) {
+            Navigator.of(context, rootNavigator: true).pop();
+            _resolveDialogOpen = false;
+          }
+        },
+        onBackground: () {
+          if (_resolveDialogOpen) {
+            Navigator.of(context, rootNavigator: true).pop();
+            _resolveDialogOpen = false;
+          }
+        },
+      ),
+    ).whenComplete(() {
+      _resolveDialogOpen = false;
+    });
+  }
+
+  /// Encola la descarga de todas las pistas de la playlist cargada.
+  Future<void> _queuePlaylistDownload() async {
+    if (_playlistTracks.isEmpty) return;
+
+    // Asegura carpeta de descargas (misma lógica que _queueDownload).
+    final prefs = await SharedPreferences.getInstance();
+    String? downloadFolder = prefs.getString('download_folder');
+    if (downloadFolder == null || downloadFolder.isEmpty) {
+      final carpeta = await FilePicker.getDirectoryPath();
+      if (carpeta == null) {
+        showElegantNotification(
+          context,
+          widget.getText('download_cancelled', fallback: 'Descarga cancelada'),
+          backgroundColor: const Color(0xFFE53935),
+          textColor: Colors.white,
+          icon: Icons.cancel,
+          iconColor: Colors.white,
+        );
+        return;
+      }
+      downloadFolder = p.normalize(carpeta);
+      await prefs.setString('download_folder', downloadFolder);
+    }
+
+    var queued = 0;
+    for (final c in _playlistTracks) {
+      final src = (c['url'] ?? '').toString();
+      // Evita duplicar pistas ya encoladas/descargadas.
+      if (src.isNotEmpty && _dmTasksBySource.containsKey(src)) continue;
+      await _queueDownload(c, silent: true);
+      queued++;
+    }
+
+    if (mounted) {
+      showElegantNotification(
+        context,
+        '$queued ${widget.getText(
+          'playlist_queued',
+          fallback: 'canciones en cola de descarga',
+        )}',
+        backgroundColor: const Color(0xFF2C2C2C),
+        textColor: Colors.white,
+        icon: Icons.playlist_add_check,
+        iconColor: Colors.green,
+      );
+    }
+  }
+
   Future<void> _selectDownloadFolder() async {
-    final carpeta = await FilePicker.platform.getDirectoryPath();
+    final carpeta = await FilePicker.getDirectoryPath();
     if (carpeta == null) return;
     final prefs = await SharedPreferences.getInstance();
     final norm = p.normalize(carpeta);
@@ -497,12 +678,15 @@ class _MusicDownloaderScreenState extends State<MusicDownloaderScreen>
     );
   }
 
-  Future<void> _queueDownload(Map<String, dynamic> c) async {
+  Future<void> _queueDownload(
+    Map<String, dynamic> c, {
+    bool silent = false,
+  }) async {
     final prefs = await SharedPreferences.getInstance();
     String? downloadFolder = prefs.getString('download_folder');
 
     if (downloadFolder == null || downloadFolder.isEmpty) {
-      final carpeta = await FilePicker.platform.getDirectoryPath();
+      final carpeta = await FilePicker.getDirectoryPath();
       if (carpeta == null) {
         showElegantNotification(
           context,
@@ -555,15 +739,13 @@ class _MusicDownloaderScreenState extends State<MusicDownloaderScreen>
     }
     final nombre = title;
     final imageUrl = (c['image'] ?? '').toString();
-    // Usar búsqueda YouTube en lugar de URL directa de Deezer
-    // para obtener mejor calidad (yt-dlp + YouTube = audio completo)
-    final String url;
-    if (artista.isNotEmpty &&
-        artista != widget.getText('unknown_artist', fallback: 'Unknown artist')) {
-      url = '$nombre $artista';
-    } else {
-      url = '$nombre';
-    }
+    // URL exacta de la pista resuelta por Innertube (`watch?v=VIDEOID`):
+    // garantiza que el archivo descargado corresponde al resultado mostrado
+    // en la lista, en lugar de una búsqueda que yt-dlp resuelve por su cuenta.
+    final exactUrl = (c['url'] ?? '').toString();
+    final url = exactUrl.isNotEmpty
+        ? exactUrl
+        : '$nombre $artista'.trim();
     final id = DateTime.now().millisecondsSinceEpoch.toString();
 
     // Use bypassSpotifyApi = true to enforce direct yt-dlp handling as we are providing YouTube URL/Search
@@ -580,6 +762,7 @@ class _MusicDownloaderScreenState extends State<MusicDownloaderScreen>
       '[MusicDownloaderScreen] enqueuing task ${task.id} title="${task.title}"',
     );
     DownloadManager().addTask(task);
+    if (silent) return; // En modo playlist, la notificación es global.
     showElegantNotification(
       context,
       widget.getText('download_queued', fallback: 'Download queued'),
@@ -629,6 +812,12 @@ class _MusicDownloaderScreenState extends State<MusicDownloaderScreen>
       listToShow = _recommendations;
       displayingRecommendations = true;
     }
+    // Playlist de Spotify en resolución: muestra las pistas ya resueltas.
+    if (_canciones.isEmpty &&
+        _playlistTracks.isNotEmpty &&
+        displayingRecommendations == false) {
+      listToShow = _playlistTracks;
+    }
 
     return Scaffold(
       backgroundColor: Colors.transparent,
@@ -659,7 +848,7 @@ class _MusicDownloaderScreenState extends State<MusicDownloaderScreen>
                                 hintText: get(
                                   'song_or_artist_label',
                                   fallback:
-                                      'Nombre de la canción o del artista',
+                                      'Canción, artista o URL de playlist',
                                 ),
                                 hintStyle: Theme.of(
                                   context,
@@ -712,6 +901,45 @@ class _MusicDownloaderScreenState extends State<MusicDownloaderScreen>
                           ),
                         ),
                       )
+                    else if (_loadingPlaylist)
+                      Expanded(
+                        child: Center(
+                          child: Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              const CircularProgressIndicator(),
+                              const SizedBox(height: 12),
+                              Text(
+                                _playlistName != null
+                                    ? '$_playlistName'
+                                    : get(
+                                        'loading_playlist',
+                                        fallback: 'Cargando playlist...',
+                                      ),
+                                style: const TextStyle(
+                                  fontSize: 15,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                              if (_playlistTracks.isNotEmpty) ...[
+                                const SizedBox(height: 6),
+                                Text(
+                                  '$_playlistResolved resueltas'
+                                  '${_playlistFailed > 0 ? ' • $_playlistFailed fallidas' : ''}',
+                                  style: TextStyle(
+                                    fontSize: 13,
+                                    color: Theme.of(context)
+                                        .textTheme
+                                        .bodyMedium
+                                        ?.color
+                                        ?.withOpacity(0.6),
+                                  ),
+                                ),
+                              ],
+                            ],
+                          ),
+                        ),
+                      )
                     else if (listToShow.isEmpty && _loadingRecommendations)
                       Expanded(
                         child: Center(
@@ -740,7 +968,43 @@ class _MusicDownloaderScreenState extends State<MusicDownloaderScreen>
                         ),
                       )
                     else ...[
-                      if (displayingRecommendations && _lastSearchQuery != null)
+                      if (_playlistName != null)
+                        Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 8),
+                          child: Row(
+                            children: [
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: Text(
+                                  '$_playlistName (${listToShow.length})',
+                                  style: const TextStyle(
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: 15,
+                                  ),
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              ElevatedButton.icon(
+                                icon: const Icon(Icons.playlist_add, size: 18),
+                                label: Text(
+                                  get(
+                                    'download_all',
+                                    fallback: 'Descargar todo',
+                                  ),
+                                ),
+                                style: ElevatedButton.styleFrom(
+                                  visualDensity: VisualDensity.compact,
+                                ),
+                                onPressed: _loadingPlaylist
+                                    ? null
+                                    : _queuePlaylistDownload,
+                              ),
+                            ],
+                          ),
+                        )
+                      else if (displayingRecommendations &&
+                          _lastSearchQuery != null)
                         Padding(
                           padding: const EdgeInsets.symmetric(vertical: 8),
                           child: Row(
@@ -1008,44 +1272,195 @@ class _MusicDownloaderScreenState extends State<MusicDownloaderScreen>
     );
   }
 
-  // Procesa resultados de la API de Deezer
-  List<Map<String, dynamic>> _processSearchResults(List<dynamic> resultsRaw) {
-    final canciones = resultsRaw
-        .whereType<Map<String, dynamic>>()
-        .map((r) {
-          try {
-            final artistData = r['artist'] as Map<String, dynamic>?;
-            final albumData = r['album'] as Map<String, dynamic>?;
+  // Procesa resultados de Innertube (youtubei/v1). El título/artista se limpia
+  // con las MISMAS reglas que aplica la cadena --replace-in-metadata de
+  // yt-dlp al incrustar metadatos en el archivo, así la lista de resultados y
+  // las etiquetas del archivo descargado siempre coinciden.
+  List<Map<String, dynamic>> _processInnertubeResults(
+    List<InnertubeTrack> tracks,
+  ) {
+    final canciones = <Map<String, dynamic>>[];
+    for (final track in tracks) {
+      try {
+        final rawTitle = track.rawTitle;
+        final channel = track.channel;
 
-            final title = (r['title'] ?? '').toString();
-            final artist = (artistData?['name'] ?? 'Unknown artist').toString();
-            final image = (albumData?['cover_medium'] ??
-                    artistData?['picture_medium'] ??
-                    '')
-                .toString();
-            final url = (r['link'] ?? r['preview'] ?? '').toString();
-            final duration = r['duration'] is int ? (r['duration'] as int) * 1000 : 0;
-            final albumTitle = (albumData?['title'] ?? '').toString();
+        // YT Music trae metadatos ya limpios; el fallback WEB requiere la
+        // limpieza de ruido con las MISMAS reglas que la cadena de yt-dlp.
+        final title = track.cleanMetadata
+            ? rawTitle
+            : InnertubeService.cleanTitle(rawTitle);
+        final artist = track.cleanMetadata
+            ? (channel.isNotEmpty ? channel : 'Unknown artist')
+            : InnertubeService.artistFor(channel, rawTitle);
 
-            if (title.isEmpty) return <String, dynamic>{};
+        if (title.isEmpty) continue;
 
-            return {
-              'title': _toTitleCase(title),
-              'artist': _toTitleCase(artist),
-              'album': albumTitle,
-              'image': image,
-              'url': url,
-              'popularity': '100',
-              'duration_ms': duration,
-            };
-          } catch (e, st) {
-            debugPrint('[MusicDownloaderScreen] Error parsing Deezer item: $e\n$st');
-            return <String, dynamic>{};
-          }
-        })
-        .where((m) => m.isNotEmpty)
-        .toList();
+        canciones.add({
+          'title': title,
+          'artist': artist,
+          'album': track.album,
+          'image': track.thumbnailUrl,
+          // URL exacta de la pista (`watch?v=VIDEOID`) devuelta por Innertube.
+          'url': track.watchUrl,
+          'duration_ms': track.durationMs,
+          'video_id': track.videoId,
+        });
+      } catch (e, st) {
+        debugPrint(
+          '[MusicDownloaderScreen] Error parsing Innertube item: $e\n$st',
+        );
+      }
+    }
+    return canciones;
+  }
+}
 
-    return List<Map<String, dynamic>>.from(canciones);
+/// Estado de una pista durante la resolución de una playlist de Spotify.
+enum _ResolveStatus { pending, resolving, done, failed }
+
+class _TrackResolveState {
+  _TrackResolveState(this.title, this.artist);
+
+  final String title;
+  final String artist;
+  _ResolveStatus status = _ResolveStatus.pending;
+
+  String get label => artist.isEmpty ? title : '$title — $artist';
+}
+
+/// Diálogo de progreso de resolución de playlist de Spotify: muestra una
+/// barra global y el estado de cada pista (pendiente / resolviendo / lista /
+/// fallida) en tiempo real.
+class _PlaylistResolveDialog extends StatelessWidget {
+  const _PlaylistResolveDialog({
+    required this.name,
+    required this.states,
+    required this.revision,
+    required this.onCancel,
+    required this.onBackground,
+  });
+
+  final String name;
+  final List<_TrackResolveState> states;
+  final ValueNotifier<int> revision;
+  final VoidCallback onCancel;
+  final VoidCallback onBackground;
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      backgroundColor: const Color(0xFF1C1C1E),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      title: Text(name, overflow: TextOverflow.ellipsis, maxLines: 1),
+      content: SizedBox(
+        width: 420,
+        height: 340,
+        child: ValueListenableBuilder<int>(
+          valueListenable: revision,
+          builder: (context, _, __) {
+            final total = states.length;
+            final done = states
+                .where((s) =>
+                    s.status == _ResolveStatus.done ||
+                    s.status == _ResolveStatus.failed)
+                .length;
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  '$done / $total',
+                  style: const TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(6),
+                  child: LinearProgressIndicator(
+                    value: total == 0 ? null : done / total,
+                    minHeight: 6,
+                  ),
+                ),
+                const SizedBox(height: 12),
+                Expanded(
+                  child: ListView.builder(
+                    itemCount: states.length,
+                    itemBuilder: (context, index) {
+                      final s = states[index];
+                      final Widget leading;
+                      switch (s.status) {
+                        case _ResolveStatus.pending:
+                          leading = Icon(
+                            Icons.schedule,
+                            size: 18,
+                            color: Theme.of(context)
+                                .iconTheme
+                                .color
+                                ?.withOpacity(0.4),
+                          );
+                          break;
+                        case _ResolveStatus.resolving:
+                          leading = const SizedBox(
+                            width: 18,
+                            height: 18,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          );
+                          break;
+                        case _ResolveStatus.done:
+                          leading = const Icon(
+                            Icons.check_circle,
+                            size: 18,
+                            color: Colors.green,
+                          );
+                          break;
+                        case _ResolveStatus.failed:
+                          leading = const Icon(
+                            Icons.error_outline,
+                            size: 18,
+                            color: Colors.redAccent,
+                          );
+                          break;
+                      }
+                      return ListTile(
+                        dense: true,
+                        visualDensity: VisualDensity.compact,
+                        leading: leading,
+                        title: Text(
+                          s.label,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            fontSize: 13,
+                            color: s.status == _ResolveStatus.failed
+                                ? Theme.of(context)
+                                    .textTheme
+                                    .bodyMedium
+                                    ?.color
+                                    ?.withOpacity(0.45)
+                                : null,
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+                ),
+              ],
+            );
+          },
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: onCancel,
+          child: const Text('Cancelar'),
+        ),
+        TextButton(
+          onPressed: onBackground,
+          child: const Text('Continuar en segundo plano'),
+        ),
+      ],
+    );
   }
 }

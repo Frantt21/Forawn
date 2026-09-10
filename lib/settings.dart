@@ -11,6 +11,7 @@ import 'services/discord_service.dart';
 import 'services/lyrics_service.dart';
 import 'services/local_music_database.dart';
 import 'services/global_theme_service.dart';
+import 'services/global_music_player.dart';
 import 'package:forawn/version.dart';
 
 typedef TextGetter = String Function(String key, {String? fallback});
@@ -78,6 +79,8 @@ class _SettingsScreenState extends State<SettingsScreen> with WindowListener {
   bool _useBlurBackground = false;
   bool _lyricsSweepEnabled = false;
   static const _lyricsSweepKey = 'lyrics_sweep_enabled';
+  double _crossfadeDuration = 0.0;
+  static const _crossfadeKey = 'crossfade_duration';
 
   bool _langMenuOpen = false;
   bool _langHovered = false;
@@ -179,6 +182,8 @@ class _SettingsScreenState extends State<SettingsScreen> with WindowListener {
       final discordEnabled = _prefs!.getBool(_discordEnabledKey) ?? false;
       final blurBg = _prefs!.getBool('use_blur_background') ?? false;
       final sweepEnabled = _prefs!.getBool(_lyricsSweepKey) ?? false;
+      final crossfade =
+          (_prefs!.getDouble(_crossfadeKey) ?? 0.0).clamp(0.0, 12.0);
 
       if (!mounted) return;
       setState(() {
@@ -186,6 +191,7 @@ class _SettingsScreenState extends State<SettingsScreen> with WindowListener {
         _discordConnected = DiscordService().isConnected;
         _useBlurBackground = blurBg;
         _lyricsSweepEnabled = sweepEnabled;
+        _crossfadeDuration = crossfade;
         if (savedLang != null && savedLang.isNotEmpty) {
           _selectedLang = savedLang;
         }
@@ -472,6 +478,107 @@ class _SettingsScreenState extends State<SettingsScreen> with WindowListener {
                             value: _useBlurBackground,
                             onChanged: _toggleBlurBackground,
                             activeColor: Colors.purpleAccent,
+                          ),
+                        ),
+                        Divider(height: 1, color: currentTheme.dividerColor),
+                        _SettingsTile(
+                          leadingIcon: Icons.graphic_eq,
+                          leadingColor: Colors.tealAccent,
+                          title: get('crossfade', fallback: 'Crossfade'),
+                          subtitle: get(
+                            'crossfade_sub',
+                            fallback:
+                                'Transición suave entre canciones al terminar',
+                          ),
+                          trailing: Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 10,
+                              vertical: 4,
+                            ),
+                            decoration: BoxDecoration(
+                              color: _crossfadeDuration > 0
+                                  ? Colors.tealAccent.withOpacity(0.15)
+                                  : Colors.white.withOpacity(0.05),
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            child: Text(
+                              _crossfadeDuration == 0
+                                  ? 'Off'
+                                  : '${_crossfadeDuration.toStringAsFixed(0)}s',
+                              style: TextStyle(
+                                color: _crossfadeDuration > 0
+                                    ? Colors.tealAccent
+                                    : Colors.white.withOpacity(0.5),
+                                fontWeight: FontWeight.bold,
+                                fontSize: 12,
+                              ),
+                            ),
+                          ),
+                        ),
+                        // Slider de duración (estilo forawn_mobile: 0-12s).
+                        Padding(
+                          padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+                          child: Row(
+                            children: [
+                              Text(
+                                '0s',
+                                style: theme.textTheme.bodySmall?.copyWith(
+                                  color: theme.hintColor,
+                                ),
+                              ),
+                              Expanded(
+                                child: SliderTheme(
+                                  data: SliderTheme.of(context).copyWith(
+                                    activeTrackColor: Colors.tealAccent,
+                                    inactiveTrackColor: Colors.tealAccent
+                                        .withOpacity(0.15),
+                                    trackHeight: 4.0,
+                                    thumbColor: Colors.tealAccent,
+                                    thumbShape:
+                                        const RoundSliderThumbShape(
+                                            enabledThumbRadius: 6.0),
+                                    overlayColor:
+                                        Colors.tealAccent.withOpacity(0.1),
+                                    overlayShape:
+                                        const RoundSliderOverlayShape(
+                                            overlayRadius: 12.0),
+                                    tickMarkShape:
+                                        SliderTickMarkShape.noTickMark,
+                                  ),
+                                  child: Slider(
+                                    value: _crossfadeDuration,
+                                    min: 0,
+                                    max: 12,
+                                    divisions: 12,
+                                    label: _crossfadeDuration == 0
+                                        ? 'Off'
+                                        : '${_crossfadeDuration.toStringAsFixed(0)}s',
+                                    onChanged: (value) {
+                                      setState(
+                                          () => _crossfadeDuration = value);
+                                    },
+                                    onChangeEnd: (value) async {
+                                      try {
+                                        final prefs = _prefs ??
+                                            await SharedPreferences.getInstance();
+                                        _prefs = prefs;
+                                        await prefs.setDouble(
+                                            _crossfadeKey, value);
+                                      } catch (_) {}
+                                      // Aplicar en caliente al reproductor global.
+                                      await GlobalMusicPlayer()
+                                          .setCrossfadeDuration(value);
+                                    },
+                                  ),
+                                ),
+                              ),
+                              Text(
+                                '12s',
+                                style: theme.textTheme.bodySmall?.copyWith(
+                                  color: theme.hintColor,
+                                ),
+                              ),
+                            ],
                           ),
                         ),
                         Divider(height: 1, color: currentTheme.dividerColor),

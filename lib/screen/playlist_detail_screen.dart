@@ -12,6 +12,7 @@ import '../services/playlist_service.dart';
 import '../services/global_music_player.dart';
 import '../services/local_music_database.dart';
 import '../widgets/app_title_bar.dart';
+import '../widgets/add_songs_sheet.dart';
 import '../widgets/mini_player.dart';
 
 class PlaylistDetailScreen extends StatefulWidget {
@@ -422,7 +423,7 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen>
                           ),
                         ),
 
-                        const SizedBox(height: 32),
+                        const SizedBox(height: 16),
 
                         Text(
                           playlist.name,
@@ -435,19 +436,19 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen>
                         ),
                         if (playlist.description != null)
                           Padding(
-                            padding: const EdgeInsets.only(top: 8),
+                            padding: const EdgeInsets.only(top: 4),
                             child: Text(
                               playlist.description!,
                               style: const TextStyle(color: Colors.white70),
                               textAlign: TextAlign.center,
                             ),
                           ),
-                        const SizedBox(height: 8),
+                        const SizedBox(height: 4),
                         Text(
                           "${playlist.songs.length} ${playlist.songs.length == 1 ? widget.getText('song', fallback: 'Song') : widget.getText('songs', fallback: 'Songs')}${_playlistDurationSuffix(playlist.songs)}",
                           style: const TextStyle(color: Colors.white70),
                         ),
-                        const SizedBox(height: 32),
+                        const SizedBox(height: 20),
                         // Action Buttons (estilo forawn_mobile):
                         // - Play: píldora primaria rellena
                         // - Favoritos: Shuffle como píldora secundaria
@@ -1020,262 +1021,43 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen>
     BuildContext context,
     Playlist playlist,
   ) async {
-    // Obtener todas las canciones desde el servicio global
-    final allSongs = GlobalMusicPlayer().songsList.value;
-
-    if (allSongs.isEmpty) {
-      if (!context.mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text(
-            'No hay canciones en la librería. Carga una carpeta primero.',
-          ),
-        ),
-      );
-      return;
-    }
-
-    // Filtrar canciones que ya están en la playlist
-    final playlistSongIds = playlist.songs.map((s) => s.id).toSet();
-    final availableSongs = allSongs
-        .where((s) => !playlistSongIds.contains(s.id))
-        .toList();
-
-    final Set<String> selectedPaths = {};
-    String searchQuery = '';
-
-    await showDialog(
-      context: context,
-      barrierColor: Colors.black.withOpacity(0.5),
-      builder: (ctx) {
-        return StatefulBuilder(
-          builder: (context, setState) {
-            final filteredSongs = availableSongs.where((song) {
-              if (searchQuery.isEmpty) return true;
-              final query = searchQuery.toLowerCase();
-              return song.title.toLowerCase().contains(query) ||
-                  song.artist.toLowerCase().contains(query);
-            }).toList();
-
-            return BackdropFilter(
-              filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
-              child: Dialog(
-                backgroundColor: Colors.transparent,
-                insetPadding: const EdgeInsets.symmetric(horizontal: 24),
-                child: Container(
-                  constraints: BoxConstraints(
-                    maxHeight: MediaQuery.of(context).size.height * 0.8,
-                    maxWidth: 500,
-                  ),
-                  decoration: BoxDecoration(
-                    color: Colors.grey[900]!.withOpacity(0.95),
-                    borderRadius: BorderRadius.circular(16),
-                    border: Border.all(
-                      color: Colors.white.withOpacity(0.1),
-                      width: 1,
-                    ),
-                  ),
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      // Header
-                      Padding(
-                        padding: const EdgeInsets.all(24),
-                        child: Row(
-                          children: [
-                            Expanded(
-                              child: Text(
-                                "Add Songs (${availableSongs.length})",
-                                style: const TextStyle(
-                                  color: Colors.white,
-                                  fontSize: 20,
-                                  fontWeight: FontWeight.bold,
-                                ),
-                              ),
-                            ),
-                            IconButton(
-                              icon: const Icon(
-                                Icons.close,
-                                color: Colors.white54,
-                              ),
-                              onPressed: () => Navigator.pop(ctx),
-                            ),
-                          ],
-                        ),
-                      ),
-
-                      // Search Bar
-                      Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 24),
-                        child: TextField(
-                          style: const TextStyle(color: Colors.white),
-                          decoration: InputDecoration(
-                            hintText: 'Search songs...',
-                            hintStyle: TextStyle(
-                              color: Colors.white.withOpacity(0.3),
-                            ),
-                            prefixIcon: const Icon(
-                              Icons.search,
-                              color: Colors.white54,
-                            ),
-                            filled: true,
-                            fillColor: Colors.white.withOpacity(0.05),
-                            border: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(12),
-                              borderSide: BorderSide.none,
-                            ),
-                            contentPadding: const EdgeInsets.symmetric(
-                              horizontal: 16,
-                              vertical: 12,
-                            ),
-                          ),
-                          onChanged: (val) => setState(() => searchQuery = val),
-                        ),
-                      ),
-
-                      const SizedBox(height: 16),
-
-                      // Song List
-                      Expanded(
-                        child: filteredSongs.isEmpty
-                            ? const Center(
-                                child: Text(
-                                  "No matching songs found",
-                                  style: TextStyle(color: Colors.grey),
-                                ),
-                              )
-                            : ListView.builder(
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 8,
-                                ),
-                                itemCount: filteredSongs.length,
-                                itemBuilder: (context, index) {
-                                  final song = filteredSongs[index];
-                                  final isSelected = selectedPaths.contains(
-                                    song.filePath,
-                                  );
-
-                                  return ListTile(
-                                    title: Text(
-                                      song.title,
-                                      style: const TextStyle(
-                                        color: Colors.white,
-                                      ),
-                                      maxLines: 1,
-                                      overflow: TextOverflow.ellipsis,
-                                    ),
-                                    subtitle: Text(
-                                      song.artist,
-                                      style: TextStyle(
-                                        color: Colors.white.withOpacity(0.6),
-                                      ),
-                                      maxLines: 1,
-                                      overflow: TextOverflow.ellipsis,
-                                    ),
-                                    leading: Container(
-                                      width: 40,
-                                      height: 40,
-                                      decoration: BoxDecoration(
-                                        color: isSelected
-                                            ? Colors.purpleAccent
-                                            : Colors.transparent,
-                                        shape: BoxShape.circle,
-                                        border: Border.all(
-                                          color: isSelected
-                                              ? Colors.purpleAccent
-                                              : Colors.grey,
-                                          width: 2,
-                                        ),
-                                      ),
-                                      child: isSelected
-                                          ? const Icon(
-                                              Icons.check,
-                                              color: Colors.white,
-                                              size: 20,
-                                            )
-                                          : null,
-                                    ),
-                                    onTap: () {
-                                      setState(() {
-                                        if (isSelected) {
-                                          selectedPaths.remove(song.filePath);
-                                        } else {
-                                          selectedPaths.add(song.filePath);
-                                        }
-                                      });
-                                    },
-                                  );
-                                },
-                              ),
-                      ),
-
-                      const Divider(color: Colors.white10),
-
-                      // Actions
-                      Padding(
-                        padding: const EdgeInsets.all(24),
-                        child: Row(
-                          mainAxisAlignment: MainAxisAlignment.end,
-                          children: [
-                            TextButton(
-                              onPressed: () => Navigator.pop(ctx),
-                              child: const Text(
-                                "Cancel",
-                                style: TextStyle(
-                                  color: Colors.white70,
-                                  fontSize: 16,
-                                ),
-                              ),
-                            ),
-                            const SizedBox(width: 12),
-                            ElevatedButton(
-                              style: ElevatedButton.styleFrom(
-                                backgroundColor: Colors.purpleAccent,
-                                foregroundColor: Colors.white,
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 24,
-                                  vertical: 12,
-                                ),
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(12),
-                                ),
-                              ),
-                              onPressed: selectedPaths.isNotEmpty
-                                  ? () async {
-                                      Navigator.pop(ctx);
-                                      for (final path in selectedPaths) {
-                                        final file = File(path);
-                                        final song = await Song.fromFile(file);
-                                        if (song != null) {
-                                          await PlaylistService()
-                                              .addSongToPlaylist(
-                                                playlist.id,
-                                                song,
-                                              );
-                                        }
-                                      }
-                                    }
-                                  : null,
-                              child: Text(
-                                "Add (${selectedPaths.length})",
-                                style: const TextStyle(
-                                  fontSize: 16,
-                                  fontWeight: FontWeight.bold,
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            );
-          },
-        );
-      },
+    return AddSongsSheet.show(
+      context,
+      playlist: playlist,
+      getText: widget.getText,
+      backgroundColor: _getBottomSheetColor(),
+      accentColor: _getAccentColor(),
     );
+  }
+
+  Color _getBottomSheetColor() {
+    final isFavorites = widget.playlist.id == 'favorites';
+    final rawColor = isFavorites
+        ? Colors.purpleAccent
+        : (_dominantColor ?? Colors.purpleAccent);
+
+    // Asegurar que el color sea notorio, misma lógica que forawn_mobile
+    final hsl = HSLColor.fromColor(rawColor);
+    final color = hsl.lightness < 0.3
+        ? hsl.withLightness(0.6).toColor()
+        : rawColor;
+
+    return Color.lerp(const Color(0xFF1C1C1E), color, 0.15) ??
+        const Color(0xFF1C1C1E);
+  }
+
+  Color _getAccentColor() {
+    final isFavorites = widget.playlist.id == 'favorites';
+    final rawColor = isFavorites
+        ? Colors.purpleAccent
+        : (_dominantColor ?? Colors.purpleAccent);
+    final hsl = HSLColor.fromColor(rawColor);
+
+    // Ensure the color is bright enough for dark background bottom sheets
+    if (hsl.lightness < 0.5) {
+      return hsl.withLightness(0.6).toColor();
+    }
+    return rawColor;
   }
 }
 

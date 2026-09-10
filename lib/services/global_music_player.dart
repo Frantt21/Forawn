@@ -30,6 +30,21 @@ class GlobalMusicPlayer {
 
   final AudioPlayer player = AudioPlayer();
 
+  // Segundo reproductor para crossfade (mismo patrón que forawn_mobile
+  // AudioPlayerService, adaptado a audioplayers).
+  final AudioPlayer _nextPlayer = AudioPlayer();
+  bool _usingPrimaryPlayer = true;
+  bool _isCrossfading = false;
+  bool _isSkipping = false;
+  Timer? _fadeTimer;
+
+  /// Reproductor que suena AHORA. Todas las interacciones externas (media
+  /// keys, SMTC, pantallas) deben usar este getter en lugar de `player`.
+  AudioPlayer get activePlayer => _usingPrimaryPlayer ? player : _nextPlayer;
+
+  bool _isActivePlayer(AudioPlayer p) =>
+      _usingPrimaryPlayer ? identical(p, player) : identical(p, _nextPlayer);
+
   // Callback para cuando termina una canción
   Function(int? currentIndex, LoopMode loopMode, bool isShuffle)?
   onSongComplete;
@@ -38,6 +53,11 @@ class GlobalMusicPlayer {
   Function(String filePath)? onMetadataNeeded;
 
   void _initGlobalListeners() {
+    // Con crossfade hay DOS reproductores; solo el ACTIVO alimenta los
+    // notifiers globales (el inactivo está detenido fuera del fade).
+    _listenToPlayer(player);
+    _listenToPlayer(_nextPlayer);
+
     // Escuchar cambios en metadatos para actualizar estado global y Discord
     currentTitle.addListener(() {
       MusicStateService().resetThumbnailUrl(); // Resetear thumbnail anterior
@@ -58,22 +78,26 @@ class GlobalMusicPlayer {
       MusicStateService().updateMusicState(isPlaying: isPlaying.value);
       DiscordService().updateMusicPresence();
     });
+  }
 
-    // Estos listeners NUNCA se cancelan - son globales y persisten
-    player.onPositionChanged.listen((pos) {
+  void _listenToPlayer(AudioPlayer p) {
+    p.onPositionChanged.listen((pos) {
+      if (!_isActivePlayer(p)) return;
       position.value = pos;
       MusicStateService().updateMusicState(position: pos);
 
-      // NO guardar estado continuamente - solo en eventos importantes
-      // (pausa, cambio de canción, cierre de app)
+      // Ventana de crossfade (auto-transición al final de la pista)
+      _checkCrossfadeStart(pos);
     });
 
-    player.onDurationChanged.listen((dur) {
+    p.onDurationChanged.listen((dur) {
+      if (!_isActivePlayer(p)) return;
       duration.value = dur;
       MusicStateService().updateMusicState(duration: dur);
     });
 
-    player.onPlayerStateChanged.listen((state) {
+    p.onPlayerStateChanged.listen((state) {
+      if (!_isActivePlayer(p)) return;
       final wasPlaying = isPlaying.value;
       playerState.value = state;
       // isPlaying ValueNotifier se actualiza aquí, lo que disparará el listener de arriba
@@ -88,6 +112,9 @@ class GlobalMusicPlayer {
 
       // Cuando la canción termina, llamar al callback
       if (state == PlayerState.completed) {
+        // Durante un crossfade la pista saliente llega a completed: la
+        // transición la maneja el timer del fade, NO onSongComplete.
+        if (_isCrossfading) return;
         onSongComplete?.call(
           currentIndex.value,
           loopMode.value,
@@ -109,6 +136,8 @@ class GlobalMusicPlayer {
       final savedShuffle = prefs.getBool('isShuffle') ?? false;
       final savedVolume = prefs.getDouble('volume') ?? 1.0;
       final savedLyricsVisible = prefs.getBool('lyricsVisible') ?? false;
+      _crossfadeDuration =
+          (prefs.getDouble('crossfade_duration') ?? 0.0).clamp(0.0, 12.0);
 
       loopMode.value = LoopMode.values.firstWhere(
         (e) => e.toString().split('.').last == savedLoopMode,
@@ -418,10 +447,28 @@ class GlobalMusicPlayer {
     }
   }
 
+  /// Pausa el reproductor activo (media keys, SMTC, UI).
+  Future<void> pauseActive() async {
+    _cancelCrossfade();
+    await activePlayer.pause();
+  }
+
+  /// Reanuda el reproductor activo.
+  Future<void> resumeActive() async {
+    await activePlayer.resume();
+  }
+
+  /// Detiene el reproductor activo y limpia cualquier fade en curso.
+  Future<void> stopActive() async {
+    _cancelCrossfade();
+    await activePlayer.stop();
+  }
+
   // Play a playlist
   Future<void> playPlaylist(List<File> files, int initialIndex) async {
     // Stop current playback
-    await player.stop();
+    _cancelCrossfade();
+    await activePlayer.stop();
 
     // Update global list
     filesList.value = files;
@@ -536,6 +583,141 @@ class GlobalMusicPlayer {
     return index;
   }
 
+  // --- Crossfade (adaptado de forawn_mobile AudioPlayerService) ---
+
+  /// Duración del crossfade en segundos (0 = desactivado). Persistida en
+  /// SharedPreferences con la clave `crossfade_duration` (igual que móvil).
+  double _crossfadeDuration = 0.0;
+
+  /// Ajusta la duración del crossfade en caliente y la persiste.
+  Future<void> setCrossfadeDuration(double seconds) async {
+    _crossfadeDuration = seconds.clamp(0.0, 12.0);
+    if (_crossfadeDuration <= 0) _cancelCrossfade();
+    try {
+      final prefs = _prefs ?? await SharedPreferences.getInstance();
+      _prefs = prefs;
+      await prefs.setDouble('crossfade_duration', _crossfadeDuration);
+    } catch (e) {
+      debugPrint('[GlobalMusicPlayer] Error saving crossfade: $e');
+    }
+    debugPrint(
+      '[GlobalMusicPlayer] Crossfade duration set to $_crossfadeDuration s',
+    );
+  }
+
+  void _checkCrossfadeStart(Duration pos) {
+    if (_crossfadeDuration <= 0 || _isCrossfading || _isSkipping) return;
+    final dur = duration.value;
+    // audioplayers no siempre reporta duración al instante; exigir > 0.
+    if (dur <= Duration.zero) return;
+
+    final startAt = dur - Duration(milliseconds: (_crossfadeDuration * 1000).round());
+    if (pos >= startAt && pos < dur) {
+      _startCrossfade();
+    }
+  }
+
+  Future<void> _startCrossfade() async {
+    if (_isCrossfading || _crossfadeDuration <= 0) return;
+    if (filesList.value.isEmpty) return;
+
+    // Calcular el índice siguiente con la MISMA lógica de navegación.
+    final current = currentIndex.value ?? -1;
+    int nextIdx;
+    if (isShuffle.value) {
+      nextIdx = _getNextShuffleIndex();
+    } else {
+      nextIdx = current + 1;
+      if (nextIdx >= filesList.value.length) {
+        if (loopMode.value == LoopMode.all) {
+          nextIdx = 0;
+        } else {
+          return; // Fin de la lista: dejar que onSongComplete decida.
+        }
+      }
+    }
+    // No crossfade si la siguiente es la misma pista (loop one / 1 canción).
+    if (nextIdx == current) return;
+
+    final outgoing = activePlayer;
+    final incoming = _usingPrimaryPlayer ? _nextPlayer : player;
+    final nextFile = filesList.value[nextIdx] as File;
+
+    _isCrossfading = true;
+    debugPrint(
+      '[Crossfade] Starting ${_crossfadeDuration}s fade -> ${nextFile.uri.pathSegments.last}',
+    );
+
+    try {
+      // Precargar y arrancar la siguiente pista silenciosa.
+      await incoming.play(DeviceFileSource(nextFile.path));
+      await incoming.setVolume(0.0);
+
+      // Promover a la siguiente pista como activa YA: los notifiers globales
+      // (UI, Discord, media session) reflejan la nueva canción durante el fade.
+      _usingPrimaryPlayer = !_usingPrimaryPlayer;
+      currentIndex.value = nextIdx;
+      currentFilePath.value = nextFile.path;
+      transitionDirection.value = 1;
+      if (onMetadataNeeded != null) onMetadataNeeded!(nextFile.path);
+      await LocalMusicDatabase().addToHistory(nextFile.path);
+      playedIndices.add(nextIdx);
+
+      final steps = 20;
+      final stepMs = (_crossfadeDuration * 1000) ~/ steps;
+      var step = 0;
+      _fadeTimer?.cancel();
+      _fadeTimer = Timer.periodic(Duration(milliseconds: stepMs), (timer) async {
+        if (!_isCrossfading) {
+          timer.cancel();
+          return;
+        }
+        step++;
+        final progress = (step / steps).clamp(0.0, 1.0);
+        try {
+          await incoming.setVolume(progress);
+          await outgoing.setVolume((1.0 - progress).clamp(0.0, 1.0));
+        } catch (_) {
+          // El saliente pudo ya haber terminado; no interrumpe el fade.
+        }
+
+        if (step >= steps) {
+          timer.cancel();
+          try {
+            await outgoing.stop();
+            await outgoing.setVolume(volume.value);
+          } catch (_) {}
+          await incoming.setVolume(volume.value);
+          _isCrossfading = false;
+          debugPrint('[Crossfade] Completed');
+        }
+      });
+    } catch (e) {
+      debugPrint('[Crossfade] Error: $e');
+      _isCrossfading = false;
+      // Reconciliar: el saliente sigue activo.
+      try {
+        await incoming.stop();
+        await incoming.setVolume(volume.value);
+      } catch (_) {}
+    }
+  }
+
+  void _cancelCrossfade() {
+    if (!_isCrossfading) return;
+    _isCrossfading = false;
+    _fadeTimer?.cancel();
+    try {
+      player.setVolume(volume.value);
+      _nextPlayer.setVolume(volume.value);
+      _getInactive().stop();
+    } catch (_) {}
+    debugPrint('[Crossfade] Cancelled');
+  }
+
+  AudioPlayer _getInactive() =>
+      _usingPrimaryPlayer ? _nextPlayer : player;
+
   Future<void> _playFileAtIndex(int index, {bool addToHistory = true}) async {
     final file = filesList.value[index] as File;
 
@@ -571,7 +753,17 @@ class GlobalMusicPlayer {
       currentTitle.value = file.uri.pathSegments.last;
     }
 
-    await player.play(DeviceFileSource(file.path));
+    _isSkipping = true;
+    try {
+      _cancelCrossfade(); // Un skip manual aborta cualquier fade en curso.
+      // Enviar al reproductor ACTIVO: si suena el secundario (crossfade en
+      // curso o previo), reproducir en el primario lo detendría de facto.
+      await activePlayer.stop();
+      await activePlayer.play(DeviceFileSource(file.path));
+      await activePlayer.setVolume(volume.value);
+    } finally {
+      _isSkipping = false;
+    }
     isPlaying.value = true;
     showMiniPlayer.value = true;
   }
@@ -672,7 +864,9 @@ class GlobalMusicPlayer {
     // Guardar automáticamente cambios en volume
     volume.addListener(() {
       saveVolume(volume.value);
-      player.setVolume(volume.value);
+      // Aplicar SOLO al activo: durante un crossfade el fade controla los
+      // volúmenes y al terminar restaura con volume.value.
+      activePlayer.setVolume(volume.value);
     });
 
     // Guardar automáticamente cambios en loopMode

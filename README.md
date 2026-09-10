@@ -4,7 +4,7 @@ Forawn is a cross-platform desktop application for **Windows**, **Linux** and **
 
 The app downloads and manages its own audio/video tools (`yt-dlp` and `ffmpeg`) automatically, so downloads keep working on every platform without manual setup.
 
-Current version: **v1.0.6**
+Current version: **v1.0.8**
 
 ---
 

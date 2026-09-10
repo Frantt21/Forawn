@@ -143,7 +143,7 @@ class _TranslateScreenState extends State<TranslateScreen> with WindowListener {
   }
 
   Future<void> _selectFolder() async {
-    final dir = await FilePicker.platform.getDirectoryPath();
+    final dir = await FilePicker.getDirectoryPath();
     if (dir == null) return;
     _saveFolder = p.normalize(dir);
     try {
@@ -279,7 +279,7 @@ class _TranslateScreenState extends State<TranslateScreen> with WindowListener {
 
     String folder = _saveFolder ?? '';
     if (folder.isEmpty) {
-      final picked = await FilePicker.platform.getDirectoryPath();
+      final picked = await FilePicker.getDirectoryPath();
       if (picked == null) return;
       folder = p.normalize(picked);
       _saveFolder = folder;

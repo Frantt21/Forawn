@@ -112,7 +112,7 @@ class _VideoDownloaderScreenState extends State<VideoDownloaderScreen>
   }
 
   Future<void> _selectDownloadFolder() async {
-    final path = await FilePicker.platform.getDirectoryPath();
+    final path = await FilePicker.getDirectoryPath();
     if (path == null) return;
     _downloadFolder = p.normalize(path);
     _prefs ??= await SharedPreferences.getInstance();
@@ -221,6 +221,60 @@ class _VideoDownloaderScreenState extends State<VideoDownloaderScreen>
     handle(proc.stderr, onStderr, progress: true);
     final code = await proc.exitCode;
     return code;
+  }
+
+  /// Extrae el videoId de una URL de YouTube (watch, youtu.be, shorts, embed).
+  static final RegExp _videoIdRe = RegExp(
+    r'(?:[?&]v=|youtu\.be/|/shorts/|/embed/)([A-Za-z0-9_-]{11})',
+  );
+
+  /// Descarga los bytes de la miniatura probando URLs candidatas en orden.
+  /// Algunas pistas no tienen maxresdefault (404), así que caemos a
+  /// sddefault → hqdefault → mqdefault → la URL que reporte yt-dlp.
+  Future<Uint8List?> _fetchThumbnailBytes(List<String> urls) async {
+    final client = HttpClient();
+    client.connectionTimeout = const Duration(seconds: 8);
+    try {
+      for (final raw in urls) {
+        if (raw.isEmpty) continue;
+        try {
+          final uri = Uri.tryParse(raw);
+          if (uri == null || !uri.isAbsolute) continue;
+          final req = await client.getUrl(uri);
+          final resp = await req.close();
+          if (resp.statusCode == 200) {
+            final bytes = await consolidateHttpClientResponseBytes(resp);
+            if (bytes.lengthInBytes > 1024) return bytes;
+          }
+        } catch (_) {
+          // Prueba la siguiente URL candidata.
+        }
+      }
+    } finally {
+      client.close();
+    }
+    return null;
+  }
+
+  /// Lista de URLs de miniatura candidatas para un vídeo de YouTube, de mayor
+  /// a menor resolución (las basadas en videoId son más fiables que la que
+  /// reporta yt-dlp, que a veces apunta a un webp inexistente).
+  List<String> _thumbnailCandidates(String url, String? ytdlpThumb) {
+    final candidates = <String>[];
+    final m = _videoIdRe.firstMatch(url);
+    final videoId = m?.group(1);
+    if (videoId != null) {
+      candidates.addAll([
+        'https://i.ytimg.com/vi/$videoId/maxresdefault.jpg',
+        'https://i.ytimg.com/vi/$videoId/sddefault.jpg',
+        'https://i.ytimg.com/vi/$videoId/hqdefault.jpg',
+        'https://i.ytimg.com/vi/$videoId/mqdefault.jpg',
+      ]);
+    }
+    if (ytdlpThumb != null && ytdlpThumb.isNotEmpty) {
+      candidates.add(ytdlpThumb);
+    }
+    return candidates;
   }
 
   // --- parse yt-dlp -j output line-by-line and return FIRST valid JSON object ---
@@ -423,21 +477,10 @@ class _VideoDownloaderScreenState extends State<VideoDownloaderScreen>
       final title = (meta['title'] ?? url).toString();
       final thumbUrl = meta['thumbnail'] as String?;
 
-      Uint8List? thumbBytes;
-      if (thumbUrl != null && thumbUrl.isNotEmpty) {
-        try {
-          final uri = Uri.tryParse(thumbUrl);
-          if (uri != null) {
-            final client = HttpClient();
-            final req = await client.getUrl(uri);
-            final resp = await req.close();
-            if (resp.statusCode == 200) {
-              thumbBytes = await consolidateHttpClientResponseBytes(resp);
-            }
-            client.close();
-          }
-        } catch (_) {}
-      }
+      // Miniatura con fallbacks: maxres → sd → hq → mq → la de yt-dlp.
+      final thumbBytes = await _fetchThumbnailBytes(
+        _thumbnailCandidates(url, thumbUrl),
+      );
 
       setState(() {
         _videoTitle = title;
@@ -448,6 +491,9 @@ class _VideoDownloaderScreenState extends State<VideoDownloaderScreen>
       });
 
       // Probe formats and update ValueNotifier as results arrive.
+      // IMPORTANTE: _probingFormats se apaga ANTES de actualizar el notifier,
+      // para que el diálogo (que reacciona al notifier) ya vea el flag en
+      // false cuando reconstruya y habilite el botón de descarga.
       unawaited(
         _probeFormats(url, (s) {})
             .then((formats) {
@@ -461,18 +507,18 @@ class _VideoDownloaderScreenState extends State<VideoDownloaderScreen>
               }
               _formats = formats;
               _formatLabels = labels;
-              _formatLabelsNotifier.value = Map<String, String>.from(labels);
               setState(() {
                 _probingFormats = false;
               });
+              _formatLabelsNotifier.value = Map<String, String>.from(labels);
             })
             .catchError((_) {
               _formats = [];
               _formatLabels = {};
-              _formatLabelsNotifier.value = {};
               setState(() {
                 _probingFormats = false;
               });
+              _formatLabelsNotifier.value = {};
             }),
       );
 
@@ -500,67 +546,79 @@ class _VideoDownloaderScreenState extends State<VideoDownloaderScreen>
       builder: (ctx) {
         return StatefulBuilder(
           builder: (ctx2, setStateDialog) {
-            return AlertDialog(
-              backgroundColor: const Color(0xFF1C1C1E),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(16),
-              ),
-              title: Text(
-                widget.getText(
-                  'choose_resolution',
-                  fallback: 'Choose resolution',
-                ),
-                style: const TextStyle(color: Colors.white),
-              ),
-              content: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  if (_videoTitle != null)
-                    Padding(
-                      padding: const EdgeInsets.only(bottom: 8),
-                      child: Row(
-                        children: [
-                          if (_thumbnailBytes != null)
-                            Container(
-                              width: 100,
-                              height: 56,
-                              color: Theme.of(context).cardTheme.color,
-                              child: Image.memory(
-                                _thumbnailBytes!,
-                                fit: BoxFit.cover,
-                              ),
-                            )
-                          else
-                            Container(
-                              width: 100,
-                              height: 56,
-                              color: Theme.of(context).cardTheme.color,
-                              child: Icon(
-                                Icons.image,
-                                color: Theme.of(
-                                  context,
-                                ).iconTheme.color?.withOpacity(0.24),
-                              ),
-                            ),
-                          const SizedBox(width: 8),
-                          Expanded(
-                            child: Text(
-                              _videoTitle!,
-                              style: const TextStyle(
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
+            // El AlertDialog completo vive dentro del ValueListenableBuilder:
+            // así el dropdown Y las actions (incluido el botón Download) se
+            // reconstruyen cuando termina el sondeo de formatos.
+            return ValueListenableBuilder<Map<String, String>>(
+              valueListenable: _formatLabelsNotifier,
+              builder: (ctx3, labels, _) {
+                final probing = _probingFormats;
+                // Formato por defecto en cuanto llegan las etiquetas.
+                if (labels.isNotEmpty &&
+                    (chosenFormat == null || !labels.containsKey(chosenFormat))) {
+                  chosenFormat = labels.keys.first;
+                }
+                return AlertDialog(
+                  backgroundColor: const Color(0xFF1C1C1E),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(16),
+                  ),
+                  title: Text(
+                    widget.getText(
+                      'choose_resolution',
+                      fallback: 'Choose resolution',
                     ),
-                  const SizedBox(height: 6),
-                  // Reactive dropdown: updates when _formatLabelsNotifier changes
-                  ValueListenableBuilder<Map<String, String>>(
-                    valueListenable: _formatLabelsNotifier,
-                    builder: (ctx3, labels, _) {
-                      if (_probingFormats && labels.isEmpty) {
-                        return Row(
+                    style: const TextStyle(color: Colors.white),
+                  ),
+                  content: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      if (_videoTitle != null)
+                        Padding(
+                          padding: const EdgeInsets.only(bottom: 8),
+                          child: Row(
+                            children: [
+                              Container(
+                                width: 100,
+                                height: 56,
+                                color: Theme.of(context).cardTheme.color,
+                                child: _thumbnailBytes != null
+                                    ? Image.memory(
+                                        _thumbnailBytes!,
+                                        fit: BoxFit.cover,
+                                      )
+                                    : Center(
+                                        child: SizedBox(
+                                          width: 20,
+                                          height: 20,
+                                          child: probing
+                                              ? const CircularProgressIndicator(
+                                                  strokeWidth: 2)
+                                              : Icon(
+                                                  Icons.image,
+                                                  color: Theme.of(context)
+                                                      .iconTheme
+                                                      .color
+                                                      ?.withOpacity(0.24),
+                                                ),
+                                        ),
+                                      ),
+                              ),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: Text(
+                                  _videoTitle!,
+                                  style: const TextStyle(
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      const SizedBox(height: 6),
+                      if (probing && labels.isEmpty)
+                        Row(
                           children: [
                             const CircularProgressIndicator(strokeWidth: 2),
                             const SizedBox(width: 8),
@@ -571,10 +629,9 @@ class _VideoDownloaderScreenState extends State<VideoDownloaderScreen>
                               ),
                             ),
                           ],
-                        );
-                      }
-                      if (labels.isEmpty) {
-                        return Padding(
+                        )
+                      else if (labels.isEmpty)
+                        Padding(
                           padding: const EdgeInsets.only(top: 8),
                           child: Text(
                             widget.getText(
@@ -582,46 +639,50 @@ class _VideoDownloaderScreenState extends State<VideoDownloaderScreen>
                               fallback: 'No formats available',
                             ),
                           ),
-                        );
-                      }
-                      // ensure chosenFormat has a sensible default
-                      if (chosenFormat == null ||
-                          !labels.containsKey(chosenFormat)) {
-                        chosenFormat = labels.keys.first;
-                      }
-                      return ClipRRect(
-                        borderRadius: BorderRadius.circular(10),
-                        child: DropdownButton<String>(
-                          isExpanded: true,
-                          value: chosenFormat,
-                          dropdownColor: Colors.grey[900],
-                          items: labels.entries.map((e) {
-                            return DropdownMenuItem<String>(
-                              value: e.key,
-                              child: Text(
-                                e.value,
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                            );
-                          }).toList(),
-                          onChanged: (v) =>
-                              setStateDialog(() => chosenFormat = v),
+                        )
+                      else
+                        ClipRRect(
+                          borderRadius: BorderRadius.circular(10),
+                          child: DropdownButton<String>(
+                            isExpanded: true,
+                            value: chosenFormat,
+                            dropdownColor: Colors.grey[900],
+                            items: labels.entries.map((e) {
+                              return DropdownMenuItem<String>(
+                                value: e.key,
+                                child: Text(
+                                  e.value,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              );
+                            }).toList(),
+                            onChanged: (v) =>
+                                setStateDialog(() => chosenFormat = v),
+                          ),
                         ),
-                      );
-                    },
+                    ],
                   ),
-                ],
-              ),
-              actions: [
-                TextButton(
-                  onPressed: () => Navigator.of(ctx).pop(false),
-                  child: Text(widget.getText('cancel', fallback: 'Cancel')),
-                ),
-                ElevatedButton(
-                  onPressed: () => Navigator.of(ctx).pop(true),
-                  child: Text(widget.getText('download', fallback: 'Download')),
-                ),
-              ],
+                  actions: [
+                    TextButton(
+                      onPressed: () => Navigator.of(ctx).pop(false),
+                      child: Text(
+                        widget.getText('cancel', fallback: 'Cancel'),
+                      ),
+                    ),
+                    ElevatedButton(
+                      // Deshabilitado mientras se sondean formatos o cuando no
+                      // hay ninguno seleccionable, para no encolar sin formato.
+                      onPressed:
+                          (probing || labels.isEmpty || chosenFormat == null)
+                              ? null
+                              : () => Navigator.of(ctx).pop(true),
+                      child: Text(
+                        widget.getText('download', fallback: 'Download'),
+                      ),
+                    ),
+                  ],
+                );
+              },
             );
           },
         );

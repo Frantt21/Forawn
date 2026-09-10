@@ -97,15 +97,15 @@ class WindowMediaService {
 
       switch (event) {
         case PressedButton.play:
-          _player.player.resume();
+          _player.resumeActive();
           _smtc?.setPlaybackStatus(PlaybackStatus.playing);
           break;
         case PressedButton.pause:
-          _player.player.pause();
+          _player.pauseActive();
           _smtc?.setPlaybackStatus(PlaybackStatus.paused);
           break;
         case PressedButton.stop:
-          _player.player.stop();
+          _player.stopActive();
           _smtc?.setPlaybackStatus(PlaybackStatus.stopped);
           break;
         case PressedButton.next:

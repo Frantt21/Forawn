@@ -3,12 +3,13 @@ import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
 import 'package:flutter/foundation.dart';
+import 'package:http/http.dart' as http;
 import 'package:path/path.dart' as p;
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/download_task.dart';
 
+import 'local_music_database.dart';
 import 'lyrics_service.dart';
-import 'metadata_service.dart';
 import 'tools_service.dart';
 
 class DownloadManager extends ChangeNotifier {
@@ -425,140 +426,15 @@ class DownloadManager extends ChangeNotifier {
       debugPrint('[DownloadManager] yt-dlp produced file: ${found.path}');
 
       if (p.extension(found.path).toLowerCase() == '.mp3') {
-        // Intentar enriquecer metadatos con Spotify
-        try {
-          debugPrint(
-            '[DownloadManager] Attempting to enrich metadata from Spotify',
-          );
-
-          // El título de Spotify siempre viene como "Artista - Título"
-          // Extraemos la parte después del " - " que es el título real
-          String searchTitle = t.title;
-
-          if (searchTitle.contains(' - ')) {
-            final parts = searchTitle.split(' - ');
-            // Tomar la última parte (después del último " - ")
-            searchTitle = parts.last.trim();
-          }
-
-          debugPrint('[DownloadManager] Searching Spotify for: $searchTitle');
-
-          // Buscar solo con el título de la canción
-          final spotifyMetadata = await MetadataService().searchMetadata(
-            searchTitle,
-            null, // No pasar artista para búsqueda más amplia
-          );
-
-          if (spotifyMetadata != null) {
-            debugPrint(
-              '[DownloadManager] Found Spotify metadata: ${spotifyMetadata.title} by ${spotifyMetadata.artist}',
-            );
-
-            // Usar ffmpeg para escribir metadatos
-            final ffmpegExe = ToolsService().ffmpegPath;
-            if (File(ffmpegExe).existsSync()) {
-              final tempPath = '${found.path}.temp.mp3';
-
-              final args = [
-                '-i',
-                found.path,
-                '-c',
-                'copy',
-                '-metadata',
-                'title=${spotifyMetadata.title}',
-                '-metadata',
-                'artist=${spotifyMetadata.artist}',
-                '-metadata',
-                'album=${spotifyMetadata.album}',
-                if (spotifyMetadata.year != null) '-metadata',
-                if (spotifyMetadata.year != null)
-                  'date=${spotifyMetadata.year}',
-                if (spotifyMetadata.trackNumber != null) '-metadata',
-                if (spotifyMetadata.trackNumber != null)
-                  'track=${spotifyMetadata.trackNumber}',
-                '-y',
-                tempPath,
-              ];
-
-              debugPrint('[DownloadManager] Writing metadata with ffmpeg');
-              final result = await Process.run(ffmpegExe, args);
-
-              if (result.exitCode == 0) {
-                // Reemplazar archivo original con el que tiene metadatos
-                await File(found.path).delete();
-                await File(tempPath).rename(found.path);
-                debugPrint('[DownloadManager] Metadata written successfully');
-
-                // Descargar y escribir portada si está disponible
-                if (spotifyMetadata.albumArtUrl != null) {
-                  try {
-                    debugPrint('[DownloadManager] Downloading album art');
-                    final artworkBytes = await MetadataService()
-                        .downloadAlbumArt(spotifyMetadata.albumArtUrl);
-
-                    if (artworkBytes != null) {
-                      final artworkPath = '${found.path}.jpg';
-                      await File(artworkPath).writeAsBytes(artworkBytes);
-
-                      final tempPath2 = '${found.path}.temp2.mp3';
-                      final artArgs = [
-                        '-i',
-                        found.path,
-                        '-i',
-                        artworkPath,
-                        '-map',
-                        '0:0',
-                        '-map',
-                        '1:0',
-                        '-c',
-                        'copy',
-                        '-id3v2_version',
-                        '3',
-                        '-metadata:s:v',
-                        'title=Album cover',
-                        '-metadata:s:v',
-                        'comment=Cover (front)',
-                        '-y',
-                        tempPath2,
-                      ];
-
-                      final artResult = await Process.run(ffmpegExe, artArgs);
-                      if (artResult.exitCode == 0) {
-                        await File(found.path).delete();
-                        await File(tempPath2).rename(found.path);
-                        debugPrint(
-                          '[DownloadManager] Album art embedded successfully',
-                        );
-                      }
-
-                      // Limpiar archivo temporal de artwork
-                      try {
-                        await File(artworkPath).delete();
-                      } catch (_) {}
-                    }
-                  } catch (e) {
-                    debugPrint(
-                      '[DownloadManager] Error embedding album art: $e',
-                    );
-                  }
-                }
-              } else {
-                debugPrint('[DownloadManager] ffmpeg failed: ${result.stderr}');
-                // Limpiar archivo temporal si falló
-                try {
-                  if (File(tempPath).existsSync()) {
-                    await File(tempPath).delete();
-                  }
-                } catch (_) {}
-              }
-            }
-          } else {
-            debugPrint('[DownloadManager] No Spotify metadata found');
-          }
-        } catch (e) {
-          debugPrint('[DownloadManager] Error enriching metadata: $e');
-        }
-
+        // Los metadatos (título, artista, álbum, fecha) ya vienen incrustados
+        // por yt-dlp desde Innertube/YouTube vía ffmpeg (--embed-metadata
+        // --parse-metadata). No se sobrescriben con Deezer/Spotify.
+        //
+        // La miniatura del vídeo suele ser 16:9 y se ve recortada en
+        // contenedores cuadrados: reemplazarla por el artwork CUADRADO de
+        // YT Music (t.image, w1200-h1200) cuando esté disponible.
+        await _embedSquareCoverIfAvailable(found.path, t.image);
+        await _invalidatePlayerMetadataCache(found.path);
         await _updateTask(
           t,
           localPath: found.path,
@@ -604,6 +480,7 @@ class DownloadManager extends ChangeNotifier {
             );
           }
           final outp = p.join(downloadFolder, '$safeBase.mp3');
+          await _invalidatePlayerMetadataCache(outp);
           await _updateTask(
             t,
             localPath: outp,
@@ -627,6 +504,7 @@ class DownloadManager extends ChangeNotifier {
           throw Exception('conversion failed');
         }
       } else {
+        await _invalidatePlayerMetadataCache(found.path);
         await _updateTask(
           t,
           localPath: found.path,
@@ -876,13 +754,28 @@ class DownloadManager extends ChangeNotifier {
       'User-Agent: Mozilla/5.0',
       '--add-header',
       'Referer: https://www.youtube.com',
-      // Embeber metadatos en el archivo
+      // Embeber metadatos de Innertube/YouTube en el archivo mediante ffmpeg.
+      //
+      // Estrategia (verificada empíricamente):
+      //  1. artist <= canal de YouTube (fuente más confiable)
+      //  2. Si el título trae "Artista - Canción" (o con – — |), extraer ambos;
+      //     si no matchea, se conservan artist=canal y title=titulo crudo.
+      //  3. Limpiar sufijos de canales tipo "- Topic" y ruido del título
+      //     (Official Video, Lyric Video, HD, 4K, Remaster, MV, etc.)
       '--embed-metadata',
       '--embed-thumbnail',
       '--convert-thumbnails', 'jpg',
-      // Parsear título para extraer artista y canción
-      '--parse-metadata', 'title:%(artist)s - %(title)s',
-      '--parse-metadata', 'title:%(title)s',
+      '--parse-metadata', r'channel:(?P<artist>.*)',
+      '--parse-metadata',
+      r'title:(?P<artist>[^-|]+?)\s+[-–—|]\s+(?P<title>.+)',
+      '--replace-in-metadata', 'artist',
+      r'\s*[-–—]?\s*(Topic|VEVO|Official)\s*$',
+      '',
+      '--replace-in-metadata', 'title',
+      r'\s*[([][^)\]]*([Oo]fficial|[Ll]yric|[Aa]udio [Vv]ersion|[Aa]udio|[Vv]ideo|[Hh][Dd]|4K|[Rr]emaster|[Ee]xplicit|[Vv]isualizer|MV|M/V)[^)\]]*[)]\]\s*',
+      ' ',
+      '--replace-in-metadata', 'title', r'^\s+|\s+$', '',
+      '--replace-in-metadata', 'title', r'\s{2,}', ' ',
     ];
 
     if (extractAudio && File(ffmpegExe).existsSync()) {
@@ -971,6 +864,97 @@ class DownloadManager extends ChangeNotifier {
     );
     debugPrint('[DownloadManager] ffmpeg exitCode=$exitCode for task $taskId');
     return exitCode == 0;
+  }
+
+  /// Descarga el artwork cuadrado (YT Music, w1200-h1200) y lo incrusta como
+  /// portada del MP3 en reemplazo de la miniatura 16:9 que yt-dlp incrustó.
+  /// Silencioso: si algo falla, se conserva la portada de yt-dlp.
+  Future<void> _embedSquareCoverIfAvailable(
+    String filePath,
+    String imageUrl,
+  ) async {
+    if (imageUrl.isEmpty) return;
+
+    File? tempCover;
+    File? tempOut;
+    try {
+      final ffmpegExe = ToolsService().ffmpegPath;
+      if (!File(ffmpegExe).existsSync()) return;
+
+      // Descargar el artwork cuadrado.
+      final client = http.Client();
+      try {
+        final res = await client
+            .get(Uri.parse(imageUrl))
+            .timeout(const Duration(seconds: 12));
+        if (res.statusCode != 200 || res.bodyBytes.isEmpty) return;
+        // Descartar respuestas que no sean imagen (p. ej. HTML de error).
+        if (res.bodyBytes.length < 1024) return;
+        tempCover = File(
+          '${Directory.systemTemp.path}/cover_${DateTime.now().millisecondsSinceEpoch}.jpg',
+        );
+        await tempCover.writeAsBytes(res.bodyBytes);
+      } finally {
+        client.close();
+      }
+
+      tempOut = File('$filePath.square.mp3');
+      final args = [
+        '-hide_banner',
+        '-loglevel',
+        'error',
+        '-i', filePath,
+        '-i', tempCover.path,
+        '-map', '0:a',
+        '-map', '1:0',
+        '-c', 'copy',
+        '-id3v2_version', '3',
+        '-metadata:s:v', 'title=Album cover',
+        '-metadata:s:v', 'comment=Cover (front)',
+        '-y',
+        tempOut.path,
+      ];
+
+      final result = await Process.run(ffmpegExe, args);
+      if (result.exitCode != 0 || !tempOut.existsSync()) {
+        debugPrint(
+          '[DownloadManager] square cover embed failed: ${result.stderr}',
+        );
+        return;
+      }
+
+      // Reemplazar el original por la versión con portada cuadrada.
+      final original = File(filePath);
+      await original.delete();
+      await tempOut.rename(filePath);
+      debugPrint('[DownloadManager] square cover embedded: $imageUrl');
+    } catch (e) {
+      debugPrint('[DownloadManager] _embedSquareCoverIfAvailable error: $e');
+    } finally {
+      try {
+        if (tempCover != null && tempCover.existsSync()) {
+          tempCover.deleteSync();
+        }
+        if (tempOut != null && tempOut.existsSync()) {
+          tempOut.deleteSync();
+        }
+      } catch (_) {}
+    }
+  }
+
+  /// Invalida la caché de metadatos del reproductor para un archivo, de modo
+  /// que la próxima lectura tome los tags recién incrustados por ffmpeg.
+  Future<void> _invalidatePlayerMetadataCache(String filePath) async {
+    try {
+      await LocalMusicDatabase().invalidateMetadata(filePath);
+      debugPrint(
+        '[DownloadManager] player metadata cache invalidated for $filePath',
+      );
+    } catch (e) {
+      debugPrint(
+        '[DownloadManager] could not invalidate player metadata cache: $e',
+      );
+    }
   }
 
   /// Descarga lyrics en segundo plano sin bloquear

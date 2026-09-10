@@ -926,8 +926,7 @@ class _PlayerScreenState extends State<PlayerScreen> with WindowListener {
               children: [
                 GestureDetector(
                   onTap: () async {
-                    FilePickerResult? result = await FilePicker.platform
-                        .pickFiles(type: FileType.image);
+                    FilePickerResult? result = await FilePicker.pickFiles(type: FileType.image);
                     if (result != null) {
                       setDialogState(() {
                         selectedImagePath = result.files.single.path;
@@ -1119,9 +1118,9 @@ class _PlayerScreenState extends State<PlayerScreen> with WindowListener {
 
   void _togglePlayPause() async {
     if (_musicPlayer.isPlaying.value) {
-      await _player.pause();
+      await _musicPlayer.pauseActive();
     } else {
-      await _player.resume();
+      await _musicPlayer.resumeActive();
     }
   }
 

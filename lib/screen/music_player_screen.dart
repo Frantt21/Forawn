@@ -362,8 +362,8 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen>
 
         // Stop & Play (handling audio)
         // We don't await stop() strictly before setting UI state to make it feel snappier
-        _musicPlayer.player.stop().then((_) async {
-          await _musicPlayer.player.play(DeviceFileSource(file.path));
+        _musicPlayer.stopActive().then((_) async {
+          await _musicPlayer.activePlayer.play(DeviceFileSource(file.path));
         });
 
         // Add history in background
@@ -496,7 +496,7 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen>
 
   Future<void> _selectFolder() async {
     try {
-      final result = await FilePicker.platform.getDirectoryPath();
+      final result = await FilePicker.getDirectoryPath();
 
       if (result == null) return;
 
@@ -514,7 +514,10 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen>
     }
   }
 
-  Future<void> _showLoadingDialog(String folderPath) async {
+  /// Diálogo de carga de librería (mismo que al importar una carpeta):
+  /// progreso circular con porcentaje, fases de metadatos/colores y cancelar.
+  /// Devuelve true si terminó normalmente, false si se canceló o falló.
+  Future<bool> _showLoadingDialog(String folderPath) async {
     final ValueNotifier<int> processedFiles = ValueNotifier(0);
     final ValueNotifier<int> totalFiles = ValueNotifier(0);
     bool cancelled = false;
@@ -665,12 +668,18 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen>
 
           debugPrint('[MusicPlayer] Library reloaded: ${_files.length} files');
           Navigator.of(context).pop();
+          processedFiles.dispose();
+          totalFiles.dispose();
+          return true;
         }
       }
     } catch (e) {
       debugPrint('[MusicPlayer] Error loading library: $e');
       if (mounted) Navigator.of(context).pop();
     }
+    processedFiles.dispose();
+    totalFiles.dispose();
+    return false;
   }
 
   Future<void> _loadFiles(String folderPath) async {
@@ -829,7 +838,7 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen>
     if (_isPlaying) {
       // Pausar
       debugPrint('[MusicPlayer] Pausing...');
-      _player.pause();
+      _musicPlayer.pauseActive();
       // Remove manual update to let listener handle it and trigger save
       // _musicPlayer.isPlaying.value = false;
 
@@ -869,7 +878,7 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen>
 
             // Reanudar directamente para conservar la posición guardada
             // NO llamar a _playFile porque eso reinicia la canción
-            _player.resume();
+            _musicPlayer.resumeActive();
 
             // Forzar actualización de estado por si acaso
             MusicStateService().updateMusicState(isPlaying: true);
@@ -886,7 +895,7 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen>
       } else {
         // Si hay canción en pausa, reanudar
         debugPrint('[MusicPlayer] Resuming...');
-        _player.resume();
+        _musicPlayer.resumeActive();
         // Remove manual update to let listener handle it
         // _musicPlayer.isPlaying.value = true;
 
@@ -1185,13 +1194,31 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen>
                         if (value == 'reload_colors') {
                           _reloadMissingColors();
                         } else if (value == 'reload_library') {
-                          await _musicPlayer.refreshLibrary();
-                          // Force state update
-                          if (mounted) {
-                            setState(() {
-                              _files = _musicPlayer.filesList.value;
-                              _filteredFiles = _files;
-                            });
+                          // Mismo diálogo de progreso que al importar una
+                          // carpeta (fases de metadatos y colores, con
+                          // cancelación), para no congelar el UI.
+                          final folder = await SharedPreferences.getInstance()
+                              .then((p) => p.getString('download_folder'));
+                          if (folder == null || folder.isEmpty) {
+                            if (mounted) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(
+                                  content: Text(
+                                    widget.getText(
+                                      'no_folder_configured',
+                                      fallback:
+                                          'No hay carpeta configurada',
+                                    ),
+                                  ),
+                                  backgroundColor:
+                                      const Color(0xFF2C2C2E),
+                                ),
+                              );
+                            }
+                            return;
+                          }
+                          final ok = await _showLoadingDialog(folder);
+                          if (ok && mounted) {
                             ScaffoldMessenger.of(context).showSnackBar(
                               SnackBar(
                                 content: Text(
@@ -2366,8 +2393,7 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen>
               children: [
                 GestureDetector(
                   onTap: () async {
-                    FilePickerResult? result = await FilePicker.platform
-                        .pickFiles(type: FileType.image);
+                    FilePickerResult? result = await FilePicker.pickFiles(type: FileType.image);
                     if (result != null) {
                       setDialogState(() {
                         selectedImagePath = result.files.single.path;

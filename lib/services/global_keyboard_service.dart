@@ -164,9 +164,9 @@ class GlobalKeyboardService {
 
     try {
       // Detener antes de reproducir para evitar errores de MediaEngine en Windows
-      await _musicPlayer.player.stop();
+      await _musicPlayer.stopActive();
 
-      await _musicPlayer.player.play(DeviceFileSource(file.path));
+      await _musicPlayer.activePlayer.play(DeviceFileSource(file.path));
       _musicPlayer.currentIndex.value = index;
       _musicPlayer.currentFilePath.value = file.path;
       _musicPlayer.filesList.value = _files!;
@@ -280,13 +280,13 @@ class GlobalKeyboardService {
     print('[GlobalKeyboardService] Play/Pause pressed');
     if (_musicPlayer.isPlaying.value) {
       print('[GlobalKeyboardService] Pausing');
-      _musicPlayer.player.pause();
+      _musicPlayer.pauseActive();
       // El listener onPlayerStateChanged actualizará isPlaying.value
     } else {
       final currentIndex = _musicPlayer.currentIndex.value;
       if (currentIndex != null) {
         print('[GlobalKeyboardService] Resuming from index $currentIndex');
-        _musicPlayer.player.resume();
+        _musicPlayer.resumeActive();
         // El listener onPlayerStateChanged actualizará isPlaying.value
       } else if (_files != null && _files!.isNotEmpty) {
         // Si no hay índice actual pero hay archivos, reproducir el primero

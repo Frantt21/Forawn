@@ -104,17 +104,17 @@ class NativeMediaService extends BaseAudioHandler {
 
   @override
   Future<void> play() async {
-    await _player.player.resume();
+    await _player.resumeActive();
   }
 
   @override
   Future<void> pause() async {
-    await _player.player.pause();
+    await _player.pauseActive();
   }
 
   @override
   Future<void> stop() async {
-    await _player.player.stop();
+    await _player.stopActive();
   }
 
   @override
@@ -131,6 +131,6 @@ class NativeMediaService extends BaseAudioHandler {
 
   @override
   Future<void> seek(Duration position) async {
-    await _player.player.seek(position);
+    await _player.activePlayer.seek(position);
   }
 }
