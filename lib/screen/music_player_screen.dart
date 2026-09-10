@@ -65,17 +65,39 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen>
 
   final TextEditingController _searchController = TextEditingController();
 
+  /// Elimina tildes/diacríticos para que la búsqueda sea insensible a ellos
+  /// (á->a, é->e, ñ->n, ü->u, etc.) sin necesidad de dependencias externas.
+  static const Map<String, String> _accentMap = {
+    'á': 'a', 'à': 'a', 'ä': 'a', 'â': 'a', 'ã': 'a', 'å': 'a',
+    'é': 'e', 'è': 'e', 'ë': 'e', 'ê': 'e',
+    'í': 'i', 'ì': 'i', 'ï': 'i', 'î': 'i',
+    'ó': 'o', 'ò': 'o', 'ö': 'o', 'ô': 'o', 'õ': 'o', 'ø': 'o',
+    'ú': 'u', 'ù': 'u', 'ü': 'u', 'û': 'u',
+    'ñ': 'n', 'ç': 'c', 'ý': 'y', 'ÿ': 'y', 'š': 's', 'ž': 'z',
+    'œ': 'oe', 'æ': 'ae', 'đ': 'd', 'ł': 'l',
+  };
+
+  static String _stripAccents(String input) {
+    final buffer = StringBuffer();
+    for (final char in input.runes) {
+      final ch = String.fromCharCode(char);
+      final lower = ch.toLowerCase();
+      buffer.write(_accentMap[lower] ?? lower);
+    }
+    return buffer.toString();
+  }
+
   void _filterFiles(String query) {
-    final lowerQuery = query.toLowerCase().trim();
+    final normalizedQuery = _stripAccents(query.trim());
     setState(() {
-      if (lowerQuery.isEmpty) {
+      if (normalizedQuery.isEmpty) {
         _filteredFiles = _files;
       } else {
-        final tokens = lowerQuery
+        final tokens = normalizedQuery
             .split(RegExp(r'\s+'))
             .where((t) => t.isNotEmpty);
         _filteredFiles = _files.where((file) {
-          final name = p.basename(file.path).toLowerCase();
+          final name = _stripAccents(p.basename(file.path));
           // Check if ALL tokens are present in the filename
           return tokens.every((token) => name.contains(token));
         }).toList();
@@ -1100,6 +1122,7 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen>
                           child: TextField(
                             controller: _searchController,
                             autofocus: true,
+                            keyboardType: TextInputType.text,
                             style: const TextStyle(color: Colors.white),
                             decoration: InputDecoration(
                               hintText: widget.getText(
@@ -1168,16 +1191,14 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen>
                         ),
                       ),
 
-                    // Search Button (only when not searching)
-                    if (!_isSearching)
+                    // Search Button — solo visible y activo en el tab de Library
+                    if (!_isSearching && _tabIndex == 1)
                       IconButton(
                         icon: const Icon(Icons.search, color: Colors.white70),
                         tooltip: widget.getText('search', fallback: 'Buscar'),
                         onPressed: () {
                           setState(() {
                             _isSearching = true;
-                            // Switch to Library tab if not already there, as search applies to library usually
-                            if (_tabIndex != 1) _tabIndex = 1;
                           });
                         },
                       ),
@@ -1697,6 +1718,7 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen>
         future: LocalMusicDatabase().getDominantColor(filePath),
         builder: (context, colorSnapshot) {
           final dominantColor = colorSnapshot.data;
+          final accentColor = GlobalThemeService().dominantColor.value;
           final currentFilePath = GlobalMusicPlayer().currentFilePath.value;
           final isCurrentSong = currentFilePath == filePath;
           final isPlaying =
@@ -1772,18 +1794,32 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen>
                           mainAxisAlignment: MainAxisAlignment.end,
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Text(
-                              title,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: const TextStyle(
-                                fontWeight: FontWeight.bold,
-                                fontSize: 13,
-                                color: Colors.white,
-                                shadows: [
-                                  Shadow(blurRadius: 2, color: Colors.black),
-                                ],
-                              ),
+                            Row(
+                              children: [
+                                Expanded(
+                                  child: Text(
+                                    title,
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: TextStyle(
+                                      fontWeight: FontWeight.bold,
+                                      fontSize: 13,
+                                      color: accentColor?.withOpacity(1.0) ?? Colors.white,
+                                      shadows: [
+                                        Shadow(blurRadius: 2, color: Colors.black),
+                                      ],
+                                    ),
+                                  ),
+                                ),
+                                if (isCurrentSong && GlobalMusicPlayer().isPlaying.value)
+                                  Padding(
+                                    padding: const EdgeInsets.only(left: 6),
+                                    child: _AnimatedAudioBars(
+                                      size: 14,
+                                      playing: GlobalMusicPlayer().isPlaying.value,
+                                    ),
+                                  ),
+                              ],
                             ),
                             const SizedBox(height: 2),
                             Text(
@@ -1801,6 +1837,22 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen>
                           ],
                         ),
                       ),
+                      if (isCurrentSong && GlobalMusicPlayer().isPlaying.value)
+                        Positioned(
+                          bottom: 8,
+                          right: 8,
+                          child: Container(
+                            padding: const EdgeInsets.all(4),
+                            decoration: BoxDecoration(
+                              color: accentColor?.withOpacity(0.25) ?? Colors.purpleAccent.withOpacity(0.25),
+                              shape: BoxShape.circle,
+                            ),
+                            child: _AnimatedAudioBars(
+                              size: 14,
+                              playing: GlobalMusicPlayer().isPlaying.value,
+                            ),
+                          ),
+                        ),
                     ],
                   );
                 },
@@ -1989,6 +2041,7 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen>
             final art = data?.artwork; // This will prompt library to load art
             final title = data?.title ?? name;
             final artist = data?.artist ?? "Unknown Artist";
+            final accentColor = GlobalThemeService().dominantColor.value;
 
             return ListTile(
               key: ValueKey(file.path), // Prevent rebuilds on scroll
@@ -2007,14 +2060,30 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen>
                     ? const Icon(Icons.music_note, color: Colors.grey)
                     : null,
               ),
-              title: Text(
-                title,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                  color: isPlaying ? Colors.purpleAccent : Colors.white,
-                  fontWeight: isPlaying ? FontWeight.bold : FontWeight.normal,
-                ),
+              title: Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      title,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        color: isPlaying
+                            ? (accentColor?.withOpacity(1.0) ?? Colors.white)
+                            : Colors.white,
+                        fontWeight: isPlaying ? FontWeight.w600 : FontWeight.normal,
+                      ),
+                    ),
+                  ),
+                  if (isPlaying)
+                    Padding(
+                      padding: const EdgeInsets.only(left: 8),
+                      child: _AnimatedAudioBars(
+                        size: 16,
+                        playing: GlobalMusicPlayer().isPlaying.value,
+                      ),
+                    ),
+                ],
               ),
               subtitle: Text(
                 artist,

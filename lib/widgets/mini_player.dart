@@ -52,19 +52,19 @@ class _MiniPlayerState extends State<MiniPlayer> {
                 PageRouteBuilder(
                   pageBuilder: (context, animation, secondaryAnimation) =>
                       PlayerScreen(getText: widget.getText),
+                  transitionDuration: const Duration(milliseconds: 450),
                   transitionsBuilder:
                       (context, animation, secondaryAnimation, child) {
-                        const begin = Offset(0.0, 1.0);
-                        const end = Offset.zero;
-                        const curve = Curves.easeOutCubic;
-
-                        var tween = Tween(
-                          begin: begin,
-                          end: end,
-                        ).chain(CurveTween(curve: curve));
-
+                        final curved = CurvedAnimation(
+                          parent: animation,
+                          curve: Curves.easeOutCubic,
+                          reverseCurve: Curves.easeInCubic,
+                        );
                         return SlideTransition(
-                          position: animation.drive(tween),
+                          position: Tween<Offset>(
+                            begin: const Offset(0.0, 1.0),
+                            end: Offset.zero,
+                          ).animate(curved),
                           child: child,
                         );
                       },
@@ -76,21 +76,21 @@ class _MiniPlayerState extends State<MiniPlayer> {
             Navigator.push(
               context,
               PageRouteBuilder(
+                transitionDuration: const Duration(milliseconds: 450),
                 pageBuilder: (context, animation, secondaryAnimation) =>
                     PlayerScreen(getText: widget.getText),
                 transitionsBuilder:
                     (context, animation, secondaryAnimation, child) {
-                      const begin = Offset(0.0, 1.0);
-                      const end = Offset.zero;
-                      const curve = Curves.easeInOut;
-
-                      var tween = Tween(
-                        begin: begin,
-                        end: end,
-                      ).chain(CurveTween(curve: curve));
-
+                      final curved = CurvedAnimation(
+                        parent: animation,
+                        curve: Curves.easeOutCubic,
+                        reverseCurve: Curves.easeInCubic,
+                      );
                       return SlideTransition(
-                        position: animation.drive(tween),
+                        position: Tween<Offset>(
+                          begin: const Offset(0.0, 1.0),
+                          end: Offset.zero,
+                        ).animate(curved),
                         child: child,
                       );
                     },
