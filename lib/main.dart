@@ -468,6 +468,7 @@ class _ForawnAppRootState extends State<ForawnAppRoot> {
                   dividerColor: Colors.black.withOpacity(0.1),
                 ),
           debugShowCheckedModeBanner: false,
+          navigatorKey: appNavigatorKey,
           builder: (context, child) {
             // MiniPlayer único para toda la app: se monta una sola vez
             // aquí (encima del Navigator) y decide su visibilidad según

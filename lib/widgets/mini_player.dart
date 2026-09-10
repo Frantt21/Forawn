@@ -8,6 +8,13 @@ import '../screen/player_screen.dart';
 
 typedef TextGetter = String Function(String key, {String? fallback});
 
+/// GlobalKey del Navigator raíz de la app.
+///
+/// [MiniPlayerHost] se monta en `MaterialApp.builder`, por ENCIMA del
+/// Navigator, así que su context no puede hacer `Navigator.of(context)`.
+/// Todas las navegaciones desde el MiniPlayer usan esta key.
+final GlobalKey<NavigatorState> appNavigatorKey = GlobalKey<NavigatorState>();
+
 /// Estado global de visibilidad del MiniPlayer.
 ///
 /// El MiniPlayer es un componente ÚNICO montado en la raíz de la app
@@ -16,23 +23,23 @@ typedef TextGetter = String Function(String key, {String? fallback});
 /// - [playerTabActive]: `true` cuando la tab/screen activa es la del
 ///   reproductor de música (MusicPlayerScreen) o sus subrutas como
 ///   PlaylistDetailScreen. Lo actualiza main.dart al navegar.
-/// - [fullPlayerDepth]: > 0 mientras el reproductor completo
-///   (PlayerScreen) está abierto sobre el music player. Lo actualiza
-///   PlayerScreen en su ciclo de vida.
+/// - [fullPlayerOpen]: `true` mientras el reproductor completo
+///   (PlayerScreen) está abierto sobre el music player.
 /// - [blockedByOverlay]: `true` mientras haya una screen opaca de la app
 ///   (p.ej. Settings) abierta sobre el music player.
 class MiniPlayerVisibility {
   static final ValueNotifier<bool> playerTabActive = ValueNotifier(false);
-  static final ValueNotifier<int> fullPlayerDepth = ValueNotifier(0);
+  static final ValueNotifier<bool> fullPlayerOpen = ValueNotifier(false);
   static final ValueNotifier<bool> blockedByOverlay = ValueNotifier(false);
 
-  static void pushFullPlayer() => fullPlayerDepth.value++;
-  static void popFullPlayer() {
-    if (fullPlayerDepth.value > 0) fullPlayerDepth.value--;
-  }
+  /// Señal idempotente: el último valor escrito gana. A diferencia de un
+  /// contador push/pop, no puede desincronizarse si un dispose no se
+  /// empareja exactamente con su initState (hot reload, cierre por
+  /// gesture/gesto del sistema, etc.).
+  static void setFullPlayerOpen(bool open) => fullPlayerOpen.value = open;
 
   static bool get isVisible =>
-      playerTabActive.value && fullPlayerDepth.value == 0;
+      playerTabActive.value && !fullPlayerOpen.value;
 
   MiniPlayerVisibility._();
 }
@@ -53,16 +60,24 @@ class MiniPlayerHost extends StatelessWidget {
     return ValueListenableBuilder<bool>(
       valueListenable: MiniPlayerVisibility.playerTabActive,
       builder: (context, tabActive, _) {
-        return ValueListenableBuilder<int>(
-          valueListenable: MiniPlayerVisibility.fullPlayerDepth,
-          builder: (context, depth, _) {
+        return ValueListenableBuilder<bool>(
+          valueListenable: MiniPlayerVisibility.fullPlayerOpen,
+          builder: (context, fullPlayerOpen, _) {
             return ValueListenableBuilder<bool>(
               valueListenable: MiniPlayerVisibility.blockedByOverlay,
               builder: (context, blocked, _) {
-                final visible = tabActive && depth == 0 && !blocked;
+                final visible = tabActive && !fullPlayerOpen && !blocked;
                 return Offstage(
                   offstage: !visible,
-                  child: MiniPlayer(getText: getText),
+                  // El host vive en MaterialApp.builder, FUERA de todo
+                  // Material/Scaffold. Sin un ancestro Material, los Text
+                  // heredan el DefaultTextStyle de fallback (subrayado
+                  // amarillo). MaterialType.transparency pinta la tipografía
+                  // correcta sin añadir fondo.
+                  child: Material(
+                    type: MaterialType.transparency,
+                    child: MiniPlayer(getText: getText),
+                  ),
                 );
               },
             );
@@ -113,10 +128,10 @@ class _MiniPlayerState extends State<MiniPlayer> {
           onVerticalDragUpdate: (details) {
             // Si arrastra hacia arriba (delta negativo), abrir reproductor
             if (details.primaryDelta! < -5) {
-              _openFullPlayer(context);
+              _openFullPlayer();
             }
           },
-          onTap: () => _openFullPlayer(context),
+          onTap: _openFullPlayer,
           child: Container(
             height: 70,
             decoration: BoxDecoration(
@@ -290,9 +305,11 @@ class _MiniPlayerState extends State<MiniPlayer> {
     );
   }
 
-  void _openFullPlayer(BuildContext context) {
-    Navigator.push(
-      context,
+  void _openFullPlayer() {
+    // Ocultar el miniplayer de inmediato (antes incluso de que el
+    // initState del PlayerScreen repita la señal).
+    MiniPlayerVisibility.setFullPlayerOpen(true);
+    appNavigatorKey.currentState?.push(
       PageRouteBuilder(
         transitionDuration: const Duration(milliseconds: 450),
         pageBuilder: (context, animation, secondaryAnimation) =>
@@ -312,6 +329,6 @@ class _MiniPlayerState extends State<MiniPlayer> {
           );
         },
       ),
-    );
+    ).whenComplete(() => MiniPlayerVisibility.setFullPlayerOpen(false));
   }
 }

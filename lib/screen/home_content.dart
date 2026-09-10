@@ -1,7 +1,6 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 
-import '../services/global_theme_service.dart';
 
 class HomeContent extends StatefulWidget {
   final String Function(String key, {String? fallback}) getText;
@@ -103,7 +102,7 @@ class _HomeContentState extends State<HomeContent> {
     {
       'id': 'music',
       'icon': Icons.music_note,
-      'color': accentColor,
+      'color': Colors.purpleAccent,
       'label': widget.getText('download_button', fallback: 'Música'),
     },
   ];
@@ -166,9 +165,6 @@ class _HomeContentState extends State<HomeContent> {
       ),
     );
   }
-
-  /// Color acento global (dominante del artwork en reproducción).
-  Color? get accentColor => GlobalThemeService().dominantColor.value;
 
   @override
   Widget build(BuildContext context) {

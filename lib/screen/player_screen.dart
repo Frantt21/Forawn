@@ -108,7 +108,7 @@ class _PlayerScreenState extends State<PlayerScreen> with WindowListener {
   void initState() {
     super.initState();
     // El reproductor completo está abierto: ocultar el MiniPlayer global.
-    MiniPlayerVisibility.pushFullPlayer();
+    MiniPlayerVisibility.setFullPlayerOpen(true);
     if (!gUseNativeFrame) {
       windowManager.addListener(this);
     }
@@ -150,7 +150,7 @@ class _PlayerScreenState extends State<PlayerScreen> with WindowListener {
   @override
   void dispose() {
     // Restaurar el MiniPlayer global al cerrar el reproductor completo.
-    MiniPlayerVisibility.popFullPlayer();
+    MiniPlayerVisibility.setFullPlayerOpen(false);
     GlobalThemeService().blurBackground.removeListener(_onBlurChanged);
     GlobalThemeService().dominantColor.removeListener(_onColorChanged);
     _musicPlayer.filesList.removeListener(_onFilesChanged);
