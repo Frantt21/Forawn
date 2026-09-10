@@ -64,3 +64,4 @@ backend/README.md
 WINDOWS_SEARCH_ISSUE.md
 /lib/backend
 /lib mobile
+test/innertube_service_test.dart
