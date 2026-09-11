@@ -67,16 +67,31 @@ class MiniPlayerHost extends StatelessWidget {
               valueListenable: MiniPlayerVisibility.blockedByOverlay,
               builder: (context, blocked, _) {
                 final visible = tabActive && !fullPlayerOpen && !blocked;
-                return Offstage(
-                  offstage: !visible,
-                  // El host vive en MaterialApp.builder, FUERA de todo
-                  // Material/Scaffold. Sin un ancestro Material, los Text
-                  // heredan el DefaultTextStyle de fallback (subrayado
-                  // amarillo). MaterialType.transparency pinta la tipografía
-                  // correcta sin añadir fondo.
-                  child: Material(
-                    type: MaterialType.transparency,
-                    child: MiniPlayer(getText: getText),
+                // Al abrirse el reproductor completo (que entra desde abajo),
+                // el miniplayer se desliza hacia abajo y se desvanece; al
+                // cerrarlo regresa desde abajo a su posición.
+                return ClipRect(
+                  child: AnimatedSlide(
+                    offset: visible ? Offset.zero : const Offset(0, 1.1),
+                    duration: const Duration(milliseconds: 450),
+                    curve: Curves.easeOutCubic,
+                    child: AnimatedOpacity(
+                      opacity: visible ? 1.0 : 0.0,
+                      duration: const Duration(milliseconds: 450),
+                      curve: Curves.easeOutCubic,
+                      child: IgnorePointer(
+                        ignoring: !visible,
+                        // El host vive en MaterialApp.builder, FUERA de todo
+                        // Material/Scaffold. Sin un ancestro Material, los Text
+                        // heredan el DefaultTextStyle de fallback (subrayado
+                        // amarillo). MaterialType.transparency pinta la
+                        // tipografía correcta sin añadir fondo.
+                        child: Material(
+                          type: MaterialType.transparency,
+                          child: MiniPlayer(getText: getText),
+                        ),
+                      ),
+                    ),
                   ),
                 );
               },

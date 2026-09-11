@@ -786,6 +786,9 @@ class _HomeScreenState extends State<HomeScreen> with WindowListener {
 
   Widget _windowButtons() {
     if (!gShowWindowButtons) return const SizedBox.shrink();
+    // Como en settings/downloads: el último botón es ATRÁS cuando estamos
+    // en una screen (vuelve a home); en home es el cierre real de la app.
+    final isHome = _currentScreen == 'home';
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
@@ -806,11 +809,18 @@ class _HomeScreenState extends State<HomeScreen> with WindowListener {
             }
           },
         ),
-        IconButton(
-          tooltip: widget.getText('close', fallback: 'Close'),
-          icon: const Icon(Icons.close, size: 18),
-          onPressed: () => windowManager.close(),
-        ),
+        if (isHome)
+          IconButton(
+            tooltip: widget.getText('close', fallback: 'Close'),
+            icon: const Icon(Icons.close, size: 18),
+            onPressed: () => windowManager.close(),
+          )
+        else
+          IconButton(
+            tooltip: widget.getText('back', fallback: 'Back'),
+            icon: const Icon(Icons.arrow_back, size: 18),
+            onPressed: () => _handleNavigation('home'),
+          ),
       ],
     );
   }
@@ -878,16 +888,9 @@ class _HomeScreenState extends State<HomeScreen> with WindowListener {
                                       ),
                                       decoration: BoxDecoration(
                                         // Transparente: la ventana (o el
-                                        // acrílico) se ve a través.
+                                        // acrílico) se ve a través. Sin borde
+                                        // inferior.
                                         color: Colors.transparent,
-                                        border: Border(
-                                          bottom: BorderSide(
-                                            // Separación sutil con el
-                                            // contenido, adaptada al tema.
-                                            color: titleBarFg.withOpacity(0.12),
-                                            width: 0.5,
-                                          ),
-                                        ),
                                       ),
                                       child: IconTheme(
                                         data: IconThemeData(color: titleBarFg),
@@ -896,20 +899,6 @@ class _HomeScreenState extends State<HomeScreen> with WindowListener {
                                       // Espacio para traffic lights nativos en macOS
                                       if (gMacTrafficLightInset > 0)
                                         SizedBox(width: gMacTrafficLightInset),
-                                      // Home button
-                                      if (_currentScreen != 'home')
-                                        IconButton(
-                                          tooltip: widget.getText(
-                                            'home_title',
-                                            fallback: 'Inicio',
-                                          ),
-                                          icon: const Icon(
-                                            Icons.home,
-                                            size: 20,
-                                          ),
-                                          onPressed: () =>
-                                              _handleNavigation('home'),
-                                        ),
                                       const SizedBox(width: 8),
                                       // Screen title
                                       Text(
