@@ -343,17 +343,21 @@ class _TranslateScreenState extends State<TranslateScreen> with WindowListener {
                           maxLines: null,
                           minLines: null,
                           textAlignVertical: TextAlignVertical.top,
+                          cursorColor: Colors.greenAccent,
                           decoration: InputDecoration(
                             border: InputBorder.none,
                             hintText: get(
                               'translate_input_hint',
                               fallback: 'Write the text here',
                             ),
-                            hintStyle: Theme.of(
-                              context,
-                            ).inputDecorationTheme.hintStyle,
+                            hintStyle: TextStyle(
+                              color: Colors.white.withOpacity(0.3),
+                            ),
                           ),
-                          style: const TextStyle(fontSize: 15),
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 15,
+                          ),
                           onChanged: (text) {
                             if (_debounce?.isActive ?? false)
                               _debounce!.cancel();

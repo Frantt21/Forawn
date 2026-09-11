@@ -1118,30 +1118,37 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen>
                       Expanded(
                         child: Padding(
                           padding: const EdgeInsets.symmetric(horizontal: 16),
-                          child: TextField(
+                          // Contenedor estilo forawn_mobile (blanco 5%, radio 16).
+                          child: Container(
+                            decoration: BoxDecoration(
+                              color: Colors.white.withOpacity(0.05),
+                              borderRadius: BorderRadius.circular(16),
+                            ),
+                            child: TextField(
                             controller: _searchController,
                             autofocus: true,
                             keyboardType: TextInputType.text,
-                            style: const TextStyle(color: Colors.white),
+                            // Estilo de inputs de forawn_mobile.
+                            style: const TextStyle(color: Colors.white, fontSize: 16),
+                            cursorColor: Colors.purpleAccent,
                             decoration: InputDecoration(
+                              isCollapsed: true,
                               hintText: widget.getText(
                                 'search_song',
                                 fallback: 'Search in list...',
                               ),
-                              hintStyle: const TextStyle(color: Colors.white54),
-                              filled: true,
-                              fillColor: Colors.white.withOpacity(0.1),
+                              hintStyle: TextStyle(
+                                color: Colors.white.withOpacity(0.3),
+                                fontSize: 16,
+                              ),
                               contentPadding: const EdgeInsets.symmetric(
                                 horizontal: 16,
-                                vertical: 8,
+                                vertical: 14,
                               ),
-                              border: OutlineInputBorder(
-                                borderRadius: BorderRadius.circular(20),
-                                borderSide: BorderSide.none,
-                              ),
-                              prefixIcon: const Icon(
+                              border: InputBorder.none,
+                              prefixIcon: Icon(
                                 Icons.search,
-                                color: Colors.white54,
+                                color: Colors.white.withOpacity(0.5),
                                 size: 20,
                               ),
                               suffixIcon: IconButton(
@@ -1160,6 +1167,7 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen>
                               ),
                             ),
                             onChanged: _filterFiles,
+                            ),
                           ),
                         ),
                       )
@@ -2485,38 +2493,60 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen>
                   ),
                 ),
                 const SizedBox(height: 16),
-                TextField(
-                  controller: nameController,
-                  cursorColor: Colors.purpleAccent,
-                  decoration: InputDecoration(
-                    labelText: widget.getText('name', fallback: "Name"),
-                    labelStyle: const TextStyle(color: Colors.grey),
-                    enabledBorder: const UnderlineInputBorder(
-                      borderSide: BorderSide(color: Colors.grey),
-                    ),
-                    focusedBorder: const UnderlineInputBorder(
-                      borderSide: BorderSide(color: Colors.purpleAccent),
+                // Inputs estilo forawn_mobile (blanco 5%, radio 16, sin borde).
+                Container(
+                  decoration: BoxDecoration(
+                    color: Colors.white.withOpacity(0.05),
+                    borderRadius: BorderRadius.circular(16),
+                  ),
+                  child: TextField(
+                    controller: nameController,
+                    cursorColor: Colors.purpleAccent,
+                    style: const TextStyle(color: Colors.white, fontSize: 16),
+                    decoration: InputDecoration(
+                      hintText: widget.getText('name', fallback: "Name"),
+                      hintStyle: TextStyle(
+                        color: Colors.white.withOpacity(0.2),
+                      ),
+                      contentPadding: const EdgeInsets.symmetric(
+                        horizontal: 16,
+                        vertical: 14,
+                      ),
+                      border: InputBorder.none,
+                      prefixIcon: Icon(
+                        Icons.queue_music_rounded,
+                        color: Colors.white.withOpacity(0.5),
+                        size: 20,
+                      ),
                     ),
                   ),
-                  style: const TextStyle(color: Colors.white),
                 ),
-                TextField(
-                  controller: descController,
-                  cursorColor: Colors.purpleAccent,
-                  decoration: InputDecoration(
-                    labelText: widget.getText(
-                      'description',
-                      fallback: "Description",
-                    ),
-                    labelStyle: const TextStyle(color: Colors.grey),
-                    enabledBorder: const UnderlineInputBorder(
-                      borderSide: BorderSide(color: Colors.grey),
-                    ),
-                    focusedBorder: const UnderlineInputBorder(
-                      borderSide: BorderSide(color: Colors.purpleAccent),
+                const SizedBox(height: 20),
+                Container(
+                  decoration: BoxDecoration(
+                    color: Colors.white.withOpacity(0.05),
+                    borderRadius: BorderRadius.circular(16),
+                  ),
+                  child: TextField(
+                    controller: descController,
+                    maxLines: 3,
+                    cursorColor: Colors.purpleAccent,
+                    style: const TextStyle(color: Colors.white, fontSize: 16),
+                    decoration: InputDecoration(
+                      hintText: widget.getText(
+                        'description',
+                        fallback: "Description",
+                      ),
+                      hintStyle: TextStyle(
+                        color: Colors.white.withOpacity(0.2),
+                      ),
+                      contentPadding: const EdgeInsets.symmetric(
+                        horizontal: 16,
+                        vertical: 14,
+                      ),
+                      border: InputBorder.none,
                     ),
                   ),
-                  style: const TextStyle(color: Colors.white),
                 ),
               ],
             ),

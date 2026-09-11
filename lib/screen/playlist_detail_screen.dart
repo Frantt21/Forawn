@@ -217,7 +217,9 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen>
                 filled: true,
                 fillColor: textColor.withOpacity(0.1),
                 border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(8),
+                  borderRadius: BorderRadius.circular(
+                    24,
+                  ), // Redondeado como botones, igual que forawn_mobile
                   borderSide: BorderSide.none,
                 ),
                 contentPadding: const EdgeInsets.symmetric(

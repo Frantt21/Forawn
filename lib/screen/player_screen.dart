@@ -402,24 +402,25 @@ class _PlayerScreenState extends State<PlayerScreen> with WindowListener {
     required TextEditingController controller,
     required String label,
   }) {
-    return TextField(
-      controller: controller,
-      style: const TextStyle(color: Colors.white),
-      decoration: InputDecoration(
-        labelText: label,
-        labelStyle: const TextStyle(color: Colors.grey),
-        floatingLabelStyle: const TextStyle(color: Color(0xFFD046FF)),
-        enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(10),
-          borderSide: const BorderSide(color: Colors.white24),
-        ),
-        focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(10),
-          borderSide: const BorderSide(color: Color(0xFFD046FF)),
-        ),
-        contentPadding: const EdgeInsets.symmetric(
-          horizontal: 16,
-          vertical: 16,
+    // Estilo de inputs de forawn_mobile: contenedor blanco 5%, radio 16,
+    // sin borde, cursor de color acento.
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white.withOpacity(0.05),
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: TextField(
+        controller: controller,
+        style: const TextStyle(color: Colors.white, fontSize: 16),
+        cursorColor: const Color(0xFFD046FF),
+        decoration: InputDecoration(
+          hintText: label,
+          hintStyle: TextStyle(color: Colors.white.withOpacity(0.2)),
+          contentPadding: const EdgeInsets.symmetric(
+            horizontal: 16,
+            vertical: 14,
+          ),
+          border: InputBorder.none,
         ),
       ),
     );
@@ -961,38 +962,60 @@ class _PlayerScreenState extends State<PlayerScreen> with WindowListener {
                   ),
                 ),
                 const SizedBox(height: 16),
-                TextField(
-                  controller: nameController,
-                  cursorColor: Colors.purpleAccent,
-                  decoration: InputDecoration(
-                    labelText: widget.getText('name', fallback: "Name"),
-                    labelStyle: const TextStyle(color: Colors.grey),
-                    enabledBorder: const UnderlineInputBorder(
-                      borderSide: BorderSide(color: Colors.grey),
-                    ),
-                    focusedBorder: const UnderlineInputBorder(
-                      borderSide: BorderSide(color: Colors.purpleAccent),
+                // Inputs estilo forawn_mobile (blanco 5%, radio 16, sin borde).
+                Container(
+                  decoration: BoxDecoration(
+                    color: Colors.white.withOpacity(0.05),
+                    borderRadius: BorderRadius.circular(16),
+                  ),
+                  child: TextField(
+                    controller: nameController,
+                    cursorColor: Colors.purpleAccent,
+                    style: const TextStyle(color: Colors.white, fontSize: 16),
+                    decoration: InputDecoration(
+                      hintText: widget.getText('name', fallback: "Name"),
+                      hintStyle: TextStyle(
+                        color: Colors.white.withOpacity(0.2),
+                      ),
+                      contentPadding: const EdgeInsets.symmetric(
+                        horizontal: 16,
+                        vertical: 14,
+                      ),
+                      border: InputBorder.none,
+                      prefixIcon: Icon(
+                        Icons.queue_music_rounded,
+                        color: Colors.white.withOpacity(0.5),
+                        size: 20,
+                      ),
                     ),
                   ),
-                  style: const TextStyle(color: Colors.white),
                 ),
-                TextField(
-                  controller: descController,
-                  cursorColor: Colors.purpleAccent,
-                  decoration: InputDecoration(
-                    labelText: widget.getText(
-                      'description',
-                      fallback: "Description",
-                    ),
-                    labelStyle: const TextStyle(color: Colors.grey),
-                    enabledBorder: const UnderlineInputBorder(
-                      borderSide: BorderSide(color: Colors.grey),
-                    ),
-                    focusedBorder: const UnderlineInputBorder(
-                      borderSide: BorderSide(color: Colors.purpleAccent),
+                const SizedBox(height: 20),
+                Container(
+                  decoration: BoxDecoration(
+                    color: Colors.white.withOpacity(0.05),
+                    borderRadius: BorderRadius.circular(16),
+                  ),
+                  child: TextField(
+                    controller: descController,
+                    maxLines: 3,
+                    cursorColor: Colors.purpleAccent,
+                    style: const TextStyle(color: Colors.white, fontSize: 16),
+                    decoration: InputDecoration(
+                      hintText: widget.getText(
+                        'description',
+                        fallback: "Description",
+                      ),
+                      hintStyle: TextStyle(
+                        color: Colors.white.withOpacity(0.2),
+                      ),
+                      contentPadding: const EdgeInsets.symmetric(
+                        horizontal: 16,
+                        vertical: 14,
+                      ),
+                      border: InputBorder.none,
                     ),
                   ),
-                  style: const TextStyle(color: Colors.white),
                 ),
               ],
             ),
@@ -2828,29 +2851,40 @@ class _PlayerScreenState extends State<PlayerScreen> with WindowListener {
                         ),
                         Padding(
                           padding: const EdgeInsets.all(12),
-                          child: TextField(
-                            controller: _searchController,
-                            onChanged: _filterFiles,
-                            style: const TextStyle(color: Colors.white),
-                            decoration: InputDecoration(
-                              hintText: widget.getText(
-                                'search_song',
-                                fallback: 'Search in list...',
+                          // Contenedor estilo forawn_mobile (blanco 5%, radio 16).
+                          child: Container(
+                            decoration: BoxDecoration(
+                              color: Colors.white.withOpacity(0.05),
+                              borderRadius: BorderRadius.circular(16),
+                            ),
+                            child: TextField(
+                              controller: _searchController,
+                              onChanged: _filterFiles,
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 16,
                               ),
-                              hintStyle: const TextStyle(color: Colors.white54),
-                              prefixIcon: const Icon(
-                                Icons.search,
-                                size: 20,
-                                color: Colors.white54,
-                              ),
-                              filled: true,
-                              fillColor: Colors.white10,
-                              border: OutlineInputBorder(
-                                borderRadius: BorderRadius.circular(10),
-                                borderSide: BorderSide.none,
-                              ),
-                              contentPadding: const EdgeInsets.symmetric(
-                                horizontal: 16,
+                              cursorColor: const Color(0xFFD046FF),
+                              decoration: InputDecoration(
+                                isCollapsed: true,
+                                hintText: widget.getText(
+                                  'search_song',
+                                  fallback: 'Search in list...',
+                                ),
+                                hintStyle: TextStyle(
+                                  color: Colors.white.withOpacity(0.3),
+                                  fontSize: 16,
+                                ),
+                                contentPadding: const EdgeInsets.symmetric(
+                                  horizontal: 16,
+                                  vertical: 14,
+                                ),
+                                border: InputBorder.none,
+                                prefixIcon: Icon(
+                                  Icons.search,
+                                  size: 20,
+                                  color: Colors.white.withOpacity(0.5),
+                                ),
                               ),
                             ),
                           ),
@@ -3342,35 +3376,39 @@ class _PlayerScreenState extends State<PlayerScreen> with WindowListener {
                       ],
                     ),
                     const SizedBox(height: 20),
-                    TextField(
-                      controller: searchController,
-                      style: const TextStyle(color: Colors.white),
-                      decoration: InputDecoration(
-                        isDense: true,
-                        filled: true,
-                        fillColor: const Color(0xFF2C2C2E),
-                        hintText: widget.getText(
-                          'song_artist_hint',
-                          fallback: 'Canción Artista...',
-                        ),
-                        hintStyle: const TextStyle(color: Colors.white38),
-                        suffixIcon: IconButton(
-                          icon: const Icon(
-                            Icons.search,
-                            color: Color(0xFFD046FF),
+                    // Input estilo forawn_mobile (blanco 5%, radio 16, sin borde).
+                    Container(
+                      decoration: BoxDecoration(
+                        color: Colors.white.withOpacity(0.05),
+                        borderRadius: BorderRadius.circular(16),
+                      ),
+                      child: TextField(
+                        controller: searchController,
+                        style: const TextStyle(color: Colors.white, fontSize: 16),
+                        cursorColor: const Color(0xFFD046FF),
+                        onSubmitted: (_) => performSearch(),
+                        decoration: InputDecoration(
+                          hintText: widget.getText(
+                            'song_artist_hint',
+                            fallback: 'Canción Artista...',
                           ),
-                          onPressed: performSearch,
-                        ),
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(12),
-                          borderSide: BorderSide.none,
-                        ),
-                        contentPadding: const EdgeInsets.symmetric(
-                          horizontal: 16,
-                          vertical: 12,
+                          hintStyle: TextStyle(
+                            color: Colors.white.withOpacity(0.3),
+                          ),
+                          suffixIcon: IconButton(
+                            icon: const Icon(
+                              Icons.search,
+                              color: Color(0xFFD046FF),
+                            ),
+                            onPressed: performSearch,
+                          ),
+                          contentPadding: const EdgeInsets.symmetric(
+                            horizontal: 16,
+                            vertical: 14,
+                          ),
+                          border: InputBorder.none,
                         ),
                       ),
-                      onSubmitted: (_) => performSearch(),
                     ),
                     const SizedBox(height: 16),
                     Expanded(

@@ -829,14 +829,11 @@ class _MusicDownloaderScreenState extends State<MusicDownloaderScreen>
                 padding: const EdgeInsets.all(20),
                 child: Column(
                   children: [
-                    // Search bar
+                    // Search bar (estilo forawn_mobile: sin borde)
                     Container(
                       decoration: BoxDecoration(
-                        color: Theme.of(context).cardTheme.color,
+                        color: Colors.white.withOpacity(0.05),
                         borderRadius: BorderRadius.circular(16),
-                        border: Border.all(
-                          color: Theme.of(context).dividerColor,
-                        ),
                       ),
                       padding: const EdgeInsets.all(8),
                       child: Row(
@@ -844,15 +841,16 @@ class _MusicDownloaderScreenState extends State<MusicDownloaderScreen>
                           Expanded(
                             child: TextField(
                               controller: _controller,
+                              cursorColor: Colors.purpleAccent,
                               decoration: InputDecoration(
                                 hintText: get(
                                   'song_or_artist_label',
                                   fallback:
                                       'Canción, artista o URL de playlist',
                                 ),
-                                hintStyle: Theme.of(
-                                  context,
-                                ).inputDecorationTheme.hintStyle,
+                                hintStyle: TextStyle(
+                                  color: Colors.white.withOpacity(0.3),
+                                ),
                                 border: InputBorder.none,
                                 contentPadding: const EdgeInsets.symmetric(
                                   horizontal: 16,
@@ -860,7 +858,10 @@ class _MusicDownloaderScreenState extends State<MusicDownloaderScreen>
                                 ),
                                 isDense: true,
                               ),
-                              style: const TextStyle(fontSize: 15),
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 15,
+                              ),
                               textInputAction: TextInputAction.search,
                               onSubmitted: (_) => _buscarCanciones(),
                             ),

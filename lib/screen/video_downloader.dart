@@ -767,35 +767,38 @@ class _VideoDownloaderScreenState extends State<VideoDownloaderScreen>
               // URL input + inspect button
               Container(
                 decoration: BoxDecoration(
-                  color: Theme.of(context).cardTheme.color,
-                  borderRadius: BorderRadius.circular(16),
-                  border: Border.all(color: Theme.of(context).dividerColor),
-                ),
-                padding: const EdgeInsets.all(8),
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: TextField(
-                        controller: _controller,
-                        decoration: InputDecoration(
-                          hintText: get(
-                            'video_url_label',
-                            fallback: 'YouTube URL',
+                    color: Colors.white.withOpacity(0.05),
+                    borderRadius: BorderRadius.circular(16),
+                  ),
+                  padding: const EdgeInsets.all(8),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: TextField(
+                          controller: _controller,
+                          cursorColor: Colors.blueAccent,
+                          decoration: InputDecoration(
+                            hintText: get(
+                              'video_url_label',
+                              fallback: 'YouTube URL',
+                            ),
+                            hintStyle: TextStyle(
+                              color: Colors.white.withOpacity(0.3),
+                            ),
+                            border: InputBorder.none,
+                            contentPadding: const EdgeInsets.symmetric(
+                              horizontal: 16,
+                              vertical: 12,
+                            ),
+                            isDense: true,
                           ),
-                          hintStyle: Theme.of(
-                            context,
-                          ).inputDecorationTheme.hintStyle,
-                          border: InputBorder.none,
-                          contentPadding: const EdgeInsets.symmetric(
-                            horizontal: 16,
-                            vertical: 12,
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 15,
                           ),
-                          isDense: true,
+                          onSubmitted: (_) => _onInspectUrl(),
                         ),
-                        style: const TextStyle(fontSize: 15),
-                        onSubmitted: (_) => _onInspectUrl(),
                       ),
-                    ),
                     const SizedBox(width: 8),
                     IconButton(
                       icon: _loadingMeta

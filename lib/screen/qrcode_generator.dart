@@ -279,13 +279,11 @@ class _QrGeneratorScreenState extends State<QrGeneratorScreen> {
                 child: Column(
                   children: [
                     // Input area con handle de redimensionado
+                    // (estilo forawn_mobile: sin borde)
                     Container(
                       decoration: BoxDecoration(
-                        color: Theme.of(context).cardTheme.color,
+                        color: Colors.white.withOpacity(0.05),
                         borderRadius: BorderRadius.circular(16),
-                        border: Border.all(
-                          color: Theme.of(context).dividerColor,
-                        ),
                       ),
                       padding: const EdgeInsets.all(8),
                       child: Row(
@@ -293,14 +291,15 @@ class _QrGeneratorScreenState extends State<QrGeneratorScreen> {
                           Expanded(
                             child: TextField(
                               controller: _controller,
+                              cursorColor: Colors.orangeAccent,
                               decoration: InputDecoration(
                                 hintText: t(
                                   'qr_label_url',
                                   fallback: 'URL a codificar',
                                 ),
-                                hintStyle: Theme.of(
-                                  context,
-                                ).inputDecorationTheme.hintStyle,
+                                hintStyle: TextStyle(
+                                  color: Colors.white.withOpacity(0.3),
+                                ),
                                 border: InputBorder.none,
                                 errorText: _errorText,
                                 contentPadding: const EdgeInsets.symmetric(
@@ -309,7 +308,10 @@ class _QrGeneratorScreenState extends State<QrGeneratorScreen> {
                                 ),
                                 isDense: true,
                               ),
-                              style: const TextStyle(fontSize: 15),
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 15,
+                              ),
                               keyboardType: TextInputType.url,
                               onChanged: (_) {
                                 if (_errorText != null) {
