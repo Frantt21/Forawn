@@ -456,7 +456,7 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen>
                               textAlign: TextAlign.center,
                             ),
                           ),
-                        const SizedBox(height: 4),
+                        const SizedBox(height: 16),
                         Text(
                           "${playlist.songs.length} ${playlist.songs.length == 1 ? widget.getText('song', fallback: 'Song') : widget.getText('songs', fallback: 'Songs')}${_playlistDurationSuffix(playlist.songs)}",
                           style: const TextStyle(color: Colors.white70),

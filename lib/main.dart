@@ -105,7 +105,11 @@ Future<void> main() async {
   }
 
   // Inicializar window_manager en los 3 SO con la barra de título propia:
-  //  - Windows/Linux: ventana sin marco (setAsFrameless) + controles propios.
+  //  - Windows: barra nativa oculta (TitleBarStyle.hidden). A diferencia de
+  //    setAsFrameless() (que usa WS_POPUP y FUERZA esquinas cuadradas),
+  //    hidden conserva el marco nativo: redondeo de Win11, sombra y bordes
+  //    de redimensionado quedan como el sistema los dibuja.
+  //  - Linux: ventana sin marco (setAsFrameless) + controles propios.
   //  - macOS: barra nativa oculta (TitleBarStyle.hidden); los traffic lights
   //    se mantienen y la app dibuja su barra respetando su espacio.
   try {
@@ -115,18 +119,21 @@ Future<void> main() async {
         TitleBarStyle.hidden,
         windowButtonVisibility: true,
       );
+    } else if (Platform.isWindows) {
+      // Conservar el marco nativo (bordes default del SO).
+      await windowManager.setTitleBarStyle(TitleBarStyle.hidden);
     } else {
       await windowManager.setAsFrameless();
     }
-    // IMPORTANTE: titleBarStyle SOLO se pasa en macOS (hidden).
-    // En Windows/Linux dejarlo en null: waitUntilReadyToShow llama a
-    // setTitleBarStyle() con este valor, y setTitleBarStyle(normal)
-    // DESHACE el setAsFrameless() anterior (reactiva la barra nativa).
+    // IMPORTANTE: en Linux titleBarStyle va null porque waitUntilReadyToShow
+    // llama a setTitleBarStyle() con ese valor y setTitleBarStyle(normal)
+    // DESHACE el setAsFrameless() anterior. En Windows/macOS passing hidden
+    // es idempotente con la llamada de arriba.
     final options = WindowOptions(
       size: const Size(1024, 600),
       center: true,
       title: 'Forawn',
-      titleBarStyle: Platform.isMacOS ? TitleBarStyle.hidden : null,
+      titleBarStyle: Platform.isLinux ? null : TitleBarStyle.hidden,
     );
     windowManager.waitUntilReadyToShow(options, () async {
       await windowManager.setResizable(true);
