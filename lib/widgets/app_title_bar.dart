@@ -28,6 +28,11 @@ class AppTitleBar extends StatelessWidget {
   /// Acciones opcionales a la derecha (antes de los botones de ventana).
   final List<Widget>? actions;
 
+  /// Si no es null, el botón de cerrar (X) se reemplaza por un botón de
+  /// ATRÁS que ejecuta este callback — igual que settings/downloads y la
+  /// title bar de main.dart, donde el último botón vuelve a home.
+  final VoidCallback? onBack;
+
   /// Traductor de la app para los tooltips de los botones de ventana.
   final String Function(String key, {String? fallback}) getText;
 
@@ -39,6 +44,7 @@ class AppTitleBar extends StatelessWidget {
     required this.windowBackgroundColor,
     this.leading,
     this.actions,
+    this.onBack,
   });
 
   /// true si la app dibuja sus propios botones de ventana.
@@ -57,19 +63,13 @@ class AppTitleBar extends StatelessWidget {
 
     return GestureDetector(
       behavior: HitTestBehavior.translucent,
-      onPanStart: (_) => windowManager.startDragging(),
-      child: AnimatedContainer(
+      onPanStart: (_) => windowManager.startDragging(),        child: AnimatedContainer(
         duration: const Duration(milliseconds: 500),
         height: 42,
         padding: const EdgeInsets.symmetric(horizontal: 10),
         decoration: BoxDecoration(
           color: tintColor ?? Colors.transparent,
-          border: Border(
-            bottom: BorderSide(
-              color: fg.withOpacity(0.12),
-              width: 0.5,
-            ),
-          ),
+          // Sin borde inferior, igual que la title bar de main.dart.
         ),
         child: IconTheme(
           data: IconThemeData(color: fg),
@@ -111,11 +111,18 @@ class AppTitleBar extends StatelessWidget {
                     }
                   },
                 ),
-                IconButton(
-                  tooltip: getText('close', fallback: 'Close'),
-                  icon: const Icon(Icons.close, size: 18),
-                  onPressed: () => windowManager.close(),
-                ),
+                if (onBack != null)
+                  IconButton(
+                    tooltip: getText('back', fallback: 'Back'),
+                    icon: const Icon(Icons.arrow_back, size: 18),
+                    onPressed: onBack,
+                  )
+                else
+                  IconButton(
+                    tooltip: getText('close', fallback: 'Close'),
+                    icon: const Icon(Icons.close, size: 18),
+                    onPressed: () => windowManager.close(),
+                  ),
               ],
             ],
           ),

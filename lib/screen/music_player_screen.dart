@@ -1062,7 +1062,20 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen>
   /// Abre el detalle de la playlist como pantalla completa (cubre todo el
   /// screen, con su propia title bar) con una animación de barrido de
   /// derecha a izquierda.
-  void _openPlaylist(Playlist playlist, {bool isReadOnly = false}) {
+  Future<void> _openPlaylist(
+    Playlist playlist, {
+    bool isReadOnly = false,
+  }) async {
+    // Leer el color cacheado ANTES del push para que la screen abra ya
+    // tintada (sin retraso del fondo hasta que llegue el async).
+    Color? initialColor;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final cached = prefs.getInt('playlist_color_${playlist.id}');
+      if (cached != null) initialColor = Color(cached);
+    } catch (_) {}
+
+    if (!mounted) return;
     Navigator.of(context).push(
       PageRouteBuilder(
         transitionDuration: const Duration(milliseconds: 450),
@@ -1071,6 +1084,7 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen>
           playlist: playlist,
           getText: widget.getText,
           isReadOnly: isReadOnly,
+          initialColor: initialColor,
         ),
         transitionsBuilder: (_, animation, __, child) {
           final curved = CurvedAnimation(

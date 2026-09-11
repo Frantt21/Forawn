@@ -20,12 +20,18 @@ class PlaylistDetailScreen extends StatefulWidget {
   final String Function(String key, {String? fallback}) getText;
   final VoidCallback? onBack;
 
+  /// Color ya cacheado de la playlist (leído ANTES de hacer push). Evita el
+  /// retraso del color de fondo: la screen abre ya tintada en el primer frame
+  /// en vez de empezar con el fallback y cambiar al llegar el async.
+  final Color? initialColor;
+
   const PlaylistDetailScreen({
     super.key,
     required this.playlist,
     required this.getText,
     this.isReadOnly = false,
     this.onBack,
+    this.initialColor,
   });
 
   @override
@@ -50,8 +56,14 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen>
   void initState() {
     super.initState();
     _lastImagePath = widget.playlist.imagePath;
+    // El color se inyecta sincrónicamente desde la screen que abre esta
+    // (sin retraso del primer frame); el async solo extrae si no había.
+    if (widget.initialColor != null) {
+      _dominantColor = widget.initialColor;
+    } else {
+      _loadCachedColorOrExtract();
+    }
     PlaylistService().addListener(_onPlaylistChanged);
-    _loadCachedColorOrExtract();
     // Inicializar animación de búsqueda
     _animationController = AnimationController(
       vsync: this,
@@ -288,25 +300,25 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen>
             tintColor: themeColor,
             windowBackgroundColor: themeColor,
             getText: widget.getText,
-            leading: IconButton(
-              icon: const Icon(Icons.arrow_back, size: 20),
-              onPressed: () {
-                if (_isSearching) {
-                  setState(() {
-                    _isSearching = false;
-                    _searchQuery = '';
-                    _searchController.clear();
-                    _animationController.reverse();
-                  });
+            // Botón back en la posición del botón de cerrar (X), igual que
+            // settings/downloads. El leading se reserva para búsqueda/etc.
+            onBack: () {
+              if (_isSearching) {
+                setState(() {
+                  _isSearching = false;
+                  _searchQuery = '';
+                  _searchController.clear();
+                  _animationController.reverse();
+                });
+              } else {
+                if (widget.onBack != null) {
+                  widget.onBack!();
                 } else {
-                  if (widget.onBack != null) {
-                    widget.onBack!();
-                  } else {
-                    Navigator.pop(context);
-                  }
+                  Navigator.pop(context);
                 }
-              },
-            ),
+              }
+            },
+            leading: null,
             actions: [
               if (!_isSearching) ...[
                 IconButton(
