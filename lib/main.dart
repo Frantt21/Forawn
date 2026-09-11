@@ -881,23 +881,33 @@ class _HomeScreenState extends State<HomeScreen> with WindowListener {
                                     windowManager.startDragging(),
                                 child: Builder(
                                   builder: (titleBarContext) {
-                                    final titleBarFg =
-                                        readableTextColorFor(
-                                          widget.windowBackgroundColor,
-                                        );
-                                    return AnimatedContainer(
-                                      duration: const Duration(
-                                        milliseconds: 500,
-                                      ),
+                                    // En el screen del reproductor de música
+                                    // el fondo es negro: la title bar se
+                                    // pinta negra igual para que no se vea
+                                    // el fondo de la app detrás.
+                                    final isPlayerScreen =
+                                        _currentScreen == 'player';
+                                    final titleBarFg = isPlayerScreen
+                                        ? Colors.white
+                                        : readableTextColorFor(
+                                            widget.windowBackgroundColor,
+                                          );
+                                    // Container (no Animated): el cambio a
+                                    // negro en el player es inmediato, sin
+                                    // transición suave.
+                                    return Container(
                                       height: 42,
                                       padding: const EdgeInsets.symmetric(
                                         horizontal: 10,
                                       ),
                                       decoration: BoxDecoration(
-                                        // Transparente: la ventana (o el
-                                        // acrílico) se ve a través. Sin borde
-                                        // inferior.
-                                        color: Colors.transparent,
+                                        // Transparente en el resto de screens:
+                                        // la ventana (o el acrílico) se ve a
+                                        // través. Sin borde inferior. En el
+                                        // player, negra como el screen.
+                                        color: isPlayerScreen
+                                            ? Colors.black
+                                            : Colors.transparent,
                                       ),
                                       child: IconTheme(
                                         data: IconThemeData(color: titleBarFg),

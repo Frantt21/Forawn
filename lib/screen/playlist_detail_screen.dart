@@ -447,7 +447,11 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen>
                           ),
                           textAlign: TextAlign.center,
                         ),
-                        if (playlist.description != null)
+                        // Ignorar descripciones vacías o de solo espacios:
+                        // un Text('') reserva su lineHeight y crea un gap
+                        // extra entre el título y la línea de songs/duración.
+                        if (playlist.description != null &&
+                            playlist.description!.trim().isNotEmpty)
                           Padding(
                             padding: const EdgeInsets.only(top: 4),
                             child: Text(

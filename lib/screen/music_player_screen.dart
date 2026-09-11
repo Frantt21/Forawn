@@ -1117,7 +1117,8 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen>
 
   Widget _buildLibraryView() {
     return Scaffold(
-      backgroundColor: Colors.transparent,
+      // Screen de música negro: no usa el fondo de la app.
+      backgroundColor: Colors.black,
       body: Stack(
         children: [
           Column(
@@ -1224,9 +1225,11 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen>
                         },
                       ),
 
-                    // Menu button
-                    PopupMenuButton<String>(
-                      icon: const Icon(Icons.more_vert, color: Colors.white70),
+                    // Menu button — solo en el tab de Library (contiene
+                    // acciones de la biblioteca).
+                    if (_tabIndex == 1)
+                      PopupMenuButton<String>(
+                        icon: const Icon(Icons.more_vert, color: Colors.white70),
                       color: const Color(0xFF2C2C2E),
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(15),
@@ -2015,29 +2018,65 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen>
 
   Widget _buildLibraryTab() {
     if (_files.isEmpty) {
-      return Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            const Icon(Icons.folder_off, size: 64, color: Colors.grey),
-            const SizedBox(height: 16),
-            Text(
-              widget.getText('no_songs_loaded', fallback: "No songs loaded"),
-            ),
-            TextButton(
-              onPressed: _selectFolder,
-              child: Text(
-                widget.getText('select_folder', fallback: "Select Folder"),
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Título de la sección, alineado con el de Recently Played.
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 10, 16, 8),
+            child: Text(
+              widget.getText('library_title', fallback: 'Library'),
+              style: const TextStyle(
+                fontSize: 18,
+                fontWeight: FontWeight.bold,
               ),
             ),
-          ],
-        ),
+          ),
+          Expanded(
+            child: Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  const Icon(Icons.folder_off, size: 64, color: Colors.grey),
+                  const SizedBox(height: 16),
+                  Text(
+                    widget.getText(
+                      'no_songs_loaded',
+                      fallback: "No songs loaded",
+                    ),
+                  ),
+                  TextButton(
+                    onPressed: _selectFolder,
+                    child: Text(
+                      widget.getText(
+                        'select_folder',
+                        fallback: "Select Folder",
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
       );
     }
 
-    return ListView.builder(
-      padding: const EdgeInsets.only(bottom: 100),
-      itemCount: _filteredFiles.length,
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // Título de la sección, alineado con el de Recently Played.
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 10, 16, 8),
+          child: Text(
+            widget.getText('library_title', fallback: 'Library'),
+            style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+          ),
+        ),
+        Expanded(
+          child: ListView.builder(
+            padding: const EdgeInsets.only(bottom: 100),
+            itemCount: _filteredFiles.length,
       addRepaintBoundaries: true,
       cacheExtent: 500, // Increased cache
       addAutomaticKeepAlives: true, // Keep items alive
@@ -2208,6 +2247,9 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen>
           },
         );
       },
+          ),
+        ),
+      ],
     );
   }
 
