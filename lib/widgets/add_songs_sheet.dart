@@ -1,32 +1,33 @@
-import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
+
 import '../models/playlist_model.dart';
 import '../models/song_model.dart';
-import '../services/playlist_service.dart';
 import '../services/global_music_player.dart';
 import '../services/local_music_database.dart';
+import '../services/playlist_service.dart';
+import 'forawn_dialog.dart';
 
 typedef TextGetter = String Function(String key, {String? fallback});
 
-/// Bottom sheet "Agregar canciones" — réplica del AddSongsSheet de
-/// forawn_mobile: drag handle, header con cierre, búsqueda, contador de
-/// seleccionadas con chips Todas/Ninguna, lista con artwork + checkbox y
-/// acciones flotantes (Cancelar / Agregar) al fondo.
-class AddSongsSheet extends StatefulWidget {
+/// Diálogo "Agregar canciones" a una playlist — réplica del AddSongsSheet
+/// de forawn_mobile pero en contenedor unificado [ForawnDialog] (diálogo,
+/// NO drag container): header, búsqueda, contador de seleccionadas con
+/// chips Todas/Ninguna, lista con artwork + checkbox y acciones
+/// Cancelar/Agregar abajo. Mismo estilo y tamaño que el resto de diálogos.
+class AddSongsDialog extends StatefulWidget {
   final Playlist playlist;
   final TextGetter getText;
-
-  final Color? backgroundColor;
   final Color? accentColor;
 
-  const AddSongsSheet({
+  const AddSongsDialog({
     super.key,
     required this.playlist,
     required this.getText,
-    this.backgroundColor,
     this.accentColor,
   });
 
+  /// Mantiene la API [show] del antiguo AddSongsSheet para no tocar los
+  /// puntos de llamada.
   static Future<void> show(
     BuildContext context, {
     required Playlist playlist,
@@ -34,24 +35,22 @@ class AddSongsSheet extends StatefulWidget {
     Color? backgroundColor,
     Color? accentColor,
   }) {
-    return showModalBottomSheet(
+    return showDialog(
       context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (context) => AddSongsSheet(
+      barrierColor: Colors.black.withOpacity(0.5),
+      builder: (_) => AddSongsDialog(
         playlist: playlist,
         getText: getText,
-        backgroundColor: backgroundColor,
         accentColor: accentColor,
       ),
     );
   }
 
   @override
-  State<AddSongsSheet> createState() => _AddSongsSheetState();
+  State<AddSongsDialog> createState() => _AddSongsDialogState();
 }
 
-class _AddSongsSheetState extends State<AddSongsSheet> {
+class _AddSongsDialogState extends State<AddSongsDialog> {
   final TextEditingController _searchController = TextEditingController();
   List<Song> _availableSongs = [];
   List<Song> _filteredSongs = [];
@@ -141,476 +140,280 @@ class _AddSongsSheetState extends State<AddSongsSheet> {
     }
   }
 
-  Widget _buildBottomFloatingActions(BuildContext context) {
-    if (_availableSongs.isEmpty || _isLoading) return const SizedBox.shrink();
+  @override
+  Widget build(BuildContext context) {
+    final accent = widget.accentColor ?? Colors.purpleAccent;
 
-    return Positioned(
-      bottom: 0,
-      left: 0,
-      right: 0,
-      child: Container(
-        padding: EdgeInsets.fromLTRB(
-          24,
-          16,
-          24,
-          24 + MediaQuery.of(context).viewInsets.bottom,
-        ),
-        decoration: BoxDecoration(
-          color: widget.backgroundColor ?? Colors.grey[900],
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withOpacity(0.5),
-              blurRadius: 20,
-              offset: const Offset(0, -5),
+    return ForawnDialog(
+      title: widget.getText('add_songs', fallback: 'Agregar canciones'),
+      cancelLabel: widget.getText('cancel', fallback: 'Cancelar'),
+      confirmLabel: widget.getText('add', fallback: 'Agregar'),
+      accentColor: accent,
+      confirmEnabled: _selectedSongs.isNotEmpty && !_isLoading,
+      onConfirm: _addSelectedSongs,
+      children: [
+        // Search bar (estilo inputs de forawn_mobile).
+        Container(
+          decoration: BoxDecoration(
+            color: Colors.white.withOpacity(0.05),
+            borderRadius: BorderRadius.circular(16),
+          ),
+          child: TextField(
+            controller: _searchController,
+            style: const TextStyle(color: Colors.white, fontSize: 15),
+            cursorColor: accent,
+            decoration: InputDecoration(
+              hintText: widget.getText('search', fallback: 'Buscar'),
+              hintStyle: TextStyle(
+                color: Colors.white.withOpacity(0.2),
+              ),
+              contentPadding: const EdgeInsets.symmetric(
+                horizontal: 16,
+                vertical: 13,
+              ),
+              border: InputBorder.none,
+              prefixIcon: Icon(
+                Icons.search,
+                color: Colors.white.withOpacity(0.5),
+                size: 20,
+              ),
+              suffixIcon: _searchController.text.isNotEmpty
+                  ? IconButton(
+                      icon: Icon(
+                        Icons.clear,
+                        color: Colors.white.withOpacity(0.5),
+                        size: 20,
+                      ),
+                      onPressed: () {
+                        _searchController.clear();
+                        _filterSongs('');
+                      },
+                    )
+                  : null,
             ),
-          ],
+            onChanged: _filterSongs,
+          ),
         ),
-        child: Row(
+        const SizedBox(height: 12),
+
+        // Contador de seleccionadas + Todas/Ninguna.
+        Row(
           children: [
-            Expanded(
-              flex: 1,
-              child: TextButton(
-                onPressed: () => Navigator.pop(context),
-                style: TextButton.styleFrom(
-                  padding: const EdgeInsets.symmetric(vertical: 16),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(16),
-                  ),
-                ),
-                child: Text(
-                  widget.getText('cancel', fallback: 'Cancelar'),
-                  style: const TextStyle(
-                    color: Colors.white70,
-                    fontSize: 16,
-                    fontWeight: FontWeight.w600,
-                  ),
+            Container(
+              padding: const EdgeInsets.symmetric(
+                horizontal: 12,
+                vertical: 6,
+              ),
+              decoration: BoxDecoration(
+                color: accent.withOpacity(0.1),
+                borderRadius: BorderRadius.circular(20),
+              ),
+              child: Text(
+                '${_selectedSongs.length} ${widget.getText('selected', fallback: 'seleccionadas')}',
+                style: TextStyle(
+                  color: accent,
+                  fontSize: 13,
+                  fontWeight: FontWeight.bold,
                 ),
               ),
             ),
-            const SizedBox(width: 16),
-            Expanded(
-              flex: 2,
-              child: ElevatedButton(
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: widget.accentColor ?? Colors.purpleAccent,
-                  foregroundColor: Colors.white,
-                  padding: const EdgeInsets.symmetric(vertical: 16),
-                  elevation: 0,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(16),
-                  ),
-                  disabledBackgroundColor:
-                      (widget.accentColor ?? Colors.purpleAccent)
-                          .withOpacity(0.3),
-                ),
-                onPressed: _selectedSongs.isEmpty ? null : _addSelectedSongs,
-                child: Text(
-                  widget.getText('add', fallback: 'Agregar'),
-                  style: const TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-              ),
+            const Spacer(),
+            _SelectionChip(
+              label: widget.getText('select_all', fallback: 'Todas'),
+              enabled: _filteredSongs.isNotEmpty &&
+                  _selectedSongs.length != _filteredSongs.length,
+              onTap: () =>
+                  setState(() => _selectedSongs.addAll(_filteredSongs)),
+            ),
+            const SizedBox(width: 8),
+            _SelectionChip(
+              label: widget.getText('deselect_all', fallback: 'Ninguna'),
+              enabled: _selectedSongs.isNotEmpty,
+              onTap: () => setState(() => _selectedSongs.clear()),
             ),
           ],
         ),
+        const SizedBox(height: 12),
+
+        // Lista de canciones (alto fijo: el diálogo nunca cambia de tamaño).
+        Container(
+          height: 320,
+          decoration: BoxDecoration(
+            color: Colors.white.withOpacity(0.03),
+            borderRadius: BorderRadius.circular(16),
+          ),
+          child: _isLoading
+              ? Center(child: CircularProgressIndicator(color: accent))
+              : _availableSongs.isEmpty
+                  ? _emptyState(
+                      icon: Icons.library_music_outlined,
+                      message: widget.getText(
+                        'no_songs_to_add',
+                        fallback: 'No hay canciones para agregar',
+                      ),
+                    )
+                  : _filteredSongs.isEmpty
+                      ? _emptyState(
+                          icon: Icons.search_off,
+                          message: widget.getText(
+                            'no_results',
+                            fallback: 'Sin resultados',
+                          ),
+                        )
+                      : ListView.builder(
+                          padding: const EdgeInsets.symmetric(vertical: 4),
+                          itemCount: _filteredSongs.length,
+                          itemBuilder: (context, index) {
+                            final song = _filteredSongs[index];
+                            final isSelected = _selectedSongs.contains(song);
+
+                            return InkWell(
+                              onTap: () {
+                                setState(() {
+                                  if (isSelected) {
+                                    _selectedSongs.remove(song);
+                                  } else {
+                                    _selectedSongs.add(song);
+                                  }
+                                });
+                              },
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 12,
+                                  vertical: 6,
+                                ),
+                                color: isSelected
+                                    ? accent.withOpacity(0.05)
+                                    : Colors.transparent,
+                                child: Row(
+                                  children: [
+                                    _SongArtwork(song: song),
+                                    const SizedBox(width: 12),
+                                    Expanded(
+                                      child: Column(
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.start,
+                                        children: [
+                                          Text(
+                                            song.title,
+                                            style: TextStyle(
+                                              color: isSelected
+                                                  ? accent.withOpacity(0.8)
+                                                  : Colors.white,
+                                              fontSize: 15,
+                                              fontWeight: isSelected
+                                                  ? FontWeight.bold
+                                                  : FontWeight.normal,
+                                            ),
+                                            maxLines: 1,
+                                            overflow: TextOverflow.ellipsis,
+                                          ),
+                                          const SizedBox(height: 2),
+                                          Text(
+                                            song.artist,
+                                            style: TextStyle(
+                                              color: Colors.white
+                                                  .withOpacity(0.5),
+                                              fontSize: 13,
+                                            ),
+                                            maxLines: 1,
+                                            overflow: TextOverflow.ellipsis,
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                    const SizedBox(width: 12),
+                                    Transform.scale(
+                                      scale: 1.0,
+                                      child: Checkbox(
+                                        value: isSelected,
+                                        onChanged: (value) {
+                                          setState(() {
+                                            if (value == true) {
+                                              _selectedSongs.add(song);
+                                            } else {
+                                              _selectedSongs.remove(song);
+                                            }
+                                          });
+                                        },
+                                        activeColor: accent,
+                                        checkColor: Colors.white,
+                                        shape: RoundedRectangleBorder(
+                                          borderRadius:
+                                              BorderRadius.circular(4),
+                                        ),
+                                        side: BorderSide(
+                                          color: Colors.white
+                                              .withOpacity(0.3),
+                                          width: 1.5,
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            );
+                          },
+                        ),
+        ),
+      ],
+    );
+  }
+
+  Widget _emptyState({required IconData icon, required String message}) {
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(icon, size: 48, color: Colors.white.withOpacity(0.2)),
+          const SizedBox(height: 12),
+          Text(
+            message,
+            style: TextStyle(
+              color: Colors.white.withOpacity(0.5),
+              fontSize: 14,
+            ),
+          ),
+        ],
       ),
     );
   }
+}
 
-  Widget _buildContent(BuildContext context) {
-    final bottomInset = MediaQuery.of(context).viewInsets.bottom;
-    final accent = widget.accentColor ?? Colors.purpleAccent;
+/// Chip Todas/Ninguna del contador de seleccionadas.
+class _SelectionChip extends StatelessWidget {
+  final String label;
+  final bool enabled;
+  final VoidCallback onTap;
 
-    return DraggableScrollableSheet(
-      initialChildSize: 0.8,
-      minChildSize: 0.5,
-      maxChildSize: 0.95,
-      builder: (_, controller) {
-        return BackdropFilter(
-          filter: ui.ImageFilter.blur(sigmaX: 10, sigmaY: 10),
-          child: Container(
-            decoration: BoxDecoration(
-              color: widget.backgroundColor ?? Colors.grey[900],
-              borderRadius: const BorderRadius.vertical(
-                top: Radius.circular(24),
-              ),
-            ),
-            child: Column(
-              children: [
-                // Drag handle
-                Padding(
-                  padding: const EdgeInsets.only(top: 16, bottom: 8),
-                  child: Container(
-                    width: 40,
-                    height: 4,
-                    decoration: BoxDecoration(
-                      color: Colors.white24,
-                      borderRadius: BorderRadius.circular(2),
-                    ),
-                  ),
-                ),
-
-                // Header
-                Padding(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 24,
-                    vertical: 8,
-                  ),
-                  child: Row(
-                    children: [
-                      Expanded(
-                        child: Text(
-                          widget.getText('add_songs', fallback: 'Agregar canciones'),
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: 22,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                      ),
-                      IconButton(
-                        style: IconButton.styleFrom(
-                          backgroundColor: Colors.white.withOpacity(0.05),
-                        ),
-                        icon: const Icon(Icons.close, color: Colors.white70),
-                        onPressed: () => Navigator.pop(context),
-                      ),
-                    ],
-                  ),
-                ),
-
-                // Search bar
-                Padding(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 24,
-                    vertical: 8,
-                  ),
-                  child: Container(
-                    decoration: BoxDecoration(
-                      color: Colors.white.withOpacity(0.05),
-                      borderRadius: BorderRadius.circular(16),
-                    ),
-                    child: TextField(
-                      controller: _searchController,
-                      style: const TextStyle(color: Colors.white, fontSize: 16),
-                      cursorColor: accent,
-                      decoration: InputDecoration(
-                        hintText: widget.getText('search', fallback: 'Buscar'),
-                        hintStyle: TextStyle(
-                          color: Colors.white.withOpacity(0.2),
-                        ),
-                        contentPadding: const EdgeInsets.symmetric(
-                          horizontal: 16,
-                          vertical: 14,
-                        ),
-                        border: InputBorder.none,
-                        prefixIcon: Icon(
-                          Icons.search,
-                          color: Colors.white.withOpacity(0.5),
-                          size: 20,
-                        ),
-                        suffixIcon: _searchController.text.isNotEmpty
-                            ? IconButton(
-                                icon: Icon(
-                                  Icons.clear,
-                                  color: Colors.white.withOpacity(0.5),
-                                ),
-                                onPressed: () {
-                                  _searchController.clear();
-                                  _filterSongs('');
-                                },
-                              )
-                            : null,
-                      ),
-                      onChanged: _filterSongs,
-                    ),
-                  ),
-                ),
-
-                // Selected count and actions row (siempre visible para evitar saltos)
-                Padding(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 24,
-                    vertical: 8,
-                  ),
-                  child: Row(
-                    children: [
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 12,
-                          vertical: 6,
-                        ),
-                        decoration: BoxDecoration(
-                          color: accent.withOpacity(0.1),
-                          borderRadius: BorderRadius.circular(20),
-                        ),
-                        child: Text(
-                          '${_selectedSongs.length} ${widget.getText('selected', fallback: 'seleccionadas')}',
-                          style: TextStyle(
-                            color: accent,
-                            fontSize: 13,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                      ),
-                      const Spacer(),
-                      // Select All Button
-                      GestureDetector(
-                        onTap: (_filteredSongs.isEmpty ||
-                                _selectedSongs.length == _filteredSongs.length)
-                            ? null
-                            : () {
-                                setState(() {
-                                  _selectedSongs.addAll(_filteredSongs);
-                                });
-                              },
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 20,
-                            vertical: 5,
-                          ),
-                          decoration: BoxDecoration(
-                            color: (_filteredSongs.isEmpty ||
-                                    _selectedSongs.length ==
-                                        _filteredSongs.length)
-                                ? Colors.white.withOpacity(0.05)
-                                : Colors.white.withOpacity(0.2),
-                            borderRadius: BorderRadius.circular(20),
-                          ),
-                          child: Text(
-                            widget.getText('select_all', fallback: 'Todas'),
-                            style: TextStyle(
-                              color: (_filteredSongs.isEmpty ||
-                                      _selectedSongs.length ==
-                                          _filteredSongs.length)
-                                  ? Colors.white30
-                                  : Colors.white,
-                              fontSize: 15,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      // Deselect All Button
-                      GestureDetector(
-                        onTap: _selectedSongs.isEmpty
-                            ? null
-                            : () {
-                                setState(() {
-                                  _selectedSongs.clear();
-                                });
-                              },
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 20,
-                            vertical: 5,
-                          ),
-                          decoration: BoxDecoration(
-                            color: _selectedSongs.isEmpty
-                                ? Colors.white.withOpacity(0.05)
-                                : Colors.white.withOpacity(0.2),
-                            borderRadius: BorderRadius.circular(20),
-                          ),
-                          child: Text(
-                            widget.getText('deselect_all', fallback: 'Ninguna'),
-                            style: TextStyle(
-                              color: _selectedSongs.isEmpty
-                                  ? Colors.white30
-                                  : Colors.white,
-                              fontSize: 15,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-
-                // Songs list
-                Expanded(
-                  child: _isLoading
-                      ? Center(
-                          child: CircularProgressIndicator(color: accent),
-                        )
-                      : _availableSongs.isEmpty
-                          ? Center(
-                              child: Column(
-                                mainAxisAlignment: MainAxisAlignment.center,
-                                children: [
-                                  Icon(
-                                    Icons.library_music_outlined,
-                                    size: 64,
-                                    color: Colors.white.withOpacity(0.2),
-                                  ),
-                                  const SizedBox(height: 16),
-                                  Text(
-                                    widget.getText(
-                                      'no_songs_to_add',
-                                      fallback:
-                                          'No hay canciones para agregar',
-                                    ),
-                                    style: TextStyle(
-                                      color: Colors.white.withOpacity(0.5),
-                                      fontSize: 16,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            )
-                          : _filteredSongs.isEmpty
-                              ? Center(
-                                  child: Text(
-                                    widget.getText(
-                                      'no_results',
-                                      fallback: 'Sin resultados',
-                                    ),
-                                    style: TextStyle(
-                                      color: Colors.white.withOpacity(0.5),
-                                    ),
-                                  ),
-                                )
-                              : ListView.builder(
-                                  controller: controller,
-                                  padding: EdgeInsets.only(
-                                    bottom: 100 + bottomInset,
-                                  ),
-                                  itemCount: _filteredSongs.length,
-                                  itemBuilder: (context, index) {
-                                    final song = _filteredSongs[index];
-                                    final isSelected =
-                                        _selectedSongs.contains(song);
-
-                                    return InkWell(
-                                      onTap: () {
-                                        setState(() {
-                                          if (isSelected) {
-                                            _selectedSongs.remove(song);
-                                          } else {
-                                            _selectedSongs.add(song);
-                                          }
-                                        });
-                                      },
-                                      child: Container(
-                                        padding: const EdgeInsets.symmetric(
-                                          horizontal: 24,
-                                          vertical: 8,
-                                        ),
-                                        color: isSelected
-                                            ? accent.withOpacity(0.05)
-                                            : Colors.transparent,
-                                        child: Row(
-                                          children: [
-                                            _SongArtwork(song: song),
-                                            const SizedBox(width: 16),
-                                            Expanded(
-                                              child: Column(
-                                                crossAxisAlignment:
-                                                    CrossAxisAlignment.start,
-                                                children: [
-                                                  Text(
-                                                    song.title,
-                                                    style: TextStyle(
-                                                      color: isSelected
-                                                          ? accent
-                                                              .withOpacity(0.8)
-                                                          : Colors.white,
-                                                      fontSize: 15,
-                                                      fontWeight: isSelected
-                                                          ? FontWeight.bold
-                                                          : FontWeight.normal,
-                                                    ),
-                                                    maxLines: 1,
-                                                    overflow:
-                                                        TextOverflow.ellipsis,
-                                                  ),
-                                                  const SizedBox(height: 4),
-                                                  Text(
-                                                    song.artist,
-                                                    style: TextStyle(
-                                                      color: Colors.white
-                                                          .withOpacity(0.5),
-                                                      fontSize: 13,
-                                                    ),
-                                                    maxLines: 1,
-                                                    overflow:
-                                                        TextOverflow.ellipsis,
-                                                  ),
-                                                ],
-                                              ),
-                                            ),
-                                            const SizedBox(width: 12),
-                                            Transform.scale(
-                                              scale: 1.1,
-                                              child: Checkbox(
-                                                value: isSelected,
-                                                onChanged: (value) {
-                                                  setState(() {
-                                                    if (value == true) {
-                                                      _selectedSongs.add(song);
-                                                    } else {
-                                                      _selectedSongs
-                                                          .remove(song);
-                                                    }
-                                                  });
-                                                },
-                                                activeColor: accent,
-                                                checkColor: Colors.white,
-                                                shape: RoundedRectangleBorder(
-                                                  borderRadius:
-                                                      BorderRadius.circular(4),
-                                                ),
-                                                side: BorderSide(
-                                                  color: Colors.white
-                                                      .withOpacity(0.3),
-                                                  width: 1.5,
-                                                ),
-                                              ),
-                                            ),
-                                          ],
-                                        ),
-                                      ),
-                                    );
-                                  },
-                                ),
-                ),
-              ],
-            ),
-          ),
-        );
-      },
-    );
-  }
+  const _SelectionChip({
+    required this.label,
+    required this.enabled,
+    required this.onTap,
+  });
 
   @override
   Widget build(BuildContext context) {
-    final animation = ModalRoute.of(context)?.animation;
-    Widget child = Stack(
-      children: [
-        _buildContent(context),
-        if (!_isLoading && _availableSongs.isNotEmpty)
-          _buildBottomFloatingActions(context),
-      ],
+    return GestureDetector(
+      onTap: enabled ? onTap : null,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 5),
+        decoration: BoxDecoration(
+          color: enabled
+              ? Colors.white.withOpacity(0.2)
+              : Colors.white.withOpacity(0.05),
+          borderRadius: BorderRadius.circular(20),
+        ),
+        child: Text(
+          label,
+          style: TextStyle(
+            color: enabled ? Colors.white : Colors.white30,
+            fontSize: 14,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+      ),
     );
-
-    if (animation != null) {
-      return AnimatedBuilder(
-        animation: animation,
-        builder: (context, child) {
-          final curvedValue = Curves.easeOutCubic.transform(animation.value);
-          return Transform.scale(
-            scale: 0.95 + (0.05 * curvedValue),
-            child: child,
-          );
-        },
-        child: child,
-      );
-    }
-
-    return child;
   }
 }
 
@@ -627,8 +430,8 @@ class _SongArtwork extends StatelessWidget {
         borderRadius: BorderRadius.circular(4),
         child: Image.memory(
           song.artworkData!,
-          width: 50,
-          height: 50,
+          width: 44,
+          height: 44,
           fit: BoxFit.cover,
         ),
       );
@@ -641,18 +444,18 @@ class _SongArtwork extends StatelessWidget {
         if (art != null) {
           return ClipRRect(
             borderRadius: BorderRadius.circular(4),
-            child: Image.memory(art, width: 50, height: 50, fit: BoxFit.cover),
+            child: Image.memory(art, width: 44, height: 44, fit: BoxFit.cover),
           );
         }
 
         return Container(
-          width: 50,
-          height: 50,
+          width: 44,
+          height: 44,
           decoration: BoxDecoration(
             color: Colors.grey[800],
             borderRadius: BorderRadius.circular(4),
           ),
-          child: const Icon(Icons.music_note, color: Colors.grey),
+          child: const Icon(Icons.music_note, color: Colors.grey, size: 20),
         );
       },
     );

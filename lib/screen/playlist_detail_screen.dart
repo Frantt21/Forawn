@@ -1,8 +1,6 @@
 import 'dart:io';
 import 'dart:math';
-import 'dart:ui' show ImageFilter;
 import 'package:flutter/material.dart';
-import 'package:image_picker/image_picker.dart';
 import 'package:palette_generator/palette_generator.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -13,6 +11,7 @@ import '../services/global_music_player.dart';
 import '../services/local_music_database.dart';
 import '../widgets/app_title_bar.dart';
 import '../widgets/add_songs_sheet.dart';
+import '../widgets/playlist_dialogs.dart';
 
 class PlaylistDetailScreen extends StatefulWidget {
   final Playlist playlist;
@@ -671,249 +670,15 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen>
     BuildContext context,
     Playlist playlist,
   ) async {
-    final nameController = TextEditingController(text: playlist.name);
-    final descController = TextEditingController(text: playlist.description);
-    String? selectedImagePath = playlist.imagePath;
-
+    // Diálogo EDITAR unificado (ForawnDialog): mismo estilo y tamaño que
+    // crear/agregar canciones.
     await showDialog(
       context: context,
-      barrierColor: Colors.black.withOpacity(0.5),
-      builder: (ctx) {
-        return StatefulBuilder(
-          builder: (context, setState) {
-            return BackdropFilter(
-              filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
-              child: Dialog(
-                backgroundColor: Colors.transparent,
-                insetPadding: const EdgeInsets.symmetric(horizontal: 24),
-                child: Container(
-                  constraints: const BoxConstraints(maxWidth: 500),
-                  decoration: BoxDecoration(
-                    color: Colors.grey[900]!.withOpacity(0.95),
-                    borderRadius: BorderRadius.circular(16),
-                    border: Border.all(
-                      color: Colors.white.withOpacity(0.1),
-                      width: 1,
-                    ),
-                  ),
-                  child: Padding(
-                    padding: const EdgeInsets.all(24),
-                    child: SingleChildScrollView(
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          // Título
-                          Text(
-                            widget.getText(
-                              'edit_playlist',
-                              fallback: 'Edit Playlist',
-                            ),
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontSize: 24,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                          const SizedBox(height: 24),
-
-                          // Imagen cuadrada más grande
-                          Center(
-                            child: GestureDetector(
-                              onTap: () async {
-                                final picker = ImagePicker();
-                                final image = await picker.pickImage(
-                                  source: ImageSource.gallery,
-                                );
-                                if (image != null) {
-                                  setState(
-                                    () => selectedImagePath = image.path,
-                                  );
-                                }
-                              },
-                              child: Container(
-                                width: 180,
-                                height: 180,
-                                decoration: BoxDecoration(
-                                  color: const Color(0xFF1C1C1E),
-                                  borderRadius: BorderRadius.circular(16),
-                                  image: selectedImagePath != null
-                                      ? DecorationImage(
-                                          image:
-                                              File(
-                                                selectedImagePath!,
-                                              ).existsSync()
-                                              ? FileImage(
-                                                  File(selectedImagePath!),
-                                                )
-                                              : NetworkImage(selectedImagePath!)
-                                                    as ImageProvider,
-                                          fit: BoxFit.cover,
-                                        )
-                                      : null,
-                                ),
-                                child: selectedImagePath == null
-                                    ? const Icon(
-                                        Icons.add_a_photo,
-                                        color: Colors.white54,
-                                        size: 56,
-                                      )
-                                    : null,
-                              ),
-                            ),
-                          ),
-                          const SizedBox(height: 24),
-
-                          // Input de nombre estilo Card
-                          Card(
-                            color: const Color(0xFF1C1C1E),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                            child: Padding(
-                              padding: const EdgeInsets.all(16),
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    widget.getText('name', fallback: 'Name'),
-                                    style: TextStyle(
-                                      color: Colors.white.withOpacity(0.5),
-                                      fontSize: 12,
-                                      fontWeight: FontWeight.w500,
-                                    ),
-                                  ),
-                                  const SizedBox(height: 8),
-                                  TextField(
-                                    controller: nameController,
-                                    style: const TextStyle(
-                                      color: Colors.white,
-                                      fontSize: 16,
-                                    ),
-                                    cursorColor: Colors.purpleAccent,
-                                    decoration: InputDecoration(
-                                      hintText: widget.getText(
-                                        'playlist_name_hint',
-                                        fallback: 'Playlist Name',
-                                      ),
-                                      hintStyle: TextStyle(
-                                        color: Colors.white.withOpacity(0.3),
-                                      ),
-                                      border: InputBorder.none,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ),
-                          const SizedBox(height: 16),
-
-                          // Input de descripción estilo Card
-                          Card(
-                            color: const Color(0xFF1C1C1E),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                            child: Padding(
-                              padding: const EdgeInsets.all(16),
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    widget.getText(
-                                      'description',
-                                      fallback: 'Description',
-                                    ),
-                                    style: TextStyle(
-                                      color: Colors.white.withOpacity(0.5),
-                                      fontSize: 12,
-                                      fontWeight: FontWeight.w500,
-                                    ),
-                                  ),
-                                  const SizedBox(height: 8),
-                                  TextField(
-                                    controller: descController,
-                                    maxLines: 3,
-                                    style: const TextStyle(
-                                      color: Colors.white,
-                                      fontSize: 16,
-                                    ),
-                                    cursorColor: Colors.purpleAccent,
-                                    decoration: InputDecoration(
-                                      hintText: widget.getText(
-                                        'playlist_description_hint',
-                                        fallback: 'Add a description...',
-                                      ),
-                                      hintStyle: TextStyle(
-                                        color: Colors.white.withOpacity(0.3),
-                                      ),
-                                      border: InputBorder.none,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ),
-                          const SizedBox(height: 24),
-
-                          // Botones
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.end,
-                            children: [
-                              TextButton(
-                                onPressed: () => Navigator.pop(ctx),
-                                child: Text(
-                                  widget.getText('cancel', fallback: 'Cancel'),
-                                  style: const TextStyle(
-                                    color: Colors.white70,
-                                    fontSize: 16,
-                                  ),
-                                ),
-                              ),
-                              const SizedBox(width: 12),
-                              ElevatedButton(
-                                style: ElevatedButton.styleFrom(
-                                  backgroundColor: Colors.purpleAccent,
-                                  foregroundColor: Colors.white,
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 24,
-                                    vertical: 12,
-                                  ),
-                                  shape: RoundedRectangleBorder(
-                                    borderRadius: BorderRadius.circular(12),
-                                  ),
-                                ),
-                                onPressed: () {
-                                  if (nameController.text.isNotEmpty) {
-                                    PlaylistService().updatePlaylist(
-                                      playlist.id,
-                                      name: nameController.text,
-                                      description: descController.text,
-                                      imagePath: selectedImagePath,
-                                    );
-                                    Navigator.pop(ctx);
-                                  }
-                                },
-                                child: Text(
-                                  widget.getText('save', fallback: 'Save'),
-                                  style: const TextStyle(
-                                    fontSize: 16,
-                                    fontWeight: FontWeight.bold,
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-            );
-          },
-        );
-      },
+      builder: (_) => PlaylistEditDialog(
+        playlist: playlist,
+        getText: widget.getText,
+        accentColor: _getAccentColor(),
+      ),
     );
   }
 
@@ -1030,29 +795,12 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen>
     BuildContext context,
     Playlist playlist,
   ) async {
-    return AddSongsSheet.show(
+    return AddSongsDialog.show(
       context,
       playlist: playlist,
       getText: widget.getText,
-      backgroundColor: _getBottomSheetColor(),
       accentColor: _getAccentColor(),
     );
-  }
-
-  Color _getBottomSheetColor() {
-    final isFavorites = widget.playlist.id == 'favorites';
-    final rawColor = isFavorites
-        ? Colors.purpleAccent
-        : (_dominantColor ?? Colors.purpleAccent);
-
-    // Asegurar que el color sea notorio, misma lógica que forawn_mobile
-    final hsl = HSLColor.fromColor(rawColor);
-    final color = hsl.lightness < 0.3
-        ? hsl.withLightness(0.6).toColor()
-        : rawColor;
-
-    return Color.lerp(const Color(0xFF1C1C1E), color, 0.15) ??
-        const Color(0xFF1C1C1E);
   }
 
   Color _getAccentColor() {

@@ -228,11 +228,111 @@ class _PlayerScreenState extends State<PlayerScreen> with WindowListener {
     return color.computeLuminance() > 0.5 ? Colors.black : Colors.white;
   }
 
-  String _formatDuration(Duration duration) {
+  /// Formato corto de tiempos del player: solo mm:ss (sin horas),
+  /// incluso en pistas larguísimas (100:00 en vez de 1:00:00).
+  String _formatDurationShort(Duration duration) {
     String twoDigits(int n) => n.toString().padLeft(2, "0");
-    String twoDigitMinutes = twoDigits(duration.inMinutes.remainder(60));
-    String twoDigitSeconds = twoDigits(duration.inSeconds.remainder(60));
-    return "${twoDigits(duration.inHours)}:$twoDigitMinutes:$twoDigitSeconds";
+    final minutes = duration.inMinutes;
+    final seconds = twoDigits(duration.inSeconds.remainder(60));
+    return "$minutes:$seconds";
+  }
+
+  /// Barra de progreso del player, encima de los botones: barra larga
+  /// (con margen lateral) y los tiempos en los extremos, debajo.
+  Widget _buildProgressBar() {
+    return ValueListenableBuilder<Duration>(
+      valueListenable: _musicPlayer.position,
+      builder: (context, position, _) {
+        final duration = _musicPlayer.duration.value;
+        return Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            // Barra: ancho máximo generoso (mucho más larga que antes).
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 24),
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 900),
+                child: SizedBox(
+                  height: 28,
+                  child: SliderTheme(
+                    data: SliderTheme.of(context).copyWith(
+                      trackHeight: 2,
+                      // Sin dot: thumb invisible (radio 0) y sin overlay,
+                      // igual que la barra de volumen.
+                      thumbShape: const RoundSliderThumbShape(
+                        enabledThumbRadius: 0,
+                      ),
+                      overlayShape: const RoundSliderOverlayShape(
+                        overlayRadius: 0,
+                      ),
+                      // Sin padding lateral interno.
+                      padding: EdgeInsets.zero,
+                      activeTrackColor: _adjustColorForControls(
+                        _dominantColor,
+                      ),
+                      inactiveTrackColor: Colors.white10,
+                      thumbColor: _adjustColorForControls(_dominantColor),
+                    ),
+                    child: Slider(
+                      value: (_dragSeekValue ??
+                              position.inSeconds.toDouble())
+                          .clamp(0.0, duration.inSeconds.toDouble()),
+                      max: duration.inSeconds.toDouble() > 0
+                          ? duration.inSeconds.toDouble()
+                          : 1.0,
+                      // Durante el arrastre solo se muestra la posición
+                      // del dedo; el seek se aplica al soltar.
+                      onChanged: (v) => setState(() {
+                        _dragSeekValue = v;
+                      }),
+                      onChangeEnd: (v) {
+                        _player.seek(Duration(seconds: v.toInt()));
+                        setState(() {
+                          _dragSeekValue = null;
+                        });
+                      },
+                    ),
+                  ),
+                ),
+              ),
+            ),
+            // Timestamps: posición a la izquierda, duración a la derecha,
+            // justo debajo de la barra y con los mismos márgenes.
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 24),
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 900),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text(
+                      // Durante el arrastre se muestra la posición del
+                      // dedo en vez de la reproducción.
+                      _formatDurationShort(
+                        _dragSeekValue != null
+                            ? Duration(seconds: _dragSeekValue!.toInt())
+                            : position,
+                      ),
+                      style: const TextStyle(
+                        color: Colors.white54,
+                        fontSize: 12,
+                      ),
+                    ),
+                    Text(
+                      _formatDurationShort(duration),
+                      style: const TextStyle(
+                        color: Colors.white54,
+                        fontSize: 12,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        );
+      },
+    );
   }
 
   void _togglePlaylist() {
@@ -2537,248 +2637,15 @@ class _PlayerScreenState extends State<PlayerScreen> with WindowListener {
 
                                                 const SizedBox(height: 8),
 
-                                                // Progress Bar
-                                                ValueListenableBuilder<
-                                                  Duration
-                                                >(
-                                                  valueListenable:
-                                                      _musicPlayer.position,
-                                                  builder: (context, position, _) {
-                                                    final duration =
-                                                        _musicPlayer
-                                                            .duration
-                                                            .value;
-                                                    // Barra de progreso: centrada, con ancho máximo
-                                                    // acotado y el tiempo en la misma línea que la barra.
-                                                    // El volumen vive en esta misma fila (a la derecha).
-                                                    return Row(
-                                                      children: [
-                                                        // Espejo del volumen: mantiene la línea de tiempo
-                                                        // centrada en la pantalla sin afectar el layout.
-                                                        const Expanded(
-                                                          child: SizedBox(),
-                                                        ),
-                                                        Expanded(
-                                                          child: Center(
-                                                            child:
-                                                                ConstrainedBox(
-                                                              constraints:
-                                                                  const BoxConstraints(
-                                                                    maxWidth:
-                                                                        420,
-                                                                  ),
-                                                              child: Row(
-                                                                children: [
-                                                            Text(
-                                                              // Durante el arrastre se muestra la posición
-                                                              // del dedo en vez de la reproducción.
-                                                              _formatDuration(
-                                                                _dragSeekValue !=
-                                                                        null
-                                                                    ? Duration(
-                                                                        seconds:
-                                                                            _dragSeekValue!
-                                                                                .toInt(),
-                                                                      )
-                                                                    : position,
-                                                              ),
-                                                              style: const TextStyle(
-                                                                color: Colors
-                                                                    .white54,
-                                                                fontSize: 12,
-                                                              ),
-                                                            ),
-                                                            const SizedBox(
-                                                              width: 8,
-                                                            ),
-                                                            Expanded(
-                                                              // Zona clickeable más alta (28 px) sin engrosar
-                                                              // la barra: el track se mantiene centrado y de
-                                                              // 2 px, con los tiempos alineados a su centro.
-                                                              child: SizedBox(
-                                                                height: 28,
-                                                                child: SliderTheme(
-                                                                  data: SliderTheme.of(context).copyWith(
-                                                                    trackHeight: 2,
-                                                                    // Sin dot: thumb invisible (radio 0) y sin
-                                                                    // overlay, igual que la barra de volumen.
-                                                                    thumbShape:
-                                                                        const RoundSliderThumbShape(
-                                                                          enabledThumbRadius:
-                                                                              0,
-                                                                        ),
-                                                                    overlayShape:
-                                                                        const RoundSliderOverlayShape(
-                                                                          overlayRadius:
-                                                                              0,
-                                                                        ),
-                                                                    // Sin padding lateral interno: los tiempos
-                                                                    // quedan pegados a la barra.
-                                                                    padding:
-                                                                        EdgeInsets.zero,
-                                                                    activeTrackColor:
-                                                                        _adjustColorForControls(
-                                                                          _dominantColor,
-                                                                        ),
-                                                                    inactiveTrackColor:
-                                                                        Colors.white10,
-                                                                    thumbColor:
-                                                                        _adjustColorForControls(
-                                                                          _dominantColor,
-                                                                        ),
-                                                                  ),
-                                                                  child: Slider(
-                                                                    value: (_dragSeekValue ??
-                                                                            position
-                                                                                .inSeconds
-                                                                                .toDouble())
-                                                                        .clamp(
-                                                                          0.0,
-                                                                          duration
-                                                                              .inSeconds
-                                                                              .toDouble(),
-                                                                        ),
-                                                                    max:
-                                                                        duration
-                                                                                .inSeconds
-                                                                                .toDouble() >
-                                                                            0
-                                                                        ? duration
-                                                                              .inSeconds
-                                                                              .toDouble()
-                                                                        : 1.0,
-                                                                    // Durante el arrastre solo se muestra la
-                                                                    // posición del dedo; el seek se aplica
-                                                                    // al soltar (onChangeEnd).
-                                                                    onChanged: (v) =>
-                                                                        setState(() {
-                                                                          _dragSeekValue =
-                                                                              v;
-                                                                        }),
-                                                                    onChangeEnd:
-                                                                        (v) {
-                                                                      _player.seek(
-                                                                        Duration(
-                                                                          seconds:
-                                                                              v.toInt(),
-                                                                        ),
-                                                                      );
-                                                                      setState(() {
-                                                                        _dragSeekValue =
-                                                                            null;
-                                                                      });
-                                                                    },
-                                                                  ),
-                                                                ),
-                                                              ),
-                                                            ),
-                                                            const SizedBox(
-                                                              width: 8,
-                                                            ),
-                                                            Text(
-                                                              _formatDuration(
-                                                                duration,
-                                                              ),
-                                                              style: const TextStyle(
-                                                                color: Colors
-                                                                    .white54,
-                                                                fontSize: 12,
-                                                              ),
-                                                            ),
-                                                          ],
-                                                        ),
-                                                      ),
-                                                    ),
-                                                    ),
-                                                        // Volumen: anclado a la derecha (no empuja el centro)
-                                                        Expanded(
-                                                          child: Padding(
-                                                            padding:
-                                                                const EdgeInsets
-                                                                        .only(
-                                                                  right: 16,
-                                                                ),
-                                                            child: Row(
-                                                              mainAxisAlignment:
-                                                                  MainAxisAlignment
-                                                                      .end,
-                                                              children: [
-                                                            Icon(
-                                                              Icons.volume_up,
-                                                              color: _adjustColorForControls(
-                                                                _dominantColor,
-                                                              ).withOpacity(
-                                                                0.7,
-                                                              ),
-                                                              size: 20,
-                                                            ),
-                                                            const SizedBox(
-                                                              width: 8,
-                                                            ),
-                                                            SizedBox(
-                                                              width: 80,
-                                                              height: 48,
-                                                              child:
-                                                                  SliderTheme(
-                                                                data: SliderTheme.of(context).copyWith(
-                                                                  trackHeight: 2,
-                                                                  thumbShape:
-                                                                      const RoundSliderThumbShape(
-                                                                        enabledThumbRadius:
-                                                                            0,
-                                                                      ),
-                                                                  overlayShape:
-                                                                      const RoundSliderOverlayShape(
-                                                                        overlayRadius:
-                                                                            0,
-                                                                      ),
-                                                                  activeTrackColor:
-                                                                      _adjustColorForControls(
-                                                                        _dominantColor,
-                                                                      ).withOpacity(
-                                                                        0.7,
-                                                                      ),
-                                                                  inactiveTrackColor:
-                                                                      Colors
-                                                                          .white10,
-                                                                  thumbColor:
-                                                                      _adjustColorForControls(
-                                                                        _dominantColor,
-                                                                      ),
-                                                                ),
-                                                                child: Slider(
-                                                                  value: _musicPlayer
-                                                                      .volume
-                                                                      .value,
-                                                                  onChanged:
-                                                                      (v) async {
-                                                                    _musicPlayer
-                                                                            .volume
-                                                                            .value =
-                                                                        v;
-                                                                    _musicPlayer
-                                                                            .isMuted
-                                                                            .value =
-                                                                        v == 0;
-                                                                    await _player
-                                                                        .setVolume(
-                                                                          v,
-                                                                        );
-                                                                    setState(
-                                                                      () {},
-                                                                    );
-                                                                  },
-                                                                ),
-                                                              ),
-                                                            ),
-                                                              ],
-                                                            ),
-                                                          ),
-                                                        ),
-                                                      ],
-                                                    );
-                                                  },
-                                                ),
+                                                // Progress Bar (encima de los
+                                                // botones): barra larga con el
+                                                // tiempo transcurrido y la duración
+                                                // en los extremos, debajo (mm:ss).
+                                                _buildProgressBar(),
+
+                                                const SizedBox(height: 8),
+
+
                                               ],
                                             ),
                                           ],

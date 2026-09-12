@@ -20,6 +20,7 @@ import '../services/global_theme_service.dart';
 import '../services/playlist_service.dart';
 import '../models/playlist_model.dart';
 import '../models/song_model.dart';
+import '../widgets/playlist_dialogs.dart';
 
 import 'player_screen.dart';
 import 'playlist_detail_screen.dart';
@@ -1793,17 +1794,8 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen>
                         ),
                       ),
 
-                      // Audio bars indicator - persistent for current song
-                      if (isCurrentSong)
-                        Positioned(
-                          top: 8,
-                          right: 8,
-                          child: _AnimatedAudioBars(
-                            size: 16,
-                            color: accentColor,
-                            playing: GlobalMusicPlayer().isPlaying.value,
-                          ),
-                        ),
+                      // Indicador de audio: SOLO el inline junto al título
+                      // (evita duplicados en las esquinas).
 
                       // Text Content
                       Padding(
@@ -1856,23 +1848,6 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen>
                           ],
                         ),
                       ),
-                      if (isPlaying)
-                        Positioned(
-                          bottom: 8,
-                          right: 8,
-                          child: Container(
-                            padding: const EdgeInsets.all(4),
-                            decoration: BoxDecoration(
-                              color: accentColor?.withOpacity(0.25) ?? Colors.purpleAccent.withOpacity(0.25),
-                              shape: BoxShape.circle,
-                            ),
-                            child: _AnimatedAudioBars(
-                              size: 14,
-                              color: accentColor,
-                              playing: GlobalMusicPlayer().isPlaying.value,
-                            ),
-                          ),
-                        ),
                     ],
                   );
                 },
@@ -1880,6 +1855,120 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen>
             ),
           );
         },
+      ),
+    );
+  }
+
+  /// Menú contextual de playlist (long-press / clic derecho): fijar,
+  /// editar y eliminar. Se muestra en la posición del puntero.
+  Future<void> _showPlaylistContextMenu(
+    BuildContext tapContext,
+    Playlist playlist,
+  ) async {
+    final overlay =
+        Overlay.of(tapContext, rootOverlay: true).context.findRenderObject()
+            as RenderBox?;
+    if (overlay == null) return;
+
+    String? action;
+    try {
+      action = await showMenu<String>(
+        context: tapContext,
+        position: RelativeRect.fromLTRB(
+          tapContext.mounted
+              ? (tapContext.findRenderObject() as RenderBox?)
+                    ?.localToGlobal(Offset.zero)
+                    .dx ??
+                    overlay.size.width / 2
+              : overlay.size.width / 2,
+          tapContext.mounted
+              ? (tapContext.findRenderObject() as RenderBox?)
+                    ?.localToGlobal(Offset.zero)
+                    .dy ??
+                    overlay.size.height / 2
+              : overlay.size.height / 2,
+          overlay.size.width,
+          overlay.size.height,
+        ),
+        color: const Color(0xFF2C2C2E),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
+        elevation: 4,
+        items: [
+          PopupMenuItem(
+            value: 'pin',
+            child: Row(
+              children: [
+                Icon(
+                  playlist.isPinned ? Icons.push_pin_outlined : Icons.push_pin,
+                  color: Colors.white,
+                  size: 20,
+                ),
+                const SizedBox(width: 12),
+                Text(
+                  playlist.isPinned
+                      ? widget.getText('unpin', fallback: 'Unpin')
+                      : widget.getText('pin', fallback: 'Pin'),
+                  style: const TextStyle(color: Colors.white),
+                ),
+              ],
+            ),
+          ),
+          PopupMenuItem(
+            value: 'edit',
+            child: Row(
+              children: [
+                const Icon(Icons.edit, color: Colors.white, size: 20),
+                const SizedBox(width: 12),
+                Text(
+                  widget.getText('edit_playlist', fallback: 'Edit Playlist'),
+                  style: const TextStyle(color: Colors.white),
+                ),
+              ],
+            ),
+          ),
+          PopupMenuItem(
+            value: 'delete',
+            child: Row(
+              children: [
+                const Icon(Icons.delete_outline, color: Colors.white, size: 20),
+                const SizedBox(width: 12),
+                Text(
+                  widget.getText('delete', fallback: 'Delete'),
+                  style: const TextStyle(color: Colors.white),
+                ),
+              ],
+            ),
+          ),
+        ],
+      );
+    } catch (_) {
+      return;
+    }
+
+    if (!mounted) return;
+    switch (action) {
+      case 'pin':
+        await PlaylistService().togglePin(playlist.id);
+        if (mounted) setState(() {});
+        break;
+      case 'edit':
+        _showEditPlaylistDialogFromCard(playlist);
+        break;
+      case 'delete':
+        PlaylistService().deletePlaylist(playlist.id);
+        if (mounted) setState(() {});
+        break;
+    }
+  }
+
+  /// Edición de playlist desde el menú contextual de la card: reutiliza el
+  /// diálogo unificado (mismo estilo/tamaño que crear/agregar canciones).
+  void _showEditPlaylistDialogFromCard(Playlist playlist) {
+    showDialog(
+      context: context,
+      builder: (_) => PlaylistEditDialog(
+        playlist: playlist,
+        getText: widget.getText,
       ),
     );
   }
@@ -1892,31 +1981,11 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen>
   }) {
     return GestureDetector(
       onTap: () => _openPlaylist(playlist, isReadOnly: isFavorite),
+      // Long-press: menú contextual (fijar / editar / eliminar) en la
+      // posición del puntero, igual que un clic derecho.
       onLongPress: isFavorite
           ? null
-          : () {
-              showModalBottomSheet(
-                context: context,
-                backgroundColor: const Color(0xFF1C1C1E),
-                builder: (context) => Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    ListTile(
-                      leading: const Icon(Icons.delete, color: Colors.red),
-                      title: Text(
-                        widget.getText('delete', fallback: "Delete"),
-                        style: const TextStyle(color: Colors.red),
-                      ),
-                      onTap: () {
-                        Navigator.pop(context);
-                        PlaylistService().deletePlaylist(playlist.id);
-                        setState(() {});
-                      },
-                    ),
-                  ],
-                ),
-              );
-            },
+          : () => _showPlaylistContextMenu(context, playlist),
       child: Container(
         width: width,
         height: height,
@@ -2496,150 +2565,15 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen>
     );
   }
 
+  /// Diálogo CREAR playlist unificado (ForawnDialog): mismo estilo y
+  /// tamaño que editar/agregar canciones.
   Future<void> _showCreatePlaylistDialog() async {
-    final nameController = TextEditingController();
-    final descController = TextEditingController();
-    String? selectedImagePath;
-
     await showDialog(
       context: context,
-      builder: (context) => StatefulBuilder(
-        builder: (context, setDialogState) {
-          return AlertDialog(
-            backgroundColor: const Color(0xFF1C1C1E),
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(16),
-            ),
-            title: Text(
-              widget.getText('create_playlist', fallback: "Create Playlist"),
-              style: const TextStyle(color: Colors.white),
-            ),
-            content: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                GestureDetector(
-                  onTap: () async {
-                    FilePickerResult? result = await FilePicker.pickFiles(type: FileType.image);
-                    if (result != null) {
-                      setDialogState(() {
-                        selectedImagePath = result.files.single.path;
-                      });
-                    }
-                  },
-                  child: Container(
-                    width: 100,
-                    height: 100,
-                    decoration: BoxDecoration(
-                      color: Colors.grey[800],
-                      borderRadius: BorderRadius.circular(12),
-                      image: selectedImagePath != null
-                          ? DecorationImage(
-                              image: FileImage(File(selectedImagePath!)),
-                              fit: BoxFit.cover,
-                            )
-                          : null,
-                    ),
-                    child: selectedImagePath == null
-                        ? const Icon(
-                            Icons.add_photo_alternate,
-                            color: Colors.white54,
-                            size: 40,
-                          )
-                        : null,
-                  ),
-                ),
-                const SizedBox(height: 16),
-                // Inputs estilo forawn_mobile (blanco 5%, radio 16, sin borde).
-                Container(
-                  decoration: BoxDecoration(
-                    color: Colors.white.withOpacity(0.05),
-                    borderRadius: BorderRadius.circular(16),
-                  ),
-                  child: TextField(
-                    controller: nameController,
-                    cursorColor: Colors.purpleAccent,
-                    style: const TextStyle(color: Colors.white, fontSize: 16),
-                    decoration: InputDecoration(
-                      hintText: widget.getText('name', fallback: "Name"),
-                      hintStyle: TextStyle(
-                        color: Colors.white.withOpacity(0.2),
-                      ),
-                      contentPadding: const EdgeInsets.symmetric(
-                        horizontal: 16,
-                        vertical: 14,
-                      ),
-                      border: InputBorder.none,
-                      prefixIcon: Icon(
-                        Icons.queue_music_rounded,
-                        color: Colors.white.withOpacity(0.5),
-                        size: 20,
-                      ),
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 20),
-                Container(
-                  decoration: BoxDecoration(
-                    color: Colors.white.withOpacity(0.05),
-                    borderRadius: BorderRadius.circular(16),
-                  ),
-                  child: TextField(
-                    controller: descController,
-                    maxLines: 3,
-                    cursorColor: Colors.purpleAccent,
-                    style: const TextStyle(color: Colors.white, fontSize: 16),
-                    decoration: InputDecoration(
-                      hintText: widget.getText(
-                        'description',
-                        fallback: "Description",
-                      ),
-                      hintStyle: TextStyle(
-                        color: Colors.white.withOpacity(0.2),
-                      ),
-                      contentPadding: const EdgeInsets.symmetric(
-                        horizontal: 16,
-                        vertical: 14,
-                      ),
-                      border: InputBorder.none,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(context),
-                child: Text(
-                  widget.getText('cancel', fallback: "Cancel"),
-                  style: const TextStyle(color: Colors.grey),
-                ),
-              ),
-              TextButton(
-                onPressed: () {
-                  if (nameController.text.isNotEmpty) {
-                    PlaylistService().createPlaylist(
-                      nameController.text,
-                      description: descController.text,
-                      imagePath: selectedImagePath,
-                    );
-                    Navigator.pop(context);
-                    setState(() {});
-                  }
-                },
-                child: Text(
-                  widget.getText('create', fallback: "Create"),
-                  style: const TextStyle(color: Colors.purpleAccent),
-                ),
-              ),
-            ],
-          );
-        },
-      ),
+      builder: (_) => PlaylistCreateDialog(getText: widget.getText),
     );
+    if (mounted) setState(() {});
   }
-
-  // Keyboard handling disabled locally as it's handled globally
-  // void _handleKeyboardEvent(RawKeyEvent event) { ... }
 
   Widget _buildPlaylistsTab() {
     final playlists = PlaylistService().playlists;

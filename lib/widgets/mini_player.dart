@@ -38,10 +38,70 @@ class MiniPlayerVisibility {
   /// gesture/gesto del sistema, etc.).
   static void setFullPlayerOpen(bool open) => fullPlayerOpen.value = open;
 
+  // ------------------------------------------------------------------
+  // Bloqueo por overlays (diálogos, bottom sheets, menús contextuales).
+  //
+  // El MiniPlayerHost vive en MaterialApp.builder, POR ENCIMA del
+  // Navigator: cualquier ruta modal (showDialog, showMenu,
+  // showModalBottomSheet, etc.) se renderiza dentro del Navigator y por
+  // tanto QUEDA POR DEBAJO del miniplayer. Como no se puede reordenar el
+  // z-order desde fuera, los modales ocultan el miniplayer mientras
+  // están abiertos — el miniplayer se desliza hacia abajo rápido y
+  // regresa al cerrarlos.
+  //
+  // Dos fuentes pueden bloquear y se combinan con OR:
+  //  - manual: señales explícitas (p.ej. Settings en main.dart).
+  //  - rutas modales: contadas por [MiniPlayerModalObserver].
+  // ------------------------------------------------------------------
+  static bool _manualOverlayBlocked = false;
+  static int _modalRouteCount = 0;
+
+  static void setOverlayBlocked(bool blocked) {
+    _manualOverlayBlocked = blocked;
+    _recomputeOverlay();
+  }
+
+  static void _modalRoutePushed() {
+    _modalRouteCount++;
+    _recomputeOverlay();
+  }
+
+  static void _modalRoutePopped() {
+    if (_modalRouteCount > 0) _modalRouteCount--;
+    _recomputeOverlay();
+  }
+
+  static void _recomputeOverlay() {
+    blockedByOverlay.value = _manualOverlayBlocked || _modalRouteCount > 0;
+  }
+
   static bool get isVisible =>
       playerTabActive.value && !fullPlayerOpen.value;
 
   MiniPlayerVisibility._();
+}
+
+/// NavigatorObserver que detecta rutas modales (diálogos, menús, bottom
+/// sheets) para ocultar el MiniPlayer mientras estén abiertas. Regístralo
+/// en `MaterialApp.navigatorObservers`.
+class MiniPlayerModalObserver extends NavigatorObserver {
+  bool _isModalRoute(Route<dynamic> route) =>
+      route is RawDialogRoute || route is PopupRoute;
+
+  @override
+  void didPush(Route<dynamic> route, Route<dynamic>? previousRoute) {
+    if (_isModalRoute(route)) MiniPlayerVisibility._modalRoutePushed();
+  }
+
+  @override
+  void didPop(Route<dynamic> route, Route<dynamic>? previousRoute) {
+    if (_isModalRoute(route)) MiniPlayerVisibility._modalRoutePopped();
+  }
+
+  @override
+  void didRemove(Route<dynamic> route, Route<dynamic>? previousRoute) {
+    if (_isModalRoute(route)) MiniPlayerVisibility._modalRoutePopped();
+  }
 }
 
 /// Host único del MiniPlayer para toda la app.
@@ -70,14 +130,25 @@ class MiniPlayerHost extends StatelessWidget {
                 // Al abrirse el reproductor completo (que entra desde abajo),
                 // el miniplayer se desliza hacia abajo y se desvanece; al
                 // cerrarlo regresa desde abajo a su posición.
+                //
+                // Cuando lo oculta un modal (menú/diálogo), el hide es corto
+                // (200ms) para que se sienta inmediato; el regreso siempre es
+                // de 450ms acompañando la animación del player.
+                final hideDuration = fullPlayerOpen
+                    ? const Duration(milliseconds: 450)
+                    : const Duration(milliseconds: 200);
                 return ClipRect(
                   child: AnimatedSlide(
                     offset: visible ? Offset.zero : const Offset(0, 1.1),
-                    duration: const Duration(milliseconds: 450),
+                    duration: visible
+                        ? const Duration(milliseconds: 450)
+                        : hideDuration,
                     curve: Curves.easeOutCubic,
                     child: AnimatedOpacity(
                       opacity: visible ? 1.0 : 0.0,
-                      duration: const Duration(milliseconds: 450),
+                      duration: visible
+                          ? const Duration(milliseconds: 450)
+                          : hideDuration,
                       curve: Curves.easeOutCubic,
                       child: IgnorePointer(
                         ignoring: !visible,

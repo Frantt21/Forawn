@@ -476,6 +476,9 @@ class _ForawnAppRootState extends State<ForawnAppRoot> {
                 ),
           debugShowCheckedModeBanner: false,
           navigatorKey: appNavigatorKey,
+          // Detecta rutas modales (diálogos, menús, bottom sheets) para
+          // ocultar el MiniPlayer mientras estén abiertas.
+          navigatorObservers: [MiniPlayerModalObserver()],
           builder: (context, child) {
             // MiniPlayer único para toda la app: se monta una sola vez
             // aquí (encima del Navigator) y decide su visibilidad según
@@ -878,20 +881,30 @@ class _HomeScreenState extends State<HomeScreen> with WindowListener {
                               GestureDetector(
                                 behavior: HitTestBehavior.translucent,
                                 onPanStart: (_) =>
-                                    windowManager.startDragging(),
-                                child: Builder(
-                                  builder: (titleBarContext) {
-                                    // En el screen del reproductor de música
-                                    // el fondo es negro: la title bar se
-                                    // pinta negra igual para que no se vea
-                                    // el fondo de la app detrás.
-                                    final isPlayerScreen =
-                                        _currentScreen == 'player';
-                                    final titleBarFg = isPlayerScreen
-                                        ? Colors.white
-                                        : readableTextColorFor(
-                                            widget.windowBackgroundColor,
-                                          );
+                                    windowManager.startDragging(),                                child: ValueListenableBuilder<bool>(
+                                  valueListenable:
+                                      MiniPlayerVisibility.fullPlayerOpen,
+                                  builder: (titleBarContext, fullPlayerOpen, _) {
+                                      // Title bar negra SOLO cuando el
+                                      // reproductor completo (PlayerScreen)
+                                      // está abierto: se abre desde abajo
+                                      // tapando el music player (negro) y la
+                                      // title bar debe fundirse con él.
+                                      //
+                                      // NOTA: _currentScreen == 'player' es la
+                                      // screen de la BIBLIOTECA de música
+                                      // (siempre viva en el IndexedStack), no
+                                      // el PlayerScreen — usarla aquí pintaba
+                                      // la franja superior de la ventana de
+                                      // negro todo el tiempo.
+                                      final isPlayerScreen =
+                                          _currentScreen == 'player' &&
+                                          fullPlayerOpen;
+                                      final titleBarFg = isPlayerScreen
+                                          ? Colors.white
+                                          : readableTextColorFor(
+                                              widget.windowBackgroundColor,
+                                            );
                                     // Container (no Animated): el cambio a
                                     // negro en el player es inmediato, sin
                                     // transición suave.
@@ -1040,7 +1053,9 @@ class _HomeScreenState extends State<HomeScreen> with WindowListener {
                                           backgroundOpacity.value = 0.0;
                                           // Ocultar el MiniPlayer global
                                           // mientras Settings está abierta.
-                                          MiniPlayerVisibility.blockedByOverlay.value = true;
+                                          MiniPlayerVisibility.setOverlayBlocked(
+                                            true,
+                                          );
 
                                           final selected =
                                               await Navigator.of(
@@ -1072,7 +1087,9 @@ class _HomeScreenState extends State<HomeScreen> with WindowListener {
                                                 ),
                                               );
                                           backgroundOpacity.value = 1.0;
-                                          MiniPlayerVisibility.blockedByOverlay.value = false;
+                                          MiniPlayerVisibility.setOverlayBlocked(
+                                            false,
+                                          );
                                           if (!mounted) return;
                                           setState(
                                             () {},
