@@ -257,7 +257,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
   ) async {
     final offset = renderBox.localToGlobal(Offset.zero);
     final size = renderBox.size;
-    const cardBackgroundColor = Color(0xFF1C1C1E);
+    // Estilo unificado de menús: mismo color/radio/elevación que el resto
+    // de context menus y dropdowns de la app.
+    const cardBackgroundColor = Color(0xFF2C2C2E);
     setState(() {
       _langMenuOpen = true;
       _langHovered = true;
@@ -272,11 +274,19 @@ class _SettingsScreenState extends State<SettingsScreen> {
         offset.dy,
       ),
       items: languages.entries
-          .map((e) => PopupMenuItem<String>(value: e.key, child: Text(e.value)))
+          .map(
+            (e) => PopupMenuItem<String>(
+              value: e.key,
+              child: Text(
+                e.value,
+                style: const TextStyle(color: Colors.white),
+              ),
+            ),
+          )
           .toList(),
       color: cardBackgroundColor,
       elevation: 4,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
     );
 
     setState(() {

@@ -646,13 +646,17 @@ class _VideoDownloaderScreenState extends State<VideoDownloaderScreen>
                           child: DropdownButton<String>(
                             isExpanded: true,
                             value: chosenFormat,
-                            dropdownColor: Colors.grey[900],
+                            // Estilo unificado de menús: mismo panel que
+                            // context menus y dropdowns del resto de la app.
+                            dropdownColor: const Color(0xFF2C2C2E),
+                            borderRadius: BorderRadius.circular(15),
                             items: labels.entries.map((e) {
                               return DropdownMenuItem<String>(
                                 value: e.key,
                                 child: Text(
                                   e.value,
                                   overflow: TextOverflow.ellipsis,
+                                  style: const TextStyle(color: Colors.white),
                                 ),
                               );
                             }).toList(),

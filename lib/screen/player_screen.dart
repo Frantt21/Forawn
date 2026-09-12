@@ -2901,10 +2901,11 @@ class _PlayerScreenState extends State<PlayerScreen> with WindowListener {
                       // Dots menu (añadir a playlist / editar metadatos):
                       // movido a la title bar.
                       PopupMenuButton<String>(
-                        color: const Color(0xFF1F1F1F),
+                        color: const Color(0xFF2C2C2E),
                         shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12),
+                          borderRadius: BorderRadius.circular(15),
                         ),
+                        elevation: 4,
                         icon: const Icon(
                           Icons.more_vert,
                           size: 18,

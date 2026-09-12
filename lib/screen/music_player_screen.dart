@@ -2197,7 +2197,11 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen>
               ),
               trailing: PopupMenuButton<String>(
                 icon: const Icon(Icons.more_vert),
-                color: const Color(0xFF1C1C1E),
+                color: const Color(0xFF2C2C2E),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(15),
+                ),
+                elevation: 4,
                 onSelected: (value) async {
                   if (value == 'add_playlist') {
                     await _showAddToPlaylistDialog(file);

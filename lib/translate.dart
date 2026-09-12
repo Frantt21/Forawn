@@ -329,7 +329,7 @@ class _TranslateScreenState extends State<TranslateScreen> with WindowListener {
                 decoration: BoxDecoration(
                   color: Theme.of(context).cardTheme.color,
                   borderRadius: BorderRadius.circular(16),
-                  border: Border.all(color: Theme.of(context).dividerColor),
+                  // border: Border.all(color: Theme.of(context).dividerColor),
                 ),
                 child: Column(
                   children: [
@@ -394,12 +394,11 @@ class _TranslateScreenState extends State<TranslateScreen> with WindowListener {
                                 DropdownButton<String>(
                                   value: _selectedCountryKey,
                                   underline: const SizedBox.shrink(),
-                                  dropdownColor:
-                                      Theme.of(context).brightness ==
-                                          Brightness.dark
-                                      ? const Color(0xFF1E1E1E)
-                                      : const Color(0xFFEEEEEE),
-                                  borderRadius: BorderRadius.circular(10),
+                                  // Estilo unificado de menús: mismo panel
+                                  // que context menus y dropdowns del resto
+                                  // de la app.
+                                  dropdownColor: const Color(0xFF2C2C2E),
+                                  borderRadius: BorderRadius.circular(15),
                                   focusColor: Colors.transparent,
                                   icon: Icon(
                                     Icons.keyboard_arrow_down,
@@ -516,7 +515,7 @@ class _TranslateScreenState extends State<TranslateScreen> with WindowListener {
                   decoration: BoxDecoration(
                     color: Theme.of(context).cardTheme.color,
                     borderRadius: BorderRadius.circular(16),
-                    border: Border.all(color: Theme.of(context).dividerColor),
+                    // border: Border.all(color: Theme.of(context).dividerColor),
                   ),
                   child: Stack(
                     children: [

@@ -332,6 +332,11 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen>
                 if (!widget.isReadOnly)
                   PopupMenuButton<String>(
                     icon: const Icon(Icons.more_vert, size: 20),
+                    color: const Color(0xFF2C2C2E),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(15),
+                    ),
+                    elevation: 4,
                     onSelected: (value) async {
                       if (value == 'edit') {
                         _showEditPlaylistDialog(context, playlist);
@@ -345,13 +350,14 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen>
                           value: 'edit',
                           child: Row(
                             children: [
-                              Icon(Icons.edit, color: Colors.black54),
+                              Icon(Icons.edit, color: Colors.white70),
                               SizedBox(width: 8),
                               Text(
                                 widget.getText(
                                   'edit_playlist',
                                   fallback: 'Edit Playlist',
                                 ),
+                                style: TextStyle(color: Colors.white),
                               ),
                             ],
                           ),
@@ -360,13 +366,14 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen>
                           value: 'add',
                           child: Row(
                             children: [
-                              Icon(Icons.add, color: Colors.black54),
+                              Icon(Icons.add, color: Colors.white70),
                               SizedBox(width: 8),
                               Text(
                                 widget.getText(
                                   'add_songs',
                                   fallback: 'Add Songs',
                                 ),
+                                style: TextStyle(color: Colors.white),
                               ),
                             ],
                           ),
@@ -402,13 +409,13 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen>
                             height: 250 * _imageScale,
                             decoration: BoxDecoration(
                               borderRadius: BorderRadius.circular(16),
-                              boxShadow: [
-                                BoxShadow(
-                                  color: Colors.black.withOpacity(0.5),
-                                  blurRadius: 30,
-                                  offset: const Offset(0, 15),
-                                ),
-                              ],
+                              // boxShadow: [
+                              //   BoxShadow(
+                              //     color: Colors.black.withOpacity(0.5),
+                              //     blurRadius: 30,
+                              //     offset: const Offset(0, 15),
+                              //   ),
+                              // ],
                             ),
                             child: ClipRRect(
                               borderRadius: BorderRadius.circular(16),
@@ -605,6 +612,11 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen>
                                     Icons.more_vert,
                                     color: Colors.white70,
                                   ),
+                                  color: const Color(0xFF2C2C2E),
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(15),
+                                  ),
+                                  elevation: 4,
                                   onSelected: (value) async {
                                     if (value == 'remove') {
                                       await PlaylistService()
