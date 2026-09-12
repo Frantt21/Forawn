@@ -3331,59 +3331,259 @@ class _PlayerScreenState extends State<PlayerScreen> with WindowListener {
     }
   }
 
-  Widget _buildSyncButton(String label, int ms) {
-    return ElevatedButton(
-      onPressed: () {
-        _adjustOffset(ms);
-        Navigator.pop(context);
-        _showSyncDialog();
-      },
-      style: ElevatedButton.styleFrom(
-        backgroundColor: Colors.white10,
-        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 0),
-        minimumSize: const Size(60, 36),
+  Widget _buildSyncButton(
+    String label,
+    int ms,
+    Color accent,
+    VoidCallback onTap,
+  ) {
+    final isNegative = ms < 0;
+    return Expanded(
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 4),
+        child: ElevatedButton(
+          onPressed: onTap,
+          style: ElevatedButton.styleFrom(
+            // Colores del diálogo de forawn_mobile: rojo para adelantar,
+            // verde para atrasar.
+            backgroundColor: isNegative
+                ? Colors.red.withOpacity(0.15)
+                : Colors.green.withOpacity(0.15),
+            foregroundColor: isNegative ? Colors.redAccent : Colors.greenAccent,
+            padding: const EdgeInsets.symmetric(vertical: 12),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(12),
+            ),
+            elevation: 0,
+          ),
+          child: Text(
+            label,
+            style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
+          ),
+        ),
       ),
-      child: Text(label, style: const TextStyle(fontSize: 12)),
     );
   }
 
   void _showSyncDialog() {
+    // Acento igual que en forawn_mobile: color dominante de la canción,
+    // aclarado si es muy oscuro; fallback al acento de la app.
+    Color accent = _adjustColorForControls(_dominantColor);
+    if (accent == Colors.white) accent = const Color(0xFFD046FF);
+
     showDialog(
       context: context,
-      builder: (context) => AlertDialog(
+      barrierDismissible: true,
+      builder: (dialogContext) => Dialog(
         backgroundColor: const Color(0xFF1C1C1E),
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(16),
-        ),
-        title: Text(
-          widget.getText('synchronize', fallback: 'Sincronizar'),
-          style: const TextStyle(color: Colors.white),
-        ),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text(
-              '${widget.getText('offset', fallback: 'Desfase')}: ${_lyricsOffset.inMilliseconds}ms',
-              style: const TextStyle(color: Colors.white70),
-            ),
-            const SizedBox(height: 20),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-              children: [
-                _buildSyncButton('-500ms', -500),
-                _buildSyncButton('-100ms', -100),
-                _buildSyncButton('+100ms', 100),
-                _buildSyncButton('+500ms', 500),
-              ],
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: Text(widget.getText('done', fallback: 'Listo')),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        child: Container(
+          width: 420,
+          padding: const EdgeInsets.all(24),
+          child: StatefulBuilder(
+            builder: (context, setDialogState) {
+              return Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // Header (mismo layout que forawn_mobile): icono del timer
+                  // en contenedor acento 20% + título + subtítulo.
+                  Row(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(10),
+                        decoration: BoxDecoration(
+                          color: accent.withOpacity(0.2),
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: Icon(Icons.timer, color: accent, size: 24),
+                      ),
+                      const SizedBox(width: 16),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              widget.getText(
+                                'synchronization',
+                                fallback: 'Synchronization',
+                              ),
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 20,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                            const SizedBox(height: 4),
+                            Text(
+                              widget.getText(
+                                'adjust_lyrics_time',
+                                fallback: 'Adjust lyrics timing',
+                              ),
+                              style: TextStyle(
+                                color: Colors.white.withOpacity(0.6),
+                                fontSize: 13,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 24),
+
+                  // Vista previa de lyrics en vivo (posición + offset
+                  // actuales), igual que en forawn_mobile.
+                  ValueListenableBuilder<Duration>(
+                    valueListenable: _musicPlayer.position,
+                    builder: (context, position, _) {
+                      final lyrics = _musicPlayer.currentLyrics.value;
+                      final lines = lyrics?.lines ?? const [];
+                      final index = (lyrics != null && lyrics.hasLyrics)
+                          ? (lyrics.getCurrentLineIndex(
+                                  position - _lyricsOffset,
+                                ) ??
+                                -1)
+                          : -1;
+                      final currentText = (index >= 0 && index < lines.length)
+                          ? lines[index].text
+                          : '';
+                      final nextText = (index + 1 < lines.length)
+                          ? lines[index + 1].text
+                          : '';
+
+                      return Column(
+                        children: [
+                          Container(
+                            width: double.infinity,
+                            padding: const EdgeInsets.all(16),
+                            decoration: BoxDecoration(
+                              color: Colors.black26,
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            child: Column(
+                              children: [
+                                Text(
+                                  currentText.isEmpty ? '...' : currentText,
+                                  textAlign: TextAlign.center,
+                                  maxLines: 2,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: const TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 18,
+                                    fontWeight: FontWeight.bold,
+                                    height: 1.3,
+                                  ),
+                                ),
+                                if (nextText.isNotEmpty) ...[
+                                  const SizedBox(height: 8),
+                                  Text(
+                                    nextText,
+                                    textAlign: TextAlign.center,
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: TextStyle(
+                                      color: Colors.white.withOpacity(0.5),
+                                      fontSize: 14,
+                                    ),
+                                  ),
+                                ],
+                              ],
+                            ),
+                          ),
+                          const SizedBox(height: 20),
+
+                          // Offset actual (contenedor oscuro, valor en acento).
+                          Container(
+                            width: double.infinity,
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 16,
+                              vertical: 12,
+                            ),
+                            decoration: BoxDecoration(
+                              color: Colors.white.withOpacity(0.05),
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            child: Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Text(
+                                  '${widget.getText('offset', fallback: 'Offset')}: ',
+                                  style: TextStyle(
+                                    color: Colors.white.withOpacity(0.6),
+                                    fontSize: 14,
+                                  ),
+                                ),
+                                Text(
+                                  '${_lyricsOffset.inMilliseconds}ms',
+                                  style: TextStyle(
+                                    color: accent,
+                                    fontSize: 18,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      );
+                    },
+                  ),
+                  const SizedBox(height: 24),
+
+                  // Botones de ajuste (-500/-100/+100/+500). El diálogo NO
+                  // se cierra: se actualiza en el mismo frame (igual que
+                  // en forawn_mobile).
+                  Row(
+                    children: [
+                      _buildSyncButton('-500ms', -500, accent, () {
+                        _adjustOffset(-500);
+                        setDialogState(() {});
+                      }),
+                      _buildSyncButton('-100ms', -100, accent, () {
+                        _adjustOffset(-100);
+                        setDialogState(() {});
+                      }),
+                      _buildSyncButton('+100ms', 100, accent, () {
+                        _adjustOffset(100);
+                        setDialogState(() {});
+                      }),
+                      _buildSyncButton('+500ms', 500, accent, () {
+                        _adjustOffset(500);
+                        setDialogState(() {});
+                      }),
+                    ],
+                  ),
+                  const SizedBox(height: 24),
+
+                  // Done button (ancho completo, acento).
+                  SizedBox(
+                    width: double.infinity,
+                    child: ElevatedButton(
+                      onPressed: () => Navigator.pop(dialogContext),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: accent,
+                        foregroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(vertical: 14),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        elevation: 0,
+                      ),
+                      child: Text(
+                        widget.getText('done', fallback: 'Done'),
+                        style: const TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              );
+            },
           ),
-        ],
+        ),
       ),
     );
   }

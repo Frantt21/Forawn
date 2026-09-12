@@ -482,5 +482,7 @@
   "create_first_playlist": "最初のプレイリストを作成",
   "my_favorites": "お気に入り",
   "favorite_songs_desc": "お気に入りの曲",
-  "no_songs_to_add": "追加できる曲がありません"
+  "no_songs_to_add": "追加できる曲がありません",
+  "synchronization": "同期",
+  "adjust_lyrics_time": "歌詞のタイミングを調整"
 }

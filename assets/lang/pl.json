@@ -480,5 +480,7 @@
   "create_first_playlist": "Utwórz swoją pierwszą playlistę",
   "my_favorites": "Moje ulubione",
   "favorite_songs_desc": "Utwory, które lubisz",
-  "no_songs_to_add": "Brak utworów do dodania"
+  "no_songs_to_add": "Brak utworów do dodania",
+  "synchronization": "Synchronizacja",
+  "adjust_lyrics_time": "Dopasuj czas tekstu"
 }

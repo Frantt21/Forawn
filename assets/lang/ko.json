@@ -481,5 +481,7 @@
   "create_first_playlist": "첫 플레이리스트 만들기",
   "my_favorites": "내 즐겨찾기",
   "favorite_songs_desc": "좋아하는 곡",
-  "no_songs_to_add": "추가할 곡이 없습니다"
+  "no_songs_to_add": "추가할 곡이 없습니다",
+  "synchronization": "동기화",
+  "adjust_lyrics_time": "가사 타이밍 조정"
 }

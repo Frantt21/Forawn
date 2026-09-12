@@ -486,5 +486,7 @@
   "favorite_songs_desc": "Songs you like",
   "no_songs_to_add": "No songs to add",
   "deezer_precise": "Deezer (More Precise)",
-  "youtube_music_source": "YouTube Music"
+  "youtube_music_source": "YouTube Music",
+  "synchronization": "Synchronization",
+  "adjust_lyrics_time": "Adjust lyrics timing"
 }

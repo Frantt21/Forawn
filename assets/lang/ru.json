@@ -481,5 +481,7 @@
   "create_first_playlist": "Создайте свой первый плейлист",
   "my_favorites": "Мое избранное",
   "favorite_songs_desc": "Песни, которые вам нравятся",
-  "no_songs_to_add": "Нет песен для добавления"
+  "no_songs_to_add": "Нет песен для добавления",
+  "synchronization": "Синхронизация",
+  "adjust_lyrics_time": "Настроить время текста"
 }
