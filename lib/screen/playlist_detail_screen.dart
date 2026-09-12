@@ -37,19 +37,16 @@ class PlaylistDetailScreen extends StatefulWidget {
   State<PlaylistDetailScreen> createState() => _PlaylistDetailScreenState();
 }
 
-class _PlaylistDetailScreenState extends State<PlaylistDetailScreen>
-    with SingleTickerProviderStateMixin {
+class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
   final ScrollController _scrollController = ScrollController();
   Color? _dominantColor;
   double _imageScale = 1.0;
   String? _lastImagePath;
 
-  // Search
+  // Search: la query vive aquí; el input vive en el popover del botón de
+  // búsqueda de la title bar (mismo mecanismo que el botón de volumen).
   final TextEditingController _searchController = TextEditingController();
-  bool _isSearching = false;
   String _searchQuery = '';
-  late AnimationController _animationController;
-  late Animation<double> _fadeAnimation;
 
   @override
   void initState() {
@@ -63,14 +60,6 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen>
       _loadCachedColorOrExtract();
     }
     PlaylistService().addListener(_onPlaylistChanged);
-    // Inicializar animación de búsqueda
-    _animationController = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 300),
-    );
-    _fadeAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
-      CurvedAnimation(parent: _animationController, curve: Curves.easeInOut),
-    );
 
     _scrollController.addListener(_onScroll);
     _preloadSongMetadata();
@@ -85,10 +74,11 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen>
 
   @override
   void dispose() {
+    _searchPopover?.remove();
+    _searchPopover = null;
     _scrollController.removeListener(_onScroll);
     _scrollController.dispose();
     _searchController.dispose();
-    _animationController.dispose();
     PlaylistService().removeListener(_onPlaylistChanged);
     super.dispose();
   }
@@ -194,71 +184,123 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen>
     return darkened.toColor();
   }
 
-  Widget _buildSearchField(Color textColor) {
-    return AnimatedBuilder(
-      key: const ValueKey('search'),
-      animation: _animationController,
-      builder: (context, child) {
-        return Transform.translate(
-          offset: Offset(
-            (1 - _fadeAnimation.value) * 300,
-            0,
-          ), // Slide from right
-          child: Opacity(
-            opacity: _fadeAnimation.value,
-            child: TextField(
-              controller: _searchController,
-              autofocus: true,
-              style: TextStyle(color: textColor, fontSize: 16),
-              onChanged: (value) {
-                setState(() {
-                  _searchQuery = value;
-                });
-              },
-              decoration: InputDecoration(
-                hintText: widget.getText(
-                  'search_songs',
-                  fallback: 'Search songs...',
-                ),
-                hintStyle: TextStyle(
-                  color: textColor.withOpacity(0.5),
-                  fontSize: 16,
-                ),
-                prefixIcon: Icon(Icons.search, color: textColor, size: 20),
-                filled: true,
-                fillColor: textColor.withOpacity(0.1),
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(
-                    24,
-                  ), // Redondeado como botones, igual que forawn_mobile
-                  borderSide: BorderSide.none,
-                ),
-                contentPadding: const EdgeInsets.symmetric(
-                  horizontal: 16,
-                  vertical: 10,
-                ),
-                suffixIcon: _searchController.text.isNotEmpty
-                    ? IconButton(
-                        icon: Icon(
-                          Icons.clear,
-                          color: textColor.withOpacity(0.7),
-                          size: 20,
-                        ),
-                        onPressed: () {
-                          _searchController.clear();
-                          setState(() {
-                            _searchQuery = '';
-                          });
-                        },
-                      )
-                    : null,
+  /// Abre/cierra el popover de búsqueda bajo el botón de la title bar.
+  /// Mismo mecanismo que el botón de volumen del player: OverlayEntry
+  /// anclada con CompositedTransformFollower.
+  void _toggleSearchPopover() {
+    if (_searchPopover != null) {
+      _closeSearchPopover();
+    } else {
+      _openSearchPopover();
+    }
+  }
+
+  void _openSearchPopover() {
+    _searchPopover = OverlayEntry(
+      builder: (context) {
+        return Stack(
+          children: [
+            // Tap fuera para cerrar (sin bloquear visualmente).
+            Positioned.fill(
+              child: GestureDetector(
+                behavior: HitTestBehavior.translucent,
+                onTap: _closeSearchPopover,
               ),
             ),
-          ),
+            CompositedTransformFollower(
+              link: _searchLink,
+              showWhenUnlinked: false,
+              offset: const Offset(0, 8),
+              targetAnchor: Alignment.bottomRight,
+              followerAnchor: Alignment.topRight,
+              child: Material(
+                color: Colors.transparent,
+                child: Container(
+                  width: 320,
+                  // Mismo estilo que los context menus de la app:
+                  // 0xFF2C2C2E, radio 15, borde blanco 8%.
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF2C2C2E),
+                    borderRadius: BorderRadius.circular(15),
+                    border: Border.all(color: Colors.white.withOpacity(0.08)),
+                  ),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: TextField(
+                          controller: _searchController,
+                          autofocus: true,
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 14,
+                          ),
+                          cursorColor: const Color(0xFFD046FF),
+                          onChanged: (value) => setState(() {
+                            _searchQuery = value;
+                          }),
+                          decoration: InputDecoration(
+                            hintText: widget.getText(
+                              'search_songs',
+                              fallback: 'Search songs...',
+                            ),
+                            hintStyle: TextStyle(
+                              color: Colors.white.withOpacity(0.4),
+                              fontSize: 14,
+                            ),
+                            prefixIcon: Icon(
+                              Icons.search,
+                              color: Colors.white.withOpacity(0.5),
+                              size: 18,
+                            ),
+                            isDense: true,
+                            border: InputBorder.none,
+                            contentPadding: const EdgeInsets.symmetric(
+                              horizontal: 8,
+                              vertical: 10,
+                            ),
+                          ),
+                        ),
+                      ),
+                      if (_searchQuery.isNotEmpty)
+                        InkWell(
+                          onTap: () {
+                            _searchController.clear();
+                            setState(() {
+                              _searchQuery = '';
+                            });
+                          },
+                          customBorder: const CircleBorder(),
+                          child: Padding(
+                            padding: const EdgeInsets.all(6),
+                            child: Icon(
+                              Icons.clear,
+                              color: Colors.white.withOpacity(0.5),
+                              size: 18,
+                            ),
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ],
         );
       },
     );
+    Overlay.of(context, rootOverlay: true).insert(_searchPopover!);
+    setState(() {});
   }
+
+  void _closeSearchPopover() {
+    _searchPopover?.remove();
+    _searchPopover = null;
+    if (mounted) setState(() {});
+  }
+
+  final LayerLink _searchLink = LayerLink();
+  OverlayEntry? _searchPopover;
 
   @override
   Widget build(BuildContext context) {
@@ -289,99 +331,88 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen>
         children: [
           // Misma title bar de la app, tintada con el color de la playlist.
           AppTitleBar(
-            title: _isSearching
-                ? _buildSearchField(textColor)
-                : Text(
-                    playlist.name,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
+            title: Text(
+              playlist.name,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
             tintColor: themeColor,
             windowBackgroundColor: themeColor,
             getText: widget.getText,
             // Botón back en la posición del botón de cerrar (X), igual que
             // settings/downloads. El leading se reserva para búsqueda/etc.
             onBack: () {
-              if (_isSearching) {
-                setState(() {
-                  _isSearching = false;
-                  _searchQuery = '';
-                  _searchController.clear();
-                  _animationController.reverse();
-                });
+              if (widget.onBack != null) {
+                widget.onBack!();
               } else {
-                if (widget.onBack != null) {
-                  widget.onBack!();
-                } else {
-                  Navigator.pop(context);
-                }
+                Navigator.pop(context);
               }
             },
             leading: null,
             actions: [
-              if (!_isSearching) ...[
-                IconButton(
+              // Botón de búsqueda: popover anclado bajo el botón (mismo
+              // mecanismo que el botón de volumen del player) con estilo de
+              // context menu. El TextField ya no vive dentro de la title bar.
+              CompositedTransformTarget(
+                link: _searchLink,
+                child: IconButton(
+                  tooltip: widget.getText('search', fallback: 'Search'),
                   icon: const Icon(Icons.search, size: 20),
-                  onPressed: () {
-                    setState(() {
-                      _isSearching = true;
-                      _animationController.forward();
-                    });
+                  onPressed: _toggleSearchPopover,
+                ),
+              ),
+              if (!widget.isReadOnly)
+                PopupMenuButton<String>(
+                  icon: const Icon(Icons.more_vert, size: 20),
+                  color: const Color(0xFF2C2C2E),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(15),
+                  ),
+                  elevation: 4,
+                  onSelected: (value) async {
+                    if (value == 'edit') {
+                      _showEditPlaylistDialog(context, playlist);
+                    } else if (value == 'add') {
+                      _showAddSongsDialog(context, playlist);
+                    }
+                  },
+                  itemBuilder: (BuildContext context) {
+                    return [
+                      PopupMenuItem(
+                        value: 'edit',
+                        child: Row(
+                          children: [
+                            Icon(Icons.edit, color: Colors.white70),
+                            SizedBox(width: 8),
+                            Text(
+                              widget.getText(
+                                'edit_playlist',
+                                fallback: 'Edit Playlist',
+                              ),
+                              style: TextStyle(color: Colors.white),
+                            ),
+                          ],
+                        ),
+                      ),
+                      PopupMenuItem(
+                        value: 'add',
+                        child: Row(
+                          children: [
+                            Icon(Icons.add, color: Colors.white70),
+                            SizedBox(width: 8),
+                            Text(
+                              widget.getText(
+                                'add_songs',
+                                fallback: 'Add Songs',
+                              ),
+                              style: TextStyle(color: Colors.white),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ];
                   },
                 ),
-                if (!widget.isReadOnly)
-                  PopupMenuButton<String>(
-                    icon: const Icon(Icons.more_vert, size: 20),
-                    color: const Color(0xFF2C2C2E),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(15),
-                    ),
-                    elevation: 4,
-                    onSelected: (value) async {
-                      if (value == 'edit') {
-                        _showEditPlaylistDialog(context, playlist);
-                      } else if (value == 'add') {
-                        _showAddSongsDialog(context, playlist);
-                      }
-                    },
-                    itemBuilder: (BuildContext context) {
-                      return [
-                        PopupMenuItem(
-                          value: 'edit',
-                          child: Row(
-                            children: [
-                              Icon(Icons.edit, color: Colors.white70),
-                              SizedBox(width: 8),
-                              Text(
-                                widget.getText(
-                                  'edit_playlist',
-                                  fallback: 'Edit Playlist',
-                                ),
-                                style: TextStyle(color: Colors.white),
-                              ),
-                            ],
-                          ),
-                        ),
-                        PopupMenuItem(
-                          value: 'add',
-                          child: Row(
-                            children: [
-                              Icon(Icons.add, color: Colors.white70),
-                              SizedBox(width: 8),
-                              Text(
-                                widget.getText(
-                                  'add_songs',
-                                  fallback: 'Add Songs',
-                                ),
-                                style: TextStyle(color: Colors.white),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ];
-                    },
-                  ),
-              ],
             ],
           ),
           Expanded(
