@@ -2995,6 +2995,12 @@ class _PlayerScreenState extends State<PlayerScreen> with WindowListener {
                           ),
                         ],
                       ),
+                      // Botón de volumen: popover con la barra de volumen
+                      // sincronizada con GlobalMusicPlayer.
+                      _PlayerVolumeButton(
+                        getText: widget.getText,
+                        iconColor: Colors.white,
+                      ),
                       if (gShowWindowButtons) ...[
                         IconButton(
                           tooltip: widget.getText(
@@ -3428,6 +3434,161 @@ class _PlayerScreenState extends State<PlayerScreen> with WindowListener {
           },
         );
       },
+    );
+  }
+}
+/// Botón de volumen para la title bar del PlayerScreen. Al hacer clic
+/// despliega un mini contenedor (del tamaño de su contenido) con la barra
+/// de volumen sincronizada con GlobalMusicPlayer.
+class _PlayerVolumeButton extends StatefulWidget {
+  final String Function(String key, {String? fallback}) getText;
+  final Color iconColor;
+
+  const _PlayerVolumeButton({
+    required this.getText,
+    required this.iconColor,
+  });
+
+  @override
+  State<_PlayerVolumeButton> createState() => _PlayerVolumeButtonState();
+}
+
+class _PlayerVolumeButtonState extends State<_PlayerVolumeButton> {
+  final LayerLink _link = LayerLink();
+  OverlayEntry? _entry;
+
+  bool get _open => _entry != null;
+
+  void _toggle() {
+    if (_open) {
+      _close();
+    } else {
+      _openPopover();
+    }
+  }
+
+  void _openPopover() {
+    _entry = OverlayEntry(
+      builder: (context) {
+        return Stack(
+          children: [
+            // Tap fuera para cerrar (sin bloquear visualmente).
+            Positioned.fill(
+              child: GestureDetector(
+                behavior: HitTestBehavior.translucent,
+                onTap: _close,
+              ),
+            ),
+            CompositedTransformFollower(
+              link: _link,
+              showWhenUnlinked: false,
+              offset: const Offset(0, 8),
+              targetAnchor: Alignment.bottomLeft,
+              followerAnchor: Alignment.topLeft,
+              child: Material(
+                color: Colors.transparent,
+                child: Container(
+                  // Tamaño fijo: ancho justo para icono + slider, alto
+                  // compacto (el popover no debe estirarse).
+                  width: 176,
+                  height: 48,
+                  padding: const EdgeInsets.symmetric(horizontal: 12),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF2C2C2E),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(
+                      color: Colors.white.withOpacity(0.08),
+                    ),
+                  ),
+                  child: ValueListenableBuilder<double>(
+                    valueListenable: GlobalMusicPlayer().volume,
+                    builder: (context, vol, _) {
+                      final muted = GlobalMusicPlayer().isMuted.value;
+                      final effective = muted ? 0.0 : vol;
+                      return Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          InkWell(
+                            onTap: () => _setVolume(effective > 0 ? 0.0 : 1.0),
+                            customBorder: const CircleBorder(),
+                            child: Icon(
+                              effective <= 0.0
+                                  ? Icons.volume_off_rounded
+                                  : effective < 0.5
+                                      ? Icons.volume_down_rounded
+                                      : Icons.volume_up_rounded,
+                              size: 20,
+                              color: Colors.white,
+                            ),
+                          ),
+                          const SizedBox(width: 10),
+                          SizedBox(
+                            width: 100,
+                            child: SliderTheme(
+                              data: SliderTheme.of(context).copyWith(
+                                trackHeight: 4,
+                                thumbShape: const RoundSliderThumbShape(
+                                  enabledThumbRadius: 7,
+                                ),
+                                overlayShape: const RoundSliderOverlayShape(
+                                  overlayRadius: 12,
+                                ),
+                              ),
+                              child: Slider(
+                                value: effective.clamp(0.0, 1.0),
+                                onChanged: _setVolume,
+                              ),
+                            ),
+                          ),
+                        ],
+                      );
+                    },
+                  ),
+                ),
+              ),
+            ),
+          ],
+        );
+      },
+    );
+    Overlay.of(context, rootOverlay: true).insert(_entry!);
+    setState(() {});
+  }
+
+  void _setVolume(double v) {
+    final player = GlobalMusicPlayer();
+    player.volume.value = v;
+    player.isMuted.value = v <= 0.0;
+    player.player.setVolume(v);
+    player.saveVolume(v);
+  }
+
+  void _close() {
+    _entry?.remove();
+    _entry = null;
+    if (mounted) setState(() {});
+  }
+
+  @override
+  void dispose() {
+    _entry?.remove();
+    _entry = null;
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return CompositedTransformTarget(
+      link: _link,
+      child: IconButton(
+        tooltip: widget.getText('volume', fallback: 'Volume'),
+        icon: Icon(
+          Icons.volume_up_rounded,
+          size: 20,
+          color: widget.iconColor,
+        ),
+        onPressed: _toggle,
+      ),
     );
   }
 }

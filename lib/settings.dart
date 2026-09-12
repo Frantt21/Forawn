@@ -3,8 +3,8 @@ import 'package:flutter/material.dart';
 import 'dart:io';
 import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:window_manager/window_manager.dart';
-import 'main.dart' show checkForUpdate, gUseNativeFrame, gShowWindowButtons, gMacTrafficLightInset;
+import 'main.dart' show checkForUpdate;
+import 'widgets/app_title_bar.dart';
 import 'package:flutter_acrylic/flutter_acrylic.dart' as acrylic;
 import 'widgets/elegant_notification.dart';
 import 'services/discord_service.dart';
@@ -38,19 +38,24 @@ class SettingsScreen extends StatefulWidget {
   })
   onChangeWindowEffect;
 
+  /// Volver a home. En modo screen (IndexedStack) lo invoca el botón back
+  /// de la AppTitleBar; si es null, el back usa Navigator.pop (modo diálogo).
+  final VoidCallback? onBack;
+
   const SettingsScreen({
     super.key,
     required this.currentLang,
     required this.getText,
     required this.onSelectLanguage,
     required this.onChangeWindowEffect,
+    this.onBack,
   });
 
   @override
   State<SettingsScreen> createState() => _SettingsScreenState();
 }
 
-class _SettingsScreenState extends State<SettingsScreen> with WindowListener {
+class _SettingsScreenState extends State<SettingsScreen> {
   final Map<String, String> languages = {
     'es': 'Español',
     'en': 'English',
@@ -105,9 +110,6 @@ class _SettingsScreenState extends State<SettingsScreen> with WindowListener {
   @override
   void initState() {
     super.initState();
-    if (!gUseNativeFrame) {
-      windowManager.addListener(this);
-    }
     _selectedLang = widget.currentLang;
     _init();
   }
@@ -169,9 +171,6 @@ class _SettingsScreenState extends State<SettingsScreen> with WindowListener {
 
   @override
   void dispose() {
-    if (!gUseNativeFrame) {
-      windowManager.removeListener(this);
-    }
     super.dispose();
   }
 
@@ -252,15 +251,6 @@ class _SettingsScreenState extends State<SettingsScreen> with WindowListener {
     }
   }
 
-  Future<void> _minimize() async => await windowManager.minimize();
-  Future<void> _maximizeRestore() async {
-    final isMax = await windowManager.isMaximized();
-    if (isMax) {
-      await windowManager.unmaximize();
-    } else {
-      await windowManager.maximize();
-    }
-  }
 
   Future<void> _showLanguageMenu(
     BuildContext context,
@@ -303,12 +293,6 @@ class _SettingsScreenState extends State<SettingsScreen> with WindowListener {
   @override
   Widget build(BuildContext context) {
     final get = widget.getText;
-    final theme = Theme.of(context).copyWith(
-      splashFactory: NoSplash.splashFactory,
-      highlightColor: Colors.transparent,
-      hoverColor: Colors.transparent,
-      focusColor: Colors.transparent,
-    );
     final currentTheme = Theme.of(context);
 
     // If using solid effect, we want transparency to be the theme background color
@@ -317,68 +301,17 @@ class _SettingsScreenState extends State<SettingsScreen> with WindowListener {
 
     return Scaffold(
       backgroundColor: Colors.transparent,
+      // Misma estructura que las demás screens: AppTitleBar arriba (con
+      // back en el botón de salir) y el contenido debajo.
       body: Column(
         children: [
-          // HEADER
-          Theme(
-            data: theme,
-            child: GestureDetector(
-              behavior: HitTestBehavior.translucent,
-              onPanStart: (_) => windowManager.startDragging(),
-              child: Container(
-                height: 42,
-                padding: const EdgeInsets.symmetric(horizontal: 10),
-                color: Colors.transparent,
-                child: Row(
-                  children: [
-                    // Espacio para traffic lights nativos en macOS
-                    if (gMacTrafficLightInset > 0)
-                      SizedBox(width: gMacTrafficLightInset),
-                    SizedBox(
-                      width: 36,
-                      height: 36,
-                      child: ClipRRect(
-                        borderRadius: BorderRadius.circular(8),
-                        child: Container(
-                          color: Colors.black26,
-                          alignment: Alignment.center,
-                          child: const Icon(
-                            Icons.settings,
-                            color: Colors.white,
-                          ),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: Text(
-                        get('setting_tittle', fallback: 'Settings'),
-                        style: currentTheme.textTheme.titleSmall?.copyWith(
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                    ),
-                    if (gShowWindowButtons) ...[
-                      IconButton(
-                        tooltip: get('minimize', fallback: 'Minimize'),
-                        icon: const Icon(Icons.remove, size: 18),
-                        onPressed: _minimize,
-                      ),
-                      IconButton(
-                        tooltip: get('maximize', fallback: 'Maximize'),
-                        icon: const Icon(Icons.crop_square, size: 18),
-                        onPressed: _maximizeRestore,
-                      ),
-                    ],
-                    IconButton(
-                      tooltip: get('back', fallback: 'Back'),
-                      icon: const Icon(Icons.arrow_back, size: 18),
-                      onPressed: () => Navigator.pop(context),
-                    ),
-                  ],
-                ),
-              ),
-            ),
+          AppTitleBar(
+            title: Text(get('setting_tittle', fallback: 'Settings')),
+            windowBackgroundColor: Colors.black,
+            getText: get,
+            onBack:
+                widget.onBack ??
+                () => Navigator.pop(context),
           ),
 
           // CONTENT
@@ -522,8 +455,8 @@ class _SettingsScreenState extends State<SettingsScreen> with WindowListener {
                             children: [
                               Text(
                                 '0s',
-                                style: theme.textTheme.bodySmall?.copyWith(
-                                  color: theme.hintColor,
+                                style: currentTheme.textTheme.bodySmall?.copyWith(
+                                  color: currentTheme.hintColor,
                                 ),
                               ),
                               Expanded(
@@ -574,8 +507,8 @@ class _SettingsScreenState extends State<SettingsScreen> with WindowListener {
                               ),
                               Text(
                                 '12s',
-                                style: theme.textTheme.bodySmall?.copyWith(
-                                  color: theme.hintColor,
+                                style: currentTheme.textTheme.bodySmall?.copyWith(
+                                  color: currentTheme.hintColor,
                                 ),
                               ),
                             ],

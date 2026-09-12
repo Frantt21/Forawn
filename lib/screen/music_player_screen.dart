@@ -21,7 +21,6 @@ import '../services/playlist_service.dart';
 import '../models/playlist_model.dart';
 import '../models/song_model.dart';
 import '../widgets/playlist_dialogs.dart';
-import '../widgets/mini_player.dart';
 
 import 'player_screen.dart';
 import 'playlist_detail_screen.dart';
@@ -153,9 +152,6 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen>
     _musicPlayer.currentTitle.addListener(_onMetadataChanged);
     _musicPlayer.currentArtist.addListener(_onMetadataChanged);
     _musicPlayer.currentArt.addListener(_onMetadataChanged);
-
-    // Marcar la señal del degradado de la tab Home según el tab inicial.
-    MiniPlayerVisibility.homeTabGradientActive.value = (_tabIndex == 0);
 
     // Registrar callbacks con GlobalKeyboardService
     GlobalKeyboardService().registerCallbacks(
@@ -466,9 +462,6 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen>
     _musicPlayer.currentArtist.removeListener(_onMetadataChanged);
     _musicPlayer.currentArt.removeListener(_onMetadataChanged);
     _musicPlayer.isPlaying.removeListener(_onPlayPauseChanged);
-
-    // Apagar el tinte del degradado de la title bar al salir del screen.
-    MiniPlayerVisibility.homeTabGradientActive.value = false;
 
     _focusNode.dispose();
 
@@ -1123,22 +1116,6 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen>
 
   bool _isSearching = false;
 
-  /// Color del degradado del tab Home (como forawn_mobile): se mantiene
-  /// estático entre canciones ("last gradient color") y solo se oscurece
-  /// si el dominante es demasiado claro (lightness > 0.5 → 0.3).
-  Color _homeGradientColor = const Color(0xFF6A1B9A);
-
-  Color get _computedHomeGradientColor {
-    final raw = GlobalThemeService().dominantColor.value ?? _homeGradientColor;
-    final hsl = HSLColor.fromColor(raw);
-    final computed =
-        hsl.lightness > 0.5 ? hsl.withLightness(0.3).toColor() : raw;
-    // Publicar el color para la title bar (se tiñe con este color para
-    // fundirse con el degradado del fondo).
-    MiniPlayerVisibility.homeGradientColor.value = computed;
-    return computed;
-  }
-
   /// Título de sección estilo forawn_mobile: blanco, 20px bold, padding
   /// (16, 8, 16, 12). Sustituye al estilo anterior (18px sin color
   /// explícito) para que todos los encabezados se vean iguales.
@@ -1163,35 +1140,6 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen>
       backgroundColor: const Color(0xFF000000),
       body: Stack(
         children: [
-          // Degradado de acento SOLO en el tab de Home (como forawn_mobile):
-          // parte del color dominante de la canción y se funde a negro. Se
-          // posiciona detrás del title bar de la app (que es transparente),
-          // así el degradado se ve desde la franja superior de la ventana.
-          if (_tabIndex == 0)
-            Positioned.fill(
-              child: TweenAnimationBuilder<Color?>(
-                duration: const Duration(milliseconds: 600),
-                curve: Curves.easeInOut,
-                tween: ColorTween(begin: _homeGradientColor, end: _homeGradientColor),
-                builder: (context, animatedColor, child) {
-                  final effectiveColor = animatedColor ?? _homeGradientColor;
-                  return Container(
-                    decoration: BoxDecoration(
-                      gradient: LinearGradient(
-                        begin: Alignment.topCenter,
-                        end: Alignment.bottomCenter,
-                        colors: [
-                          effectiveColor.withOpacity(0.7),
-                          effectiveColor.withOpacity(0.4),
-                          const Color(0xFF000000).withOpacity(0.0),
-                        ],
-                        stops: const [0.0, 0.15, 0.35],
-                      ),
-                    ),
-                  );
-                },
-              ),
-            ),
           Column(
             children: [
               // Custom Tab Bar / Search Header
@@ -1402,22 +1350,13 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen>
                 child: AnimatedBuilder(
                   animation: PlaylistService(),
                   builder: (context, _) {
-                    return ValueListenableBuilder<Color?>(
-                      valueListenable: GlobalThemeService().dominantColor,
-                      builder: (context, dominant, _) {
-                        // Persistir el último color del degradado (como
-                        // forawn_mobile) antes de construir las tabs.
-                        final computed = _computedHomeGradientColor;
-                        if (dominant != null) _homeGradientColor = computed;
-                        return IndexedStack(
-                          index: _tabIndex,
-                          children: [
-                            _buildHomeTab(),
-                            _buildLibraryTab(),
-                            _buildPlaylistsTab(),
-                          ],
-                        );
-                      },
+                    return IndexedStack(
+                      index: _tabIndex,
+                      children: [
+                        _buildHomeTab(),
+                        _buildLibraryTab(),
+                        _buildPlaylistsTab(),
+                      ],
                     );
                   },
                 ),
@@ -1434,11 +1373,7 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen>
   Widget _buildTabButton(String label, int index) {
     bool isSelected = _tabIndex == index;
     return GestureDetector(
-      onTap: () {
-        setState(() => _tabIndex = index);
-        // La title bar se tiñe con el degradado SOLO en la tab Home.
-        MiniPlayerVisibility.homeTabGradientActive.value = (index == 0);
-      },
+      onTap: () => setState(() => _tabIndex = index),
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 200),
         padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),

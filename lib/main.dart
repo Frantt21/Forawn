@@ -603,8 +603,12 @@ class _HomeScreenState extends State<HomeScreen> with WindowListener {
   }
 
   void _handleNavigation(String screenId) {
-    // Save to recent screens
-    if (screenId != 'home') {
+    // Al salir de Settings, recargar prefs que pudo cambiar (NSFW).
+    if (_currentScreen == 'settings' && screenId != 'settings') {
+      _loadNsfwPref();
+    }
+    // Save to recent screens (Settings no se considera screen reciente)
+    if (screenId != 'home' && screenId != 'settings') {
       _recentScreens.remove(screenId);
       _recentScreens.insert(0, screenId);
       if (_recentScreens.length > 5) {
@@ -743,6 +747,7 @@ class _HomeScreenState extends State<HomeScreen> with WindowListener {
       'video',
       'translate',
       'qr',
+      'settings',
     ];
 
     _cachedScreens = {
@@ -780,6 +785,14 @@ class _HomeScreenState extends State<HomeScreen> with WindowListener {
         getText: widget.getText,
         currentLang: widget.currentLangCode,
         onRegisterFolderAction: (action) => _registerFolderAction(action, 'qr'),
+      ),
+      'settings': SettingsScreen(
+        currentLang: widget.currentLangCode,
+        getText: widget.getText,
+        onSelectLanguage:
+            (code) async => await widget.onRequestLanguageChange(code),
+        onChangeWindowEffect: _applyWindowEffect,
+        onBack: () => _handleNavigation('home'),
       ),
     };
   }
@@ -853,6 +866,8 @@ class _HomeScreenState extends State<HomeScreen> with WindowListener {
         return widget.getText('translate_title', fallback: 'Traductor');
       case 'qr':
         return widget.getText('qr_title', fallback: 'Generador QR');
+      case 'settings':
+        return widget.getText('setting_tittle', fallback: 'Settings');
       default:
         return widget.getText('title', fallback: 'Forawn');
     }
@@ -891,47 +906,6 @@ class _HomeScreenState extends State<HomeScreen> with WindowListener {
                                       // fondo/acrílico de la app.
                                       final isPlayerScreen =
                                           _currentScreen == 'player';
-                                      // En el music player, la title bar
-                                      // se tiñe con el color del degradado
-                                      // de la tab Home para fundirse con
-                                      // el fondo (efecto continuo desde
-                                      // la franja superior).
-                                      final tinted = ValueListenableBuilder<
-                                        bool
-                                      >(
-                                        valueListenable: MiniPlayerVisibility
-                                            .homeTabGradientActive,
-                                        builder: (context, gradientOn, _) {
-                                          if (!gradientOn) {
-                                            return const SizedBox.shrink();
-                                          }
-                                          return ValueListenableBuilder<
-                                            Color
-                                          >(
-                                            valueListenable:
-                                                MiniPlayerVisibility
-                                                    .homeGradientColor,
-                                            builder: (context, tint, _) {
-                                              // Igualar el inicio del degradado
-                                              // del screen (color al 0.7 sobre
-                                              // el fondo negro) para que la
-                                              // unión con la title bar sea sin
-                                              // costura.
-                                              final onBlack = Color.fromRGBO(
-                                                (tint.red * 0.7).round(),
-                                                (tint.green * 0.7).round(),
-                                                (tint.blue * 0.7).round(),
-                                                1.0,
-                                              );
-                                              return Positioned.fill(
-                                                child: ColoredBox(
-                                                  color: onBlack,
-                                                ),
-                                              );
-                                            },
-                                          );
-                                        },
-                                      );
                                       final titleBarFg = isPlayerScreen
                                           ? Colors.white
                                           : readableTextColorFor(
@@ -956,13 +930,7 @@ class _HomeScreenState extends State<HomeScreen> with WindowListener {
                                       ),
                                       child: IconTheme(
                                         data: IconThemeData(color: titleBarFg),
-                                        child: Stack(
-                                          children: [
-                                            // Tinte del degradado de la tab
-                                            // Home del music player, detrás
-                                            // de los botones.
-                                            Positioned.fill(child: tinted),
-                                            Row(
+                                        child: Row(
                                     children: [
                                       // Espacio para traffic lights nativos en macOS
                                       if (gMacTrafficLightInset > 0)
@@ -1087,64 +1055,15 @@ class _HomeScreenState extends State<HomeScreen> with WindowListener {
                                           Icons.settings,
                                           size: 20,
                                         ),
-                                        onPressed: () async {
-                                          backgroundOpacity.value = 0.0;
-                                          // Ocultar el MiniPlayer global
-                                          // mientras Settings está abierta.
-                                          MiniPlayerVisibility.setOverlayBlocked(
-                                            true,
-                                          );
-
-                                          final selected =
-                                              await Navigator.of(
-                                                context,
-                                              ).push<String?>(
-                                                PageRouteBuilder(
-                                                  opaque: false,
-                                                  barrierColor:
-                                                      Colors.transparent,
-                                                  transitionDuration:
-                                                      Duration.zero,
-                                                  reverseTransitionDuration:
-                                                      Duration.zero,
-                                                  pageBuilder: (_, __, ___) =>
-                                                      SettingsScreen(
-                                                        currentLang: widget
-                                                            .currentLangCode,
-                                                        getText: widget.getText,
-                                                        onSelectLanguage:
-                                                            (
-                                                              code,
-                                                            ) async => await widget
-                                                                .onRequestLanguageChange(
-                                                                  code,
-                                                                ),
-                                                        onChangeWindowEffect:
-                                                            _applyWindowEffect,
-                                                      ),
-                                                ),
-                                              );
-                                          backgroundOpacity.value = 1.0;
-                                          MiniPlayerVisibility.setOverlayBlocked(
-                                            false,
-                                          );
-                                          if (!mounted) return;
-                                          setState(
-                                            () {},
-                                          ); // fuerza reconstrucción para limpiar visual
-                                          if (selected != null) {
-                                            await widget
-                                                .onRequestLanguageChange(
-                                                  selected,
-                                                );
-                                          }
-                                          await _loadNsfwPref();
+                                        onPressed: () {
+                                          // Renderizar Settings como las demás
+                                          // screens (dentro del IndexedStack,
+                                          // con la title bar de la app).
+                                          _handleNavigation('settings');
                                         },
                                       ),
                                       _windowButtons(),
                                     ],
-                                        ),
-                                          ],
                                         ),
                                       ),
                                     );
