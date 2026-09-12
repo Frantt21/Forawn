@@ -36,6 +36,10 @@ const _prefEffectKey = 'window_effect';
 const _prefColorKey = 'window_color';
 const _prefDarkKey = 'window_dark';
 
+/// Tamaño logico deseado del CONTENIDO de la ventana (y su minimo).
+const double kWindowWidth = 1102;
+const double kWindowHeight = 657;
+
 String currentLang = kDefaultLangCode;
 Map<String, String> lang = {};
 bool gNativeAcrylicAvailable = false;
@@ -104,14 +108,7 @@ Future<void> main() async {
     gNativeAcrylicAvailable = false;
   }
 
-  // Inicializar window_manager en los 3 SO con la barra de título propia:
-  //  - Windows: barra nativa oculta (TitleBarStyle.hidden). A diferencia de
-  //    setAsFrameless() (que usa WS_POPUP y FUERZA esquinas cuadradas),
-  //    hidden conserva el marco nativo: redondeo de Win11, sombra y bordes
-  //    de redimensionado quedan como el sistema los dibuja.
-  //  - Linux: ventana sin marco (setAsFrameless) + controles propios.
-  //  - macOS: barra nativa oculta (TitleBarStyle.hidden); los traffic lights
-  //    se mantienen y la app dibuja su barra respetando su espacio.
+  // Inicializar window_manager en los 3 SO
   try {
     await windowManager.ensureInitialized();
     if (Platform.isMacOS) {
@@ -120,24 +117,22 @@ Future<void> main() async {
         windowButtonVisibility: true,
       );
     } else if (Platform.isWindows) {
-      // Conservar el marco nativo (bordes default del SO).
+      // Conservar el marco nativo (bordes default del SO)
       await windowManager.setTitleBarStyle(TitleBarStyle.hidden);
     } else {
       await windowManager.setAsFrameless();
     }
-    // IMPORTANTE: en Linux titleBarStyle va null porque waitUntilReadyToShow
-    // llama a setTitleBarStyle() con ese valor y setTitleBarStyle(normal)
-    // DESHACE el setAsFrameless() anterior. En Windows/macOS passing hidden
-    // es idempotente con la llamada de arriba.
     final options = WindowOptions(
-      size: const Size(1024, 600),
+      size: const Size(kWindowWidth, kWindowHeight),
       center: true,
       title: 'Forawn',
       titleBarStyle: Platform.isLinux ? null : TitleBarStyle.hidden,
     );
     windowManager.waitUntilReadyToShow(options, () async {
       await windowManager.setResizable(true);
-      await windowManager.setMinimumSize(const Size(1024, 600));
+      await windowManager.setMinimumSize(
+        const Size(kWindowWidth, kWindowHeight),
+      );
       await windowManager.show();
       await windowManager.focus();
     });
@@ -160,10 +155,7 @@ Future<void> main() async {
 
 
 
-  // Descargar herramientas (ffmpeg, yt-dlp) si faltan, EN SEGUNDO PLANO.
-  // No se espera: si la descarga tarda (o falla), la UI ya está visible y
-  // funcional; las descargas de música/video simplemente quedarán pendientes
-  // hasta que los tools estén listos.
+  // Descargar herramientas (ffmpeg, yt-dlp) si faltan, EN SEGUNDO PLANO
   try {
     unawaited(ToolsService().initialize());
   } catch (e) {
@@ -318,11 +310,43 @@ class _ForawnAppRootState extends State<ForawnAppRoot> {
     // Load background brightness preference
     _loadBackgroundBrightness();
 
+    // Compensar el recorte de bordes invisibles del plugin en Windows.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _compensateHiddenTitleBarSize();
+    });
+
     // Inicializar servicio de teclado global
     GlobalKeyboardService().initialize(_globalFocusNode, null);
 
     // Cargar librería de música globalmente al inicio de la app
     _loadMusicLibrary();
+  }
+
+  /// Con TitleBarStyle.hidden, el plugin de window_manager recorta el area
+  /// cliente en WM_NCCALCSIZE (8px fisicos por lado para los bordes de
+  /// resize invisibles: window_manager issue #483). Resultado: setSize(1102)
+  /// deja el contenido en ~1088 y el minimo de 1102 aplica al rect EXTERNO,
+  /// no al contenido -> la ventana arranca mas chica de lo pedido.
+  ///
+  /// Se autocalibra: mide (externo - contenido) en el primer frame y
+  /// re-aplica size y minimo compensados, para que el CONTENIDO sea
+  /// exactamente 1102x657 en cualquier DPI/version de Windows.
+  Future<void> _compensateHiddenTitleBarSize() async {
+    try {
+      if (!Platform.isWindows) return;
+      if (!mounted) return;
+      final outer = await windowManager.getSize();
+      final content = MediaQuery.of(context).size;
+      final padX = outer.width - content.width;
+      final padY = outer.height - content.height;
+      // Sin recorte medible (u otro mecanismo): nada que compensar.
+      if (padX <= 0 || padY <= 0) return;
+      final compensated = Size(kWindowWidth + padX, kWindowHeight + padY);
+      await windowManager.setSize(compensated);
+      await windowManager.setMinimumSize(compensated);
+    } catch (e) {
+      debugPrint('[Main] window size compensation error: $e');
+    }
   }
 
   /// Cargar librería de música al inicio de la app
