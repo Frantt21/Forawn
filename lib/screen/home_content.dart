@@ -90,18 +90,19 @@ class _HomeContentState extends State<HomeContent> {
     return months[_now.month - 1];
   }
 
-  /// Botones de la sección principal, en el MISMO orden que forawn_mobile:
-  /// [Descargador de video] [Descargador de música] y debajo [Reproductor].
+  /// Botones de la sección principal, en el MISMO orden y con los MISMOS
+  /// iconos que forawn_mobile: video = video_collection, música =
+  /// library_music, reproductor = play_circle_fill.
   List<Map<String, Object?>> get _mainButtons => [
     {
       'id': 'video',
-      'icon': Icons.video_library,
+      'icon': Icons.video_collection,
       'color': Colors.blueAccent,
       'label': widget.getText('vid_title', fallback: 'Video'),
     },
     {
       'id': 'music',
-      'icon': Icons.music_note,
+      'icon': Icons.library_music,
       'color': Colors.purpleAccent,
       'label': widget.getText('download_button', fallback: 'Música'),
     },
