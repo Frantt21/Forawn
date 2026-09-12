@@ -90,14 +90,14 @@ class _HomeContentState extends State<HomeContent> {
     return months[_now.month - 1];
   }
 
-  /// Botones de la sección principal, como en forawn_mobile: el
-  /// reproductor de música y el descargador de música.
+  /// Botones de la sección principal, en el MISMO orden que forawn_mobile:
+  /// [Descargador de video] [Descargador de música] y debajo [Reproductor].
   List<Map<String, Object?>> get _mainButtons => [
     {
-      'id': 'player',
-      'icon': Icons.play_circle_fill,
-      'color': Colors.purpleAccent,
-      'label': widget.getText('music_player_title', fallback: 'Reproductor'),
+      'id': 'video',
+      'icon': Icons.video_library,
+      'color': Colors.blueAccent,
+      'label': widget.getText('vid_title', fallback: 'Video'),
     },
     {
       'id': 'music',
@@ -105,16 +105,17 @@ class _HomeContentState extends State<HomeContent> {
       'color': Colors.purpleAccent,
       'label': widget.getText('download_button', fallback: 'Música'),
     },
+    {
+      'id': 'player',
+      'icon': Icons.play_circle_fill,
+      'color': Colors.purpleAccent,
+      'label': widget.getText('music_player_title', fallback: 'Reproductor'),
+    },
   ];
 
-  /// Botones de acceso rápido: descargador de video, traductor y QR.
+  /// Botones de acceso rápido: traductor y QR (igual que forawn_mobile; el
+  /// descargador de video vive ahora en la sección principal).
   List<Map<String, Object?>> get _quickButtons => [
-    {
-      'id': 'video',
-      'icon': Icons.video_library,
-      'color': Colors.blueAccent,
-      'label': widget.getText('vid_title', fallback: 'Video'),
-    },
     {
       'id': 'translate',
       'icon': Icons.translate,
@@ -248,6 +249,14 @@ class _HomeContentState extends State<HomeContent> {
                   Expanded(child: _buildNavCard(_mainButtons[1])),
                 ],
               ),
+              const SizedBox(height: 16),
+              // Segunda fila de la sección principal: Reproductor (igual que
+              // la fila "Local music" de forawn_mobile).
+              Row(
+                children: [
+                  Expanded(child: _buildNavCard(_mainButtons[2])),
+                ],
+              ),
 
               const SizedBox(height: 24),
 
@@ -267,8 +276,6 @@ class _HomeContentState extends State<HomeContent> {
                   Expanded(child: _buildNavCard(_quickButtons[0])),
                   const SizedBox(width: 16),
                   Expanded(child: _buildNavCard(_quickButtons[1])),
-                  const SizedBox(width: 16),
-                  Expanded(child: _buildNavCard(_quickButtons[2])),
                 ],
               ),
             ],
