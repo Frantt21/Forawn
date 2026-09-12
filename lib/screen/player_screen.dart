@@ -2301,13 +2301,6 @@ class _PlayerScreenState extends State<PlayerScreen> with WindowListener {
                                                         },
                                                         lyricsOffset:
                                                             _lyricsOffset,
-                                                        audioPath:
-                                                            _musicPlayer
-                                                                .currentFilePath
-                                                                .value,
-                                                        durationNotifier:
-                                                            _musicPlayer
-                                                                .duration,
                                                       );
                                                     },
                                                   ),
