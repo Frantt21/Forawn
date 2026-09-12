@@ -21,6 +21,7 @@ import '../services/playlist_service.dart';
 import '../models/playlist_model.dart';
 import '../models/song_model.dart';
 import '../widgets/playlist_dialogs.dart';
+import '../widgets/mini_player.dart';
 
 import 'player_screen.dart';
 import 'playlist_detail_screen.dart';
@@ -152,6 +153,9 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen>
     _musicPlayer.currentTitle.addListener(_onMetadataChanged);
     _musicPlayer.currentArtist.addListener(_onMetadataChanged);
     _musicPlayer.currentArt.addListener(_onMetadataChanged);
+
+    // Marcar la señal del degradado de la tab Home según el tab inicial.
+    MiniPlayerVisibility.homeTabGradientActive.value = (_tabIndex == 0);
 
     // Registrar callbacks con GlobalKeyboardService
     GlobalKeyboardService().registerCallbacks(
@@ -462,6 +466,9 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen>
     _musicPlayer.currentArtist.removeListener(_onMetadataChanged);
     _musicPlayer.currentArt.removeListener(_onMetadataChanged);
     _musicPlayer.isPlaying.removeListener(_onPlayPauseChanged);
+
+    // Apagar el tinte del degradado de la title bar al salir del screen.
+    MiniPlayerVisibility.homeTabGradientActive.value = false;
 
     _focusNode.dispose();
 
@@ -1124,7 +1131,12 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen>
   Color get _computedHomeGradientColor {
     final raw = GlobalThemeService().dominantColor.value ?? _homeGradientColor;
     final hsl = HSLColor.fromColor(raw);
-    return hsl.lightness > 0.5 ? hsl.withLightness(0.3).toColor() : raw;
+    final computed =
+        hsl.lightness > 0.5 ? hsl.withLightness(0.3).toColor() : raw;
+    // Publicar el color para la title bar (se tiñe con este color para
+    // fundirse con el degradado del fondo).
+    MiniPlayerVisibility.homeGradientColor.value = computed;
+    return computed;
   }
 
   /// Título de sección estilo forawn_mobile: blanco, 20px bold, padding
@@ -1422,7 +1434,11 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen>
   Widget _buildTabButton(String label, int index) {
     bool isSelected = _tabIndex == index;
     return GestureDetector(
-      onTap: () => setState(() => _tabIndex = index),
+      onTap: () {
+        setState(() => _tabIndex = index);
+        // La title bar se tiñe con el degradado SOLO en la tab Home.
+        MiniPlayerVisibility.homeTabGradientActive.value = (index == 0);
+      },
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 200),
         padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
@@ -1838,8 +1854,19 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen>
                         ),
                       ),
 
-                      // Indicador de audio: SOLO el inline junto al título
-                      // (evita duplicados en las esquinas).
+                      // Indicador de la canción actual: esquina superior
+                      // derecha (posición del AnimatedPlayingIndicator de
+                      // forawn_mobile). Solo cuando suena esta canción.
+                      if (isPlaying)
+                        Positioned(
+                          top: 8,
+                          right: 8,
+                          child: _AnimatedAudioBars(
+                            size: 16,
+                            color: accentColor,
+                            playing: GlobalMusicPlayer().isPlaying.value,
+                          ),
+                        ),
 
                       // Text Content
                       Padding(
@@ -1865,15 +1892,6 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen>
                                     ),
                                   ),
                                 ),
-                                if (isPlaying)
-                                  Padding(
-                                    padding: const EdgeInsets.only(left: 6),
-                                    child: _AnimatedAudioBars(
-                                      size: 14,
-                                      color: accentColor,
-                                      playing: GlobalMusicPlayer().isPlaying.value,
-                                    ),
-                                  ),
                               ],
                             ),
                             const SizedBox(height: 2),
@@ -2680,31 +2698,29 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen>
   }
 
   Widget _buildCreatePlaylistCard() {
+    // Igual que forawn_mobile: fondo gris oscuro sutil (sin borde),
+    // círculo 50px con + en morado 10% y texto morado 14 bold.
     return GestureDetector(
       onTap: () => _showCreatePlaylistDialog(),
       child: Container(
         decoration: BoxDecoration(
-          color: Colors.transparent,
+          color: Colors.grey[900], // Fondo oscuro sutil
           borderRadius: BorderRadius.circular(12),
-          border: Border.all(
-            color: Colors.white.withOpacity(0.3),
-            width: 1,
-            style: BorderStyle.solid,
-          ),
         ),
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             Container(
-              padding: const EdgeInsets.all(16),
+              width: 50,
+              height: 50,
               decoration: BoxDecoration(
+                color: Colors.purpleAccent.withOpacity(0.1),
                 shape: BoxShape.circle,
-                color: Colors.purpleAccent.withOpacity(0.2),
               ),
               child: const Icon(
                 Icons.add,
-                size: 32,
                 color: Colors.purpleAccent,
+                size: 30,
               ),
             ),
             const SizedBox(height: 12),
@@ -2715,7 +2731,6 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen>
                 fontWeight: FontWeight.bold,
                 fontSize: 14,
               ),
-              textAlign: TextAlign.center,
             ),
           ],
         ),

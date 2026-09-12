@@ -38,6 +38,20 @@ class MiniPlayerVisibility {
   /// gesture/gesto del sistema, etc.).
   static void setFullPlayerOpen(bool open) => fullPlayerOpen.value = open;
 
+  /// `true` mientras la tab Home del music player muestra su degradado de
+  /// acento. La title bar de main.dart escucha esta señal (junto con el
+  /// color en [homeGradientColor]) para teñirse y fundirse con el degradado
+  /// del fondo.
+  static final ValueNotifier<bool> homeTabGradientActive = ValueNotifier(
+    false,
+  );
+
+  /// Color actual del degradado de la tab Home (calculado por
+  /// MusicPlayerScreen). La title bar lo usa como tinte de fondo.
+  static final ValueNotifier<Color> homeGradientColor = ValueNotifier(
+    const Color(0xFF6A1B9A),
+  );
+
   // ------------------------------------------------------------------
   // Bloqueo por overlays (diálogos, bottom sheets, menús contextuales).
   //

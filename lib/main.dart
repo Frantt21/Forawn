@@ -891,6 +891,47 @@ class _HomeScreenState extends State<HomeScreen> with WindowListener {
                                       // fondo/acrílico de la app.
                                       final isPlayerScreen =
                                           _currentScreen == 'player';
+                                      // En el music player, la title bar
+                                      // se tiñe con el color del degradado
+                                      // de la tab Home para fundirse con
+                                      // el fondo (efecto continuo desde
+                                      // la franja superior).
+                                      final tinted = ValueListenableBuilder<
+                                        bool
+                                      >(
+                                        valueListenable: MiniPlayerVisibility
+                                            .homeTabGradientActive,
+                                        builder: (context, gradientOn, _) {
+                                          if (!gradientOn) {
+                                            return const SizedBox.shrink();
+                                          }
+                                          return ValueListenableBuilder<
+                                            Color
+                                          >(
+                                            valueListenable:
+                                                MiniPlayerVisibility
+                                                    .homeGradientColor,
+                                            builder: (context, tint, _) {
+                                              // Igualar el inicio del degradado
+                                              // del screen (color al 0.7 sobre
+                                              // el fondo negro) para que la
+                                              // unión con la title bar sea sin
+                                              // costura.
+                                              final onBlack = Color.fromRGBO(
+                                                (tint.red * 0.7).round(),
+                                                (tint.green * 0.7).round(),
+                                                (tint.blue * 0.7).round(),
+                                                1.0,
+                                              );
+                                              return Positioned.fill(
+                                                child: ColoredBox(
+                                                  color: onBlack,
+                                                ),
+                                              );
+                                            },
+                                          );
+                                        },
+                                      );
                                       final titleBarFg = isPlayerScreen
                                           ? Colors.white
                                           : readableTextColorFor(
@@ -915,7 +956,13 @@ class _HomeScreenState extends State<HomeScreen> with WindowListener {
                                       ),
                                       child: IconTheme(
                                         data: IconThemeData(color: titleBarFg),
-                                        child: Row(
+                                        child: Stack(
+                                          children: [
+                                            // Tinte del degradado de la tab
+                                            // Home del music player, detrás
+                                            // de los botones.
+                                            Positioned.fill(child: tinted),
+                                            Row(
                                     children: [
                                       // Espacio para traffic lights nativos en macOS
                                       if (gMacTrafficLightInset > 0)
@@ -1096,6 +1143,8 @@ class _HomeScreenState extends State<HomeScreen> with WindowListener {
                                       ),
                                       _windowButtons(),
                                     ],
+                                        ),
+                                          ],
                                         ),
                                       ),
                                     );
