@@ -1703,33 +1703,12 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen>
     final fileName = p.basename(filePath);
 
     return GestureDetector(
+      // Reproduce la canción directamente: NO abre el PlayerScreen (eso
+      // solo pasa con el tap del miniplayer o al pulsar en la biblioteca).
       onTap: () {
         final index = _files.indexWhere((f) => f.path == filePath);
         if (index != -1) {
           _playFile(index);
-          Navigator.push(
-            context,
-            MaterialPageRoute(
-              builder: (context) => PlayerScreen(getText: widget.getText),
-            ),
-          ).then((_) async {
-            if (mounted) {
-              // Refresh metadata and color from global state
-              // Trigger global color update from current song
-              final song = GlobalMusicPlayer().songsList.value.firstWhere(
-                (s) => s.filePath == filePath,
-                orElse: () => Song(id: '', title: '', artist: '', filePath: ''),
-              );
-              if (song.filePath.isNotEmpty) {
-                // Fix: Get color from cache instead of passing raw bytes
-                final color = await LocalMusicDatabase().getDominantColor(
-                  song.filePath,
-                );
-                GlobalThemeService().updateDominantColor(color);
-              }
-              if (mounted) setState(() {});
-            }
-          });
         }
       },
       child: FutureBuilder<Color?>(
@@ -1859,12 +1838,13 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen>
     );
   }
 
-  /// Menú contextual de playlist (long-press / clic derecho): fijar,
-  /// editar y eliminar. Se muestra en la posición del puntero.
+  /// Menú contextual de playlist (clic derecho): fijar, editar y eliminar.
+  /// Se muestra exactamente en la posición del puntero.
   Future<void> _showPlaylistContextMenu(
     BuildContext tapContext,
-    Playlist playlist,
-  ) async {
+    Playlist playlist, {
+    Offset globalPosition = Offset.zero,
+  }) async {
     final overlay =
         Overlay.of(tapContext, rootOverlay: true).context.findRenderObject()
             as RenderBox?;
@@ -1875,20 +1855,10 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen>
       action = await showMenu<String>(
         context: tapContext,
         position: RelativeRect.fromLTRB(
-          tapContext.mounted
-              ? (tapContext.findRenderObject() as RenderBox?)
-                    ?.localToGlobal(Offset.zero)
-                    .dx ??
-                    overlay.size.width / 2
-              : overlay.size.width / 2,
-          tapContext.mounted
-              ? (tapContext.findRenderObject() as RenderBox?)
-                    ?.localToGlobal(Offset.zero)
-                    .dy ??
-                    overlay.size.height / 2
-              : overlay.size.height / 2,
-          overlay.size.width,
-          overlay.size.height,
+          globalPosition.dx,
+          globalPosition.dy,
+          overlay.size.width - globalPosition.dx,
+          overlay.size.height - globalPosition.dy,
         ),
         color: const Color(0xFF2C2C2E),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
@@ -1981,11 +1951,15 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen>
   }) {
     return GestureDetector(
       onTap: () => _openPlaylist(playlist, isReadOnly: isFavorite),
-      // Long-press: menú contextual (fijar / editar / eliminar) en la
-      // posición del puntero, igual que un clic derecho.
-      onLongPress: isFavorite
+      // Clic derecho: menú contextual (fijar / editar / eliminar) en la
+      // posición del puntero. Solo para playlists personalizadas.
+      onSecondaryTapUp: isFavorite
           ? null
-          : () => _showPlaylistContextMenu(context, playlist),
+          : (details) => _showPlaylistContextMenu(
+                context,
+                playlist,
+                globalPosition: details.globalPosition,
+              ),
       child: Container(
         width: width,
         height: height,

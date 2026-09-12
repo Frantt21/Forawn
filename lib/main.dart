@@ -881,25 +881,16 @@ class _HomeScreenState extends State<HomeScreen> with WindowListener {
                               GestureDetector(
                                 behavior: HitTestBehavior.translucent,
                                 onPanStart: (_) =>
-                                    windowManager.startDragging(),                                child: ValueListenableBuilder<bool>(
-                                  valueListenable:
-                                      MiniPlayerVisibility.fullPlayerOpen,
-                                  builder: (titleBarContext, fullPlayerOpen, _) {
-                                      // Title bar negra SOLO cuando el
-                                      // reproductor completo (PlayerScreen)
-                                      // está abierto: se abre desde abajo
-                                      // tapando el music player (negro) y la
-                                      // title bar debe fundirse con él.
-                                      //
-                                      // NOTA: _currentScreen == 'player' es la
-                                      // screen de la BIBLIOTECA de música
-                                      // (siempre viva en el IndexedStack), no
-                                      // el PlayerScreen — usarla aquí pintaba
-                                      // la franja superior de la ventana de
-                                      // negro todo el tiempo.
+                                    windowManager.startDragging(),                                child: Builder(
+                                  builder: (titleBarContext) {
+                                      // Title bar negra SOLO dentro del
+                                      // screen del player music
+                                      // (MusicPlayerScreen, fondo negro):
+                                      // el resto de screens mantienen la
+                                      // title bar transparente sobre el
+                                      // fondo/acrílico de la app.
                                       final isPlayerScreen =
-                                          _currentScreen == 'player' &&
-                                          fullPlayerOpen;
+                                          _currentScreen == 'player';
                                       final titleBarFg = isPlayerScreen
                                           ? Colors.white
                                           : readableTextColorFor(
