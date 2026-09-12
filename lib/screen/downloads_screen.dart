@@ -28,6 +28,9 @@ class _DownloadsScreenState extends State<DownloadsScreen>
   bool _listenerAdded = false;
   bool _observerAdded = false;
 
+  /// Tab activo de las pills: 0 En curso, 1 En cola, 2 Completadas.
+  int _tabIndex = 0;
+
   @override
   void dispose() {
     try {
@@ -217,6 +220,59 @@ class _DownloadsScreenState extends State<DownloadsScreen>
         child: const Center(child: Text('Title bar error')),
       );
     }
+  }
+
+  /// Pill de tab con el estilo de local_music de forawn_mobile:
+  /// AnimatedContainer r20, activa white 20% + texto blanco, inactiva
+  /// white 5% + white60, bold 15, transición de 200ms.
+  Widget _buildPill(String title, int index) {
+    final isSelected = _tabIndex == index;
+    return GestureDetector(
+      onTap: () => setState(() => _tabIndex = index),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
+        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+        decoration: BoxDecoration(
+          color: isSelected
+              ? Colors.white.withOpacity(0.2) // Activa
+              : Colors.white.withOpacity(0.05), // Inactiva
+          borderRadius: BorderRadius.circular(20),
+        ),
+        child: Text(
+          title,
+          style: TextStyle(
+            color: isSelected ? Colors.white : Colors.white60,
+            fontSize: 15,
+            fontWeight: FontWeight.bold,
+            height: 1.0,
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// Fila de pills En curso / En cola / Completadas (igual que forawn_mobile).
+  Widget _buildPillTabs() {
+    final get = widget.getText;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(12, 4, 12, 8),
+      child: SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            _buildPill(
+              get('tab_in_progress', fallback: 'In progress'),
+              0,
+            ),
+            const SizedBox(width: 8),
+            _buildPill(get('tab_queued', fallback: 'Queued'), 1),
+            const SizedBox(width: 8),
+            _buildPill(get('tab_completed', fallback: 'Completed'), 2),
+          ],
+        ),
+      ),
+    );
   }
 
   Widget _buildEmpty() {
@@ -417,20 +473,45 @@ class _DownloadsScreenState extends State<DownloadsScreen>
     try {
       final get = widget.getText;
       final tasks = _dm.tasksReversed;
+      // Filtrado por tab, mismo reparto que forawn_mobile: los fallos se
+      // muestran en "En curso" (con retry) y las canceladas en "Completadas".
+      final inProgress = tasks
+          .where(
+            (t) =>
+                t.status == DownloadStatus.running ||
+                t.status == DownloadStatus.failed,
+          )
+          .toList();
+      final queued = tasks
+          .where((t) => t.status == DownloadStatus.queued)
+          .toList();
+      final completed = tasks
+          .where(
+            (t) =>
+                t.status == DownloadStatus.completed ||
+                t.status == DownloadStatus.cancelled,
+          )
+          .toList();
+      final visible = [
+        inProgress,
+        queued,
+        completed,
+      ][_tabIndex];
       return Scaffold(
         backgroundColor: const Color.fromARGB(255, 34, 34, 34),
         body: Column(
           children: [
             _buildTitleBar(),
+            _buildPillTabs(),
             Expanded(
               child: Padding(
                 padding: const EdgeInsets.all(12),
-                child: tasks.isEmpty
+                child: visible.isEmpty
                     ? _buildEmpty()
                     : ListView.separated(
-                        itemCount: tasks.length,
+                        itemCount: visible.length,
                         separatorBuilder: (_, __) => const SizedBox(height: 8),
-                        itemBuilder: (_, i) => _safeTaskTile(tasks[i]),
+                        itemBuilder: (_, i) => _safeTaskTile(visible[i]),
                       ),
               ),
             ),
