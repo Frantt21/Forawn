@@ -31,6 +31,8 @@ class QrGeneratorScreen extends StatefulWidget {
 }
 
 class _QrGeneratorScreenState extends State<QrGeneratorScreen> {
+  // Naranja como acento de la screen (igual que forawn_mobile).
+  static const Color _accent = Colors.orangeAccent;
   final TextEditingController _controller = TextEditingController();
   final GlobalKey _qrKey = GlobalKey();
 
@@ -341,13 +343,9 @@ class _QrGeneratorScreenState extends State<QrGeneratorScreen> {
                                 horizontal: 12,
                                 vertical: 12,
                               ),
-                              backgroundColor: const Color.fromARGB(
-                                255,
-                                24,
-                                124,
-                                255,
-                              ),
-                              foregroundColor: Colors.black87,
+                              // Acento naranja con foreground negro (mobile).
+                              backgroundColor: _accent,
+                              foregroundColor: Colors.black,
                             ),
                           ),
                         ],
@@ -425,31 +423,11 @@ class _QrGeneratorScreenState extends State<QrGeneratorScreen> {
                         Expanded(
                           child: SliderTheme(
                             data: SliderTheme.of(context).copyWith(
-                              activeTrackColor: const Color.fromARGB(
-                                255,
-                                24,
-                                124,
-                                255,
-                              ),
+                              activeTrackColor: _accent,
                               inactiveTrackColor: Colors.white24,
-                              thumbColor: const Color.fromARGB(
-                                255,
-                                24,
-                                124,
-                                255,
-                              ),
-                              overlayColor: const Color.fromARGB(
-                                255,
-                                24,
-                                124,
-                                255,
-                              ).withOpacity(0.24),
-                              valueIndicatorColor: const Color.fromARGB(
-                                255,
-                                24,
-                                124,
-                                255,
-                              ),
+                              thumbColor: _accent,
+                              overlayColor: _accent.withOpacity(0.24),
+                              valueIndicatorColor: _accent,
                               trackHeight: 4.0,
                             ),
                             child: Slider(
@@ -496,12 +474,7 @@ class _QrGeneratorScreenState extends State<QrGeneratorScreen> {
                                     states,
                                   ) {
                                     if (states.contains(WidgetState.selected)) {
-                                      return const Color.fromARGB(
-                                        255,
-                                        24,
-                                        124,
-                                        255,
-                                      );
+                                      return _accent;
                                     }
                                     if (states.contains(WidgetState.disabled)) {
                                       return Colors.grey;
@@ -551,13 +524,10 @@ class _QrGeneratorScreenState extends State<QrGeneratorScreen> {
                                 horizontal: 12,
                                 vertical: 12,
                               ),
-                              backgroundColor: const ui.Color.fromARGB(
-                                255,
-                                255,
-                                255,
-                                255,
-                              ),
-                              foregroundColor: Colors.black87,
+                              // Guardar/compartir: naranja con foreground
+                              // negro (igual que los botones de mobile).
+                              backgroundColor: _accent,
+                              foregroundColor: Colors.black,
                             ),
                           ),
                         ),

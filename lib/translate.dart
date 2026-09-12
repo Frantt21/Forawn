@@ -1,4 +1,7 @@
-// translate.dart
+// translate.dart — igual al translate_screen.dart de forawn_mobile:
+// selector de idioma destino arriba, tarjeta de entrada y tarjeta de
+// salida con header verde (greenAccent). Se conservan las funciones de
+// desktop (guardar TXT, copiar, folder action).
 import 'dart:async';
 import 'dart:io';
 import 'package:flutter/material.dart';
@@ -8,8 +11,6 @@ import 'package:translator/translator.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:path/path.dart' as p;
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:window_manager/window_manager.dart';
-import 'main.dart' show gUseNativeFrame;
 
 typedef TextGetter = String Function(String key, {String? fallback});
 
@@ -29,81 +30,41 @@ class TranslateScreen extends StatefulWidget {
   State<TranslateScreen> createState() => _TranslateScreenState();
 }
 
-class _TranslateScreenState extends State<TranslateScreen> with WindowListener {
+class _TranslateScreenState extends State<TranslateScreen> {
   final TextEditingController _inputController = TextEditingController();
-  String _translated = '';
+  final _translator = GoogleTranslator();
+
+  String _translation = '';
   bool _loading = false;
+  String? _error;
+  Timer? _debounce;
+
   String? _saveFolder;
   SharedPreferences? _prefs;
   static const _prefsKey = 'translate_save_folder';
 
-  // Country keys that we send to the API (stable internal values)
-  static const List<String> _countryKeys = [
-    'spain',
-    'usa',
-    'egipt',
-    'france',
-    'germany',
-    'italy',
-    'japan',
-    'korea',
-    'russia',
-    'turkey',
-    'uk',
-    'china',
-    'portuguese',
-    'india',
-    'sweden',
-    'norway',
-    'denmark',
-    'netherlands',
-    'poland',
-    'greece',
-    'australia',
-    'switzerland',
-    'saudi_arabia',
-    'south_africa',
-    'indonesia',
-    'thailand',
-    'vietnam',
-    'israel',
-    'hungary',
-    'czech',
-    'romania',
-    'finland',
-    'bulgaria',
-    'ukraine',
-    'serbia',
-    'croatia',
-    'slovakia',
-    'slovenia',
-    'estonia',
-    'latvia',
-    'lithuania',
-  ];
+  // Idioma destino: claves de locale (igual que forawn_mobile) mapeadas a
+  // códigos de la API de traducción.
+  static const Map<String, String> _languageCodes = {
+    'lang_english': 'en',
+    'lang_spanish': 'es',
+    'lang_french': 'fr',
+    'lang_german': 'de',
+    'lang_portuguese': 'pt',
+    'lang_italian': 'it',
+    'lang_chinese': 'zh-cn',
+    'lang_japanese': 'ja',
+    'lang_korean': 'ko',
+    'lang_russian': 'ru',
+  };
 
-  // Selected key (value sent to API)
-  late String _selectedCountryKey;
-
-  // Localized labels for the dropdown (key -> localized text)
-  Map<String, String> _countryLabels = {};
-
-  // Input resizable
-  double _inputHeight = 160;
-  bool _isDraggingHandle = false;
-  Timer? _debounce;
+  String _targetLangKey = 'lang_english';
 
   @override
   void initState() {
     super.initState();
-    if (!gUseNativeFrame) {
-      windowManager.addListener(this);
-    }
-    _selectedCountryKey = _defaultCountryForLang(widget.currentLang);
-    _loadFolderPref(); // async, does not block UI
-    // build localized labels after first frame so widget.getText is available
-    WidgetsBinding.instance.addPostFrameCallback((_) => _buildCountryLabels());
-
+    _targetLangKey = _defaultLangForLocale(widget.currentLang);
+    _loadFolderPref();
     if (widget.onRegisterFolderAction != null) {
       widget.onRegisterFolderAction!(_selectFolder);
     }
@@ -112,23 +73,38 @@ class _TranslateScreenState extends State<TranslateScreen> with WindowListener {
   @override
   void didUpdateWidget(covariant TranslateScreen oldWidget) {
     super.didUpdateWidget(oldWidget);
-    // If language changed, update default country and rebuild labels
     if (oldWidget.currentLang != widget.currentLang) {
-      _selectedCountryKey = _defaultCountryForLang(widget.currentLang);
-      _buildCountryLabels();
+      _targetLangKey = _defaultLangForLocale(widget.currentLang);
     }
   }
 
   @override
   void dispose() {
-    if (!gUseNativeFrame) {
-      windowManager.removeListener(this);
-    }
     _debounce?.cancel();
     _inputController.dispose();
-    // Don't close HTTP client - prevents "Connection closed" errors in debug mode
-    // _http.close();
     super.dispose();
+  }
+
+  String _defaultLangForLocale(String langCode) {
+    final code = langCode.toLowerCase();
+    if (code.startsWith('es')) return 'lang_spanish';
+    if (code.startsWith('fr')) return 'lang_french';
+    if (code.startsWith('de')) return 'lang_german';
+    if (code.startsWith('pt')) return 'lang_portuguese';
+    if (code.startsWith('ru')) return 'lang_russian';
+    if (code.startsWith('ja')) return 'lang_japanese';
+    if (code.startsWith('ko')) return 'lang_korean';
+    if (code.startsWith('zh')) return 'lang_chinese';
+    return 'lang_english';
+  }
+
+  // Etiqueta localizada de la clave de idioma (con fallback legible).
+  String _langLabel(String key) {
+    final name = key.replaceFirst('lang_', '');
+    return widget.getText(
+      key,
+      fallback: name[0].toUpperCase() + name.substring(1),
+    );
   }
 
   Future<void> _loadFolderPref() async {
@@ -150,132 +126,80 @@ class _TranslateScreenState extends State<TranslateScreen> with WindowListener {
       _prefs ??= await SharedPreferences.getInstance();
       await _prefs!.setString(_prefsKey, _saveFolder!);
     } catch (_) {}
+    if (mounted) setState(() {});
   }
 
-  String _defaultCountryForLang(String langCode) {
-    final code = langCode.toLowerCase();
-    if (code.startsWith('es')) return 'spain';
-    if (code.startsWith('en')) return 'usa';
-    return 'usa'; // Default to English
-  }
+  void _onTextChanged(String text) {
+    if (_debounce?.isActive ?? false) _debounce!.cancel();
 
-  // Build localized labels map from keys using widget.getText with a 'country_' prefix
-  void _buildCountryLabels() {
-    final get = widget.getText;
-    final Map<String, String> map = {};
-    for (final key in _countryKeys) {
-      final labelKey = 'country_$key';
-      final label = get(labelKey, fallback: _prettyKey(key));
-      map[key] = label;
-    }
-    if (!mounted) {
-      _countryLabels = map;
+    if (text.trim().isEmpty) {
+      if (mounted) {
+        setState(() {
+          _translation = '';
+          _error = null;
+          _loading = false;
+        });
+      }
       return;
     }
-    setState(() {
-      _countryLabels = map;
-      if (!_countryLabels.containsKey(_selectedCountryKey)) {
-        _selectedCountryKey = _countryKeys.first;
-      }
-    });
-  }
 
-  // Helper fallback for missing translations
-  String _prettyKey(String k) {
-    return k
-        .replaceAll('_', ' ')
-        .split(' ')
-        .map((w) {
-          if (w.isEmpty) return w;
-          return w[0].toUpperCase() + (w.length > 1 ? w.substring(1) : '');
-        })
-        .join(' ');
+    _debounce = Timer(const Duration(milliseconds: 800), _translate);
   }
-
-  final _translator = GoogleTranslator();
 
   Future<void> _translate() async {
-    final input = _inputController.text.trim();
-    if (input.isEmpty) {
-      return;
+    final text = _inputController.text.trim();
+    if (text.isEmpty) return;
+
+    if (mounted) {
+      setState(() {
+        _loading = true;
+        _error = null;
+      });
     }
 
-    if (!mounted) return;
-    setState(() {
-      _loading = true;
-      _translated = '';
-    });
-
     try {
-      // Map country keys to language codes if necessary, or use a better mapping
-      // For now, mapping known keys or using 'auto' for source
-      // If _selectedCountryKey corresponds to target language
-
-      String targetLang;
-      switch (_selectedCountryKey) {
-        case 'spain':
-          targetLang = 'es';
-          break;
-        case 'usa':
-          targetLang = 'en';
-          break;
-        case 'france':
-          targetLang = 'fr';
-          break;
-        case 'germany':
-          targetLang = 'de';
-          break;
-        case 'italy':
-          targetLang = 'it';
-          break;
-        case 'japan':
-          targetLang = 'ja';
-          break;
-        case 'korea':
-          targetLang = 'ko';
-          break;
-        case 'russia':
-          targetLang = 'ru';
-          break;
-        case 'china':
-          targetLang = 'zh-cn';
-          break;
-        case 'portuguese':
-          targetLang = 'pt';
-          break;
-        // Add other mappings as needed, default to english if unknown
-        default:
-          targetLang = 'en';
-      }
-
-      final translation = await _translator.translate(input, to: targetLang);
+      final targetCode = _languageCodes[_targetLangKey] ?? 'en';
+      final translation = await _translator.translate(text, to: targetCode);
 
       if (!mounted) return;
       setState(() {
-        _translated = translation.text;
+        _translation = translation.text;
       });
     } catch (e) {
       debugPrint('[TranslateScreen] Error: $e');
-      if (!mounted) return;
-      setState(() {
-        _translated = widget.getText(
-          'translate_error',
-          fallback: 'Translation error',
-        );
-      });
+      if (mounted) {
+        setState(() {
+          _error = widget.getText(
+            'translate_error',
+            fallback: 'Translation error',
+          );
+        });
+      }
     } finally {
-      if (!mounted) return;
-      setState(() => _loading = false);
+      if (mounted) {
+        setState(() {
+          _loading = false;
+        });
+      }
     }
   }
 
   Future<void> _copyToClipboard() async {
-    if (_translated.isEmpty) return;
-    await Clipboard.setData(ClipboardData(text: _translated));
+    if (_translation.isEmpty) return;
+    await Clipboard.setData(ClipboardData(text: _translation));
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            widget.getText('copied', fallback: 'Copiado al portapapeles'),
+          ),
+        ),
+      );
+    }
   }
 
   Future<void> _downloadTxt() async {
-    if (_translated.isEmpty) return;
+    if (_translation.isEmpty) return;
 
     String folder = _saveFolder ?? '';
     if (folder.isEmpty) {
@@ -295,255 +219,241 @@ class _TranslateScreenState extends State<TranslateScreen> with WindowListener {
       final path = p.join(folder, filename);
       final f = File(path);
       await f.create(recursive: true);
-      await f.writeAsString(_translated);
+      await f.writeAsString(_translation);
     } catch (e) {
       debugPrint('[TranslateScreen] Error saving file: $e');
-    }
-  }
-
-  Future<void> _minimize() async => await windowManager.minimize();
-  Future<void> _maximizeRestore() async {
-    final isMax = await windowManager.isMaximized();
-    if (isMax) {
-      await windowManager.unmaximize();
-    } else {
-      await windowManager.maximize();
     }
   }
 
   @override
   Widget build(BuildContext context) {
     final get = widget.getText;
-
-    final Color scaffoldBg = Colors.transparent;
+    final textColor = Colors.white;
+    // Verde como color principal de esta pantalla (igual que forawn_mobile).
+    const accentColor = Colors.greenAccent;
+    const cardBackgroundColor = Color(0xFF1C1C1E);
 
     return Scaffold(
-      backgroundColor: scaffoldBg,
+      backgroundColor: Colors.transparent,
       body: SafeArea(
         child: Padding(
-          padding: const EdgeInsets.all(20),
+          padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
           child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Container(
-                width: double.infinity,
-                decoration: BoxDecoration(
-                  color: Theme.of(context).cardTheme.color,
-                  borderRadius: BorderRadius.circular(16),
-                  // border: Border.all(color: Theme.of(context).dividerColor),
+              // Selector de Idioma Destino
+              Card(
+                color: cardBackgroundColor,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
                 ),
-                child: Column(
-                  children: [
-                    SizedBox(
-                      height: _inputHeight,
-                      child: Padding(
-                        padding: const EdgeInsets.all(12.0),
-                        child: TextField(
-                          controller: _inputController,
-                          expands: true,
-                          maxLines: null,
-                          minLines: null,
-                          textAlignVertical: TextAlignVertical.top,
-                          cursorColor: Colors.greenAccent,
-                          decoration: InputDecoration(
-                            border: InputBorder.none,
-                            hintText: get(
-                              'translate_input_hint',
-                              fallback: 'Write the text here',
-                            ),
-                            hintStyle: TextStyle(
-                              color: Colors.white.withOpacity(0.3),
-                            ),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 4,
+                  ),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text(
+                        get('target_language', fallback: 'Target language'),
+                        style: TextStyle(
+                          color: textColor.withOpacity(0.8),
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      DropdownButtonHideUnderline(
+                        child: DropdownButton<String>(
+                          value: _targetLangKey,
+                          // Estilo unificado de menús de la app.
+                          dropdownColor: const Color(0xFF2C2C2E),
+                          borderRadius: BorderRadius.circular(15),
+                          icon: const Icon(
+                            Icons.arrow_drop_down,
+                            color: accentColor,
                           ),
                           style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: 15,
+                            color: accentColor,
+                            fontWeight: FontWeight.bold,
+                            fontSize: 16,
                           ),
-                          onChanged: (text) {
-                            if (_debounce?.isActive ?? false)
-                              _debounce!.cancel();
-                            _debounce = Timer(
-                              const Duration(milliseconds: 500),
-                              () {
-                                _translate();
-                              },
-                            );
-                          },
-                          onSubmitted: (_) {
-                            if (!_loading) _translate();
-                          },
-                        ),
-                      ),
-                    ),
-
-                    // Barra inferior de controles (Selector y botones)
-                    Padding(
-                      padding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
-                      child: Row(
-                        children: [
-                          // Selector de idioma (estilo ForaAI)
-                          Container(
-                            height: 24,
-                            padding: const EdgeInsets.symmetric(horizontal: 8),
-                            decoration: BoxDecoration(
-                              color: Theme.of(context).cardTheme.color,
-                              borderRadius: BorderRadius.circular(10),
-                            ),
-                            child: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                DropdownButton<String>(
-                                  value: _selectedCountryKey,
-                                  underline: const SizedBox.shrink(),
-                                  // Estilo unificado de menús: mismo panel
-                                  // que context menus y dropdowns del resto
-                                  // de la app.
-                                  dropdownColor: const Color(0xFF2C2C2E),
-                                  borderRadius: BorderRadius.circular(15),
-                                  focusColor: Colors.transparent,
-                                  icon: Icon(
-                                    Icons.keyboard_arrow_down,
-                                    size: 14,
-                                    color: Theme.of(
-                                      context,
-                                    ).iconTheme.color?.withOpacity(0.54),
+                          items: _languageCodes.keys
+                              .map(
+                                (k) => DropdownMenuItem<String>(
+                                  value: k,
+                                  child: Text(
+                                    _langLabel(k),
+                                    style: const TextStyle(color: Colors.white),
                                   ),
-                                  isDense: true,
-                                  style: TextStyle(
-                                    color: Theme.of(
-                                      context,
-                                    ).textTheme.bodyLarge?.color,
-                                    fontSize: 11,
-                                  ),
-                                  items: _countryKeys.map((key) {
-                                    final label =
-                                        _countryLabels[key] ?? _prettyKey(key);
-                                    return DropdownMenuItem<String>(
-                                      value: key,
-                                      child: Text(label),
-                                    );
-                                  }).toList(),
-                                  onChanged: (v) {
-                                    if (v == null) return;
-                                    setState(() {
-                                      _selectedCountryKey = v;
-                                      // Trigger translation immediately on language change if there is text
-                                      if (_inputController.text.isNotEmpty) {
-                                        _translate();
-                                      }
-                                    });
-                                  },
                                 ),
-                              ],
-                            ),
-                          ),
-
-                          const Spacer(),
-
-                          // Indicador de carga o estado
-                          if (_loading)
-                            const SizedBox(
-                              width: 16,
-                              height: 16,
-                              child: CircularProgressIndicator(
-                                strokeWidth: 2,
-                                color: Colors.white54,
-                              ),
-                            ),
-
-                          const SizedBox(width: 8),
-
-                          // Botón descarga txt
-                          IconButton(
-                            icon: const Icon(Icons.download, size: 20),
-                            tooltip: get(
-                              'download_txt',
-                              fallback: 'Download TXT',
-                            ),
-                            onPressed: _downloadTxt,
-                            style: IconButton.styleFrom(
-                              backgroundColor: Theme.of(
-                                context,
-                              ).colorScheme.surface.withOpacity(0.1),
-                              foregroundColor: Theme.of(
-                                context,
-                              ).iconTheme.color,
-                              padding: const EdgeInsets.all(8),
-                              minimumSize: const Size(36, 36),
-                              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-
-                    GestureDetector(
-                      behavior: HitTestBehavior.translucent,
-                      onVerticalDragStart: (_) =>
-                          setState(() => _isDraggingHandle = true),
-                      onVerticalDragUpdate: (details) {
-                        setState(() {
-                          _inputHeight = (_inputHeight + details.delta.dy)
-                              .clamp(80.0, 600.0);
-                        });
-                      },
-                      onVerticalDragEnd: (_) =>
-                          setState(() => _isDraggingHandle = false),
-                      child: Container(
-                        height: 10,
-                        alignment: Alignment.center,
-                        child: Container(
-                          width: 48,
-                          height: 4,
-                          decoration: BoxDecoration(
-                            color: _isDraggingHandle
-                                ? Colors.purpleAccent
-                                : Colors.white24,
-                            borderRadius: BorderRadius.circular(4),
-                          ),
+                              )
+                              .toList(),
+                          onChanged: (v) {
+                            if (v == null) return;
+                            setState(() {
+                              _targetLangKey = v;
+                            });
+                            if (_inputController.text.isNotEmpty) {
+                              _translate();
+                            }
+                          },
                         ),
                       ),
+                    ],
+                  ),
+                ),
+              ),
+              const SizedBox(height: 12),
+
+              // Área de Entrada (Input)
+              Expanded(
+                child: Card(
+                  color: cardBackgroundColor,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Padding(
+                    padding: const EdgeInsets.all(16),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Expanded(
+                          child: TextField(
+                            controller: _inputController,
+                            onChanged: _onTextChanged,
+                            style: TextStyle(
+                              color: textColor,
+                              fontSize: 18,
+                            ),
+                            maxLines: null,
+                            expands: true,
+                            textAlignVertical: TextAlignVertical.top,
+                            cursorColor: accentColor,
+                            decoration: InputDecoration(
+                              hintText: get(
+                                'enter_text_translate',
+                                fallback: 'Enter text to translate',
+                              ),
+                              hintStyle: TextStyle(
+                                color: textColor.withOpacity(0.3),
+                              ),
+                              border: InputBorder.none,
+                            ),
+                          ),
+                        ),
+                      ],
                     ),
-                  ],
+                  ),
                 ),
               ),
 
               const SizedBox(height: 12),
 
+              // Área de Salida (Output)
               Expanded(
-                child: Container(
-                  width: double.infinity,
-                  decoration: BoxDecoration(
-                    color: Theme.of(context).cardTheme.color,
-                    borderRadius: BorderRadius.circular(16),
-                    // border: Border.all(color: Theme.of(context).dividerColor),
+                child: Card(
+                  color: cardBackgroundColor,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
                   ),
-                  child: Stack(
-                    children: [
-                      Positioned.fill(
-                        child: SingleChildScrollView(
-                          padding: const EdgeInsets.all(12),
-                          child: SelectableText(
-                            _translated.isEmpty
-                                ? get(
-                                    'no_translation',
-                                    fallback: 'No translation yet',
+                  child: Padding(
+                    padding: const EdgeInsets.all(16),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            const Icon(
+                              Icons.translate,
+                              size: 18,
+                              color: accentColor,
+                            ),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Text(
+                                '${get('translation', fallback: 'Translation')} (${_langLabel(_targetLangKey)})',
+                                style: const TextStyle(
+                                  color: accentColor,
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 14,
+                                ),
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                            if (_loading)
+                              const SizedBox(
+                                width: 16,
+                                height: 16,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  color: accentColor,
+                                ),
+                              ),
+                            if (_translation.isNotEmpty) ...[
+                              const SizedBox(width: 4),
+                              IconButton(
+                                icon: const Icon(Icons.copy, size: 18),
+                                tooltip: get(
+                                  'copy_tooltip',
+                                  fallback: 'Copy',
+                                ),
+                                onPressed: _copyToClipboard,
+                                style: IconButton.styleFrom(
+                                  foregroundColor: textColor,
+                                  padding: const EdgeInsets.all(6),
+                                  minimumSize: const Size(30, 30),
+                                  tapTargetSize:
+                                      MaterialTapTargetSize.shrinkWrap,
+                                ),
+                              ),
+                              IconButton(
+                                icon: const Icon(Icons.download, size: 18),
+                                tooltip: get(
+                                  'download_txt',
+                                  fallback: 'Download TXT',
+                                ),
+                                onPressed: _downloadTxt,
+                                style: IconButton.styleFrom(
+                                  foregroundColor: textColor,
+                                  padding: const EdgeInsets.all(6),
+                                  minimumSize: const Size(30, 30),
+                                  tapTargetSize:
+                                      MaterialTapTargetSize.shrinkWrap,
+                                ),
+                              ),
+                            ],
+                          ],
+                        ),
+                        const SizedBox(height: 12),
+                        Expanded(
+                          child: SingleChildScrollView(
+                            child: _error != null
+                                ? Text(
+                                    _error!,
+                                    style: const TextStyle(
+                                      color: Colors.redAccent,
+                                    ),
                                   )
-                                : _translated,
-                            style: const TextStyle(fontSize: 14),
+                                : SelectableText(
+                                    _translation.isEmpty && !_loading
+                                        ? get(
+                                            'no_translation',
+                                            fallback: 'No translation yet',
+                                          )
+                                        : _translation,
+                                    style: TextStyle(
+                                      color: _translation.isEmpty
+                                          ? textColor.withOpacity(0.3)
+                                          : textColor,
+                                      fontSize: 18,
+                                      fontWeight: FontWeight.w500,
+                                    ),
+                                    cursorColor: accentColor,
+                                  ),
                           ),
                         ),
-                      ),
-                      if (_translated.isNotEmpty)
-                        Positioned(
-                          top: 4,
-                          right: 4,
-                          child: IconButton(
-                            icon: const Icon(Icons.copy, size: 18),
-                            tooltip: get('copy_tooltip', fallback: 'Copy'),
-                            onPressed: _copyToClipboard,
-                          ),
-                        ),
-                    ],
+                      ],
+                    ),
                   ),
                 ),
               ),
