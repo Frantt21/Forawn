@@ -1116,12 +1116,70 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen>
 
   bool _isSearching = false;
 
+  /// Color del degradado del tab Home (como forawn_mobile): se mantiene
+  /// estático entre canciones ("last gradient color") y solo se oscurece
+  /// si el dominante es demasiado claro (lightness > 0.5 → 0.3).
+  Color _homeGradientColor = const Color(0xFF6A1B9A);
+
+  Color get _computedHomeGradientColor {
+    final raw = GlobalThemeService().dominantColor.value ?? _homeGradientColor;
+    final hsl = HSLColor.fromColor(raw);
+    return hsl.lightness > 0.5 ? hsl.withLightness(0.3).toColor() : raw;
+  }
+
+  /// Título de sección estilo forawn_mobile: blanco, 20px bold, padding
+  /// (16, 8, 16, 12). Sustituye al estilo anterior (18px sin color
+  /// explícito) para que todos los encabezados se vean iguales.
+  Widget _sectionTitle(String text) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
+      child: Text(
+        text,
+        style: const TextStyle(
+          color: Colors.white,
+          fontSize: 20,
+          fontWeight: FontWeight.bold,
+        ),
+      ),
+    );
+  }
+
   Widget _buildLibraryView() {
     return Scaffold(
-      // Screen de música negro: no usa el fondo de la app.
-      backgroundColor: Colors.black,
+      // Screen de música negro puro, igual que forawn_mobile
+      // (Color(0xFF000000)).
+      backgroundColor: const Color(0xFF000000),
       body: Stack(
         children: [
+          // Degradado de acento SOLO en el tab de Home (como forawn_mobile):
+          // parte del color dominante de la canción y se funde a negro. Se
+          // posiciona detrás del title bar de la app (que es transparente),
+          // así el degradado se ve desde la franja superior de la ventana.
+          if (_tabIndex == 0)
+            Positioned.fill(
+              child: TweenAnimationBuilder<Color?>(
+                duration: const Duration(milliseconds: 600),
+                curve: Curves.easeInOut,
+                tween: ColorTween(begin: _homeGradientColor, end: _homeGradientColor),
+                builder: (context, animatedColor, child) {
+                  final effectiveColor = animatedColor ?? _homeGradientColor;
+                  return Container(
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        begin: Alignment.topCenter,
+                        end: Alignment.bottomCenter,
+                        colors: [
+                          effectiveColor.withOpacity(0.7),
+                          effectiveColor.withOpacity(0.4),
+                          const Color(0xFF000000).withOpacity(0.0),
+                        ],
+                        stops: const [0.0, 0.15, 0.35],
+                      ),
+                    ),
+                  );
+                },
+              ),
+            ),
           Column(
             children: [
               // Custom Tab Bar / Search Header
@@ -1332,13 +1390,22 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen>
                 child: AnimatedBuilder(
                   animation: PlaylistService(),
                   builder: (context, _) {
-                    return IndexedStack(
-                      index: _tabIndex,
-                      children: [
-                        _buildHomeTab(),
-                        _buildLibraryTab(),
-                        _buildPlaylistsTab(),
-                      ],
+                    return ValueListenableBuilder<Color?>(
+                      valueListenable: GlobalThemeService().dominantColor,
+                      builder: (context, dominant, _) {
+                        // Persistir el último color del degradado (como
+                        // forawn_mobile) antes de construir las tabs.
+                        final computed = _computedHomeGradientColor;
+                        if (dominant != null) _homeGradientColor = computed;
+                        return IndexedStack(
+                          index: _tabIndex,
+                          children: [
+                            _buildHomeTab(),
+                            _buildLibraryTab(),
+                            _buildPlaylistsTab(),
+                          ],
+                        );
+                      },
                     );
                   },
                 ),
@@ -1383,23 +1450,25 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen>
     final playlists = PlaylistService().playlists.take(10).toList();
 
     return SingleChildScrollView(
-      padding: const EdgeInsets.symmetric(horizontal: 16),
+      padding: const EdgeInsets.only(bottom: 140),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const SizedBox(height: 10),
-          Text(
+          // Títulos de sección estilo forawn_mobile (blanco 20px bold,
+          // padding 16/8/16/12).
+          _sectionTitle(
             widget.getText('recently_played', fallback: 'Recently Played'),
-            style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
           ),
-          const SizedBox(height: 16),
           if (historyPaths.isEmpty)
-            Text(
-              widget.getText(
-                'no_recently_played',
-                fallback: 'No recently played songs.',
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: Text(
+                widget.getText(
+                  'no_recently_played',
+                  fallback: 'No recently played songs.',
+                ),
+                style: TextStyle(color: Colors.white.withOpacity(0.5)),
               ),
-              style: const TextStyle(color: Colors.grey),
             )
           else
             SizedBox(
@@ -1414,6 +1483,7 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen>
                 ),
                 child: ListView.separated(
                   scrollDirection: Axis.horizontal,
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
                   physics:
                       const AlwaysScrollableScrollPhysics(), // Ensure scrolling always works
                   itemCount: historyPaths.length,
@@ -1425,15 +1495,13 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen>
               ),
             ),
 
-          const SizedBox(height: 24),
-          Text(
+          _sectionTitle(
             widget.getText('recent_playlists', fallback: 'Recent Playlists'),
-            style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
           ),
-          const SizedBox(height: 16),
           if (playlists.isEmpty)
             Container(
               height: 150,
+              margin: const EdgeInsets.symmetric(horizontal: 16),
               decoration: BoxDecoration(
                 color: Colors.white.withOpacity(0.05),
                 borderRadius: BorderRadius.circular(16),
@@ -1461,6 +1529,7 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen>
                 ),
                 child: ListView.separated(
                   scrollDirection: Axis.horizontal,
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
                   physics: const AlwaysScrollableScrollPhysics(),
                   itemCount: playlists.length,
                   separatorBuilder: (_, __) => const SizedBox(width: 12),
@@ -1471,17 +1540,13 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen>
               ),
             ),
 
-          const SizedBox(height: 24),
-          Text(
+          _sectionTitle(
             widget.getText('recent_favorites', fallback: 'Recent Favorites'),
-            style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
           ),
-          const SizedBox(height: 16),
-          _buildRecentFavorites(),
-
-          const SizedBox(
-            height: 140,
-          ), // Bottom padding increased to avoid overlap
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            child: _buildRecentFavorites(),
+          ),
         ],
       ),
     );
@@ -2064,16 +2129,9 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen>
       return Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Título de la sección, alineado con el de Recently Played.
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 10, 16, 8),
-            child: Text(
-              widget.getText('library_title', fallback: 'Library'),
-              style: const TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
+          // Título de sección estilo forawn_mobile.
+          _sectionTitle(
+            widget.getText('library_title', fallback: 'Library'),
           ),
           Expanded(
             child: Center(
@@ -2108,13 +2166,9 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen>
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        // Título de la sección, alineado con el de Recently Played.
-        Padding(
-          padding: const EdgeInsets.fromLTRB(16, 10, 16, 8),
-          child: Text(
-            widget.getText('library_title', fallback: 'Library'),
-            style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-          ),
+        // Título de sección estilo forawn_mobile.
+        _sectionTitle(
+          widget.getText('library_title', fallback: 'Library'),
         ),
         Expanded(
           child: ListView.builder(

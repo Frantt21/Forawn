@@ -79,23 +79,11 @@ class ForawnDialog extends StatelessWidget {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              // Drag handle (mismo look que el bottom sheet de forawn_mobile)
-              Padding(
-                padding: const EdgeInsets.only(top: 16, bottom: 4),
-                child: Container(
-                  width: 40,
-                  height: 4,
-                  decoration: BoxDecoration(
-                    color: Colors.white24,
-                    borderRadius: BorderRadius.circular(2),
-                  ),
-                ),
-              ),
-
-              // Header + contenido
+              // Header + contenido (sin drag handle: esto es un diálogo,
+              // no un drag container).
               Flexible(
                 child: SingleChildScrollView(
-                  padding: const EdgeInsets.fromLTRB(24, 8, 24, 0),
+                  padding: const EdgeInsets.fromLTRB(24, 20, 24, 0),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
