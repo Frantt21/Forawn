@@ -1,4 +1,8 @@
-# Forawn
+<p align="center">
+  <img src="assets/icon.png" alt="Scrub icon" width="100">
+</p>
+
+<h1 align="center">Forawn</h1>
 
 Forawn is a cross-platform desktop application for **Windows**, **Linux** and **macOS**, built with Flutter. It combines a local music player with a music/video downloader and a set of everyday tools, all in a single multilingual interface.
 
