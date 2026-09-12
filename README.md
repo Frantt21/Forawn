@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="assets/icon.png" alt="Scrub icon" width="100" style="border-radius: 12px;">
+  <img src="assets/icon.png" alt="Scrub icon" width="100">
 </p>
 
 <h1 align="center">Forawn</h1>
