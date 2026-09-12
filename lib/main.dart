@@ -1046,22 +1046,23 @@ class _HomeScreenState extends State<HomeScreen> with WindowListener {
                                             _onFolderAction?.call();
                                           },
                                         ),
-                                      IconButton(
-                                        tooltip: widget.getText(
-                                          'setting_tittle',
-                                          fallback: 'Settings',
+                                      if (_currentScreen != 'settings')
+                                        IconButton(
+                                          tooltip: widget.getText(
+                                            'setting_tittle',
+                                            fallback: 'Settings',
+                                          ),
+                                          icon: const Icon(
+                                            Icons.settings,
+                                            size: 20,
+                                          ),
+                                          onPressed: () {
+                                            // Renderizar Settings como las demás
+                                            // screens (dentro del IndexedStack,
+                                            // con la title bar de la app).
+                                            _handleNavigation('settings');
+                                          },
                                         ),
-                                        icon: const Icon(
-                                          Icons.settings,
-                                          size: 20,
-                                        ),
-                                        onPressed: () {
-                                          // Renderizar Settings como las demás
-                                          // screens (dentro del IndexedStack,
-                                          // con la title bar de la app).
-                                          _handleNavigation('settings');
-                                        },
-                                      ),
                                       _windowButtons(),
                                     ],
                                         ),

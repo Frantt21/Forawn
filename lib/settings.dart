@@ -4,7 +4,6 @@ import 'dart:io';
 import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'main.dart' show checkForUpdate;
-import 'widgets/app_title_bar.dart';
 import 'package:flutter_acrylic/flutter_acrylic.dart' as acrylic;
 import 'widgets/elegant_notification.dart';
 import 'services/discord_service.dart';
@@ -301,23 +300,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
     return Scaffold(
       backgroundColor: Colors.transparent,
-      // Misma estructura que las demás screens: AppTitleBar arriba (con
-      // back en el botón de salir) y el contenido debajo.
-      body: Column(
-        children: [
-          AppTitleBar(
-            title: Text(get('setting_tittle', fallback: 'Settings')),
-            windowBackgroundColor: Colors.black,
-            getText: get,
-            onBack:
-                widget.onBack ??
-                () => Navigator.pop(context),
-          ),
-
-          // CONTENT
-          Expanded(
-            child: SafeArea(
-              child: SingleChildScrollView(
+      // La title bar la dibuja el shell de la app (main.dart) — este screen
+      // solo aporta el contenido, igual que el resto de screens cacheadas.
+      body: SafeArea(
+        child: SingleChildScrollView(
                 padding: const EdgeInsets.all(24),
                 child: Column(
                   children: [
@@ -672,9 +658,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 ),
               ),
             ),
-          ),
-        ],
-      ),
     );
   }
 
