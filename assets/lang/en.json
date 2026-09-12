@@ -484,5 +484,7 @@
   "create_first_playlist": "Create your first playlist",
   "my_favorites": "My Favorites",
   "favorite_songs_desc": "Songs you like",
-  "no_songs_to_add": "No songs to add"
+  "no_songs_to_add": "No songs to add",
+  "deezer_precise": "Deezer (More Precise)",
+  "youtube_music_source": "YouTube Music"
 }

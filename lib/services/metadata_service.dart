@@ -55,6 +55,46 @@ class MetadataService {
 
   final Map<String, TrackMetadata> _cache = {};
 
+  /// Búsqueda con MÚLTIPLES resultados en Deezer (para el diálogo de
+  /// edición de metadatos, mismo enfoque que forawn_mobile).
+  /// Devuelve mapas crudos con title/artist/album/albumArtUrl/year/duration.
+  Future<List<Map<String, dynamic>>> searchMetadataMulti(
+    String title,
+    String artist,
+  ) async {
+    try {
+      final searchQuery = [title, if (artist.isNotEmpty) artist].join(' ');
+      final uri = Uri.parse('https://api.deezer.com/search').replace(
+        queryParameters: {'q': searchQuery, 'limit': '10'},
+      );
+
+      final response = await http.get(uri).timeout(const Duration(seconds: 10));
+      if (response.statusCode != 200) return const [];
+
+      final data = json.decode(response.body);
+      final results = data['data'] as List<dynamic>? ?? [];
+      return results.map<Map<String, dynamic>>((item) {
+        final m = item as Map<String, dynamic>;
+        final albumData = m['album'] as Map<String, dynamic>?;
+        final artistData = m['artist'] as Map<String, dynamic>?;
+        return {
+          'title': m['title'] ?? title,
+          'artist': artistData?['name'] ?? artist,
+          'album': albumData?['title'] ?? '',
+          'albumArtUrl': albumData?['cover_big'] ?? albumData?['cover_medium'],
+          'year': (albumData?['release_date'] as String?)?.length == 10
+              ? (albumData?['release_date'] as String).substring(0, 4)
+              : null,
+          'duration': m['duration'] != null ? (m['duration'] as int) * 1000 : null,
+          'source': 'Deezer',
+        };
+      }).toList();
+    } catch (e) {
+      debugPrint('[MetadataService] searchMetadataMulti error: $e');
+      return const [];
+    }
+  }
+
   Future<TrackMetadata?> searchMetadata(String title, [String? artist]) async {
     try {
       final cacheKey = '${title.toLowerCase()}_${artist?.toLowerCase() ?? ''}';

@@ -22,6 +22,7 @@ import 'package:window_manager/window_manager.dart';
 
 import '../main.dart' show gUseNativeFrame, gShowWindowButtons, gMacTrafficLightInset;
 import '../services/metadata_service.dart';
+import '../services/innertube_service.dart';
 import '../services/playlist_service.dart';
 import '../widgets/mini_player.dart' show MiniPlayerVisibility;
 import '../models/song_model.dart';
@@ -359,12 +360,19 @@ class _PlayerScreenState extends State<PlayerScreen> with WindowListener {
   }
 
   // --- Metadata Editing ---
+  /// Diálogo de edición de metadatos con el diseño de forawn_mobile
+  /// (selector de fuente Deezer/YouTube Music, búsqueda con múltiples
+  /// resultados y aplicación inline), pero como Dialog y no drag-container.
   void _showEditMetadataDialog(BuildContext parentContext) {
     final filePath = _musicPlayer.currentFilePath.value;
     if (filePath.isEmpty) {
       debugPrint('[PlayerScreen] No file selected to edit metadata');
       return;
     }
+    final song = _getCurrentSong();
+    final accent = song.dominantColor != null
+        ? Color(song.dominantColor!)
+        : const Color(0xFFD046FF);
 
     final titleController = TextEditingController(
       text: _musicPlayer.currentTitle.value,
@@ -373,128 +381,347 @@ class _PlayerScreenState extends State<PlayerScreen> with WindowListener {
       text: _musicPlayer.currentArtist.value,
     );
 
+    bool isLoading = false;
+    List<Map<String, dynamic>> searchResults = [];
+    String? errorMessage;
+    String selectedSource = 'Deezer';
+
     showDialog(
       context: parentContext,
       barrierDismissible: true,
-      builder: (dialogContext) => Dialog(
-        backgroundColor: const Color(0xFF1C1C1E),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        insetPadding: const EdgeInsets.all(24),
-        child: Container(
-          width: 400,
-          padding: const EdgeInsets.all(24),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (dialogContext, setStateDialog) => Dialog(
+          backgroundColor: const Color(0xFF1C1C1E),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+          ),
+          insetPadding: const EdgeInsets.all(24),
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 420),
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.all(24),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(
-                    widget.getText(
-                      'edit_metadata',
-                      fallback: 'Update metadata',
-                    ),
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 20,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                  IconButton(
-                    onPressed: () => Navigator.pop(dialogContext),
-                    icon: const Icon(Icons.close, color: Colors.grey),
-                    splashRadius: 20,
-                  ),
-                ],
-              ),
-              const SizedBox(height: 24),
-              _buildStyledTextField(
-                controller: titleController,
-                label: widget.getText('metadata_title', fallback: 'Title'),
-              ),
-              const SizedBox(height: 16),
-              _buildStyledTextField(
-                controller: artistController,
-                label: widget.getText('metadata_artist', fallback: 'Artist'),
-              ),
-              const SizedBox(height: 24),
-              SizedBox(
-                width: double.infinity,
-                height: 50,
-                child: ElevatedButton.icon(
-                  onPressed: () async {
-                    final scaffoldMessenger = ScaffoldMessenger.of(
-                      parentContext,
-                    );
-                    final navigator = Navigator.of(dialogContext);
-
-                    // Mostrar loading
-                    scaffoldMessenger.showSnackBar(
-                      SnackBar(
-                        content: Text(
-                          widget.getText(
-                            'searching',
-                            fallback: 'Searching metadata...',
-                          ),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text(
+                        widget.getText(
+                          'update_metadata',
+                          fallback: 'Update metadata',
                         ),
-                        duration: const Duration(seconds: 1),
-                        backgroundColor: const Color(0xFF2C2C2E),
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 20,
+                          fontWeight: FontWeight.bold,
+                        ),
                       ),
-                    );
-
-                    final results = await MetadataService().searchMetadata(
-                      titleController.text,
-                      artistController.text,
-                    );
-
-                    if (results != null) {
-                      navigator.pop(); // Cerrar diálogo inicial
-                      if (mounted) {
-                        _showConfirmationDialog(
-                          parentContext,
-                          filePath,
-                          results,
-                        ); // Mostrar confirmación
-                      }
-                    } else {
-                      scaffoldMessenger.showSnackBar(
-                        SnackBar(
-                          content: Text(
-                            widget.getText(
-                              'no_metadata_found',
-                              fallback: 'No metadata found',
+                      IconButton(
+                        onPressed: () => Navigator.pop(dialogContext),
+                        icon: const Icon(Icons.close, color: Colors.grey),
+                        splashRadius: 20,
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 16),
+                  // Selector de fuente (igual que forawn_mobile).
+                  Container(
+                    margin: const EdgeInsets.only(bottom: 12),
+                    decoration: BoxDecoration(
+                      color: Colors.white.withOpacity(0.05),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: GestureDetector(
+                            onTap: () => setStateDialog(() {
+                              selectedSource = 'Deezer';
+                              searchResults = [];
+                              errorMessage = null;
+                            }),
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(vertical: 12),
+                              decoration: BoxDecoration(
+                                color: selectedSource == 'Deezer'
+                                    ? accent.withOpacity(0.2)
+                                    : Colors.transparent,
+                                borderRadius: BorderRadius.horizontal(
+                                  left: const Radius.circular(12),
+                                  right: Radius.circular(
+                                    selectedSource == 'Deezer' ? 12 : 0,
+                                  ),
+                                ),
+                              ),
+                              alignment: Alignment.center,
+                              child: Text(
+                                widget.getText(
+                                  'deezer_precise',
+                                  fallback: 'Deezer (More Precise)',
+                                ),
+                                style: TextStyle(
+                                  color: selectedSource == 'Deezer'
+                                      ? accent
+                                      : Colors.white70,
+                                  fontWeight: selectedSource == 'Deezer'
+                                      ? FontWeight.bold
+                                      : FontWeight.normal,
+                                ),
+                                textAlign: TextAlign.center,
+                              ),
                             ),
                           ),
-                          backgroundColor: Colors.redAccent,
+                        ),
+                        Expanded(
+                          child: GestureDetector(
+                            onTap: () => setStateDialog(() {
+                              selectedSource = 'Server';
+                              searchResults = [];
+                              errorMessage = null;
+                            }),
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(vertical: 12),
+                              decoration: BoxDecoration(
+                                color: selectedSource == 'Server'
+                                    ? accent.withOpacity(0.2)
+                                    : Colors.transparent,
+                                borderRadius: BorderRadius.horizontal(
+                                  right: const Radius.circular(12),
+                                  left: Radius.circular(
+                                    selectedSource == 'Server' ? 12 : 0,
+                                  ),
+                                ),
+                              ),
+                              alignment: Alignment.center,
+                              child: Text(
+                                widget.getText(
+                                  'youtube_music_source',
+                                  fallback: 'YouTube Music',
+                                ),
+                                style: TextStyle(
+                                  color: selectedSource == 'Server'
+                                      ? accent
+                                      : Colors.white70,
+                                  fontWeight: selectedSource == 'Server'
+                                      ? FontWeight.bold
+                                      : FontWeight.normal,
+                                ),
+                                textAlign: TextAlign.center,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  _buildStyledTextField(
+                    controller: titleController,
+                    label: widget.getText('metadata_title', fallback: 'Title'),
+                  ),
+                  const SizedBox(height: 12),
+                  _buildStyledTextField(
+                    controller: artistController,
+                    label: widget.getText('metadata_artist', fallback: 'Artist'),
+                  ),
+                  const SizedBox(height: 16),
+                  SizedBox(
+                    width: double.infinity,
+                    height: 50,
+                    child: ElevatedButton.icon(
+                      onPressed: isLoading
+                          ? null
+                          : () async {
+                              setStateDialog(() {
+                                isLoading = true;
+                                errorMessage = null;
+                                searchResults = [];
+                              });
+
+                              try {
+                                if (selectedSource == 'Deezer') {
+                                  final results = await MetadataService()
+                                      .searchMetadataMulti(
+                                        titleController.text,
+                                        artistController.text,
+                                      );
+                                  setStateDialog(() {
+                                    isLoading = false;
+                                    searchResults = results;
+                                    if (results.isEmpty) {
+                                      errorMessage = widget.getText(
+                                        'no_results',
+                                        fallback: 'No results',
+                                      );
+                                    }
+                                  });
+                                } else {
+                                  // YouTube Music vía Innertube: metadatos
+                                  // limpios del resultado, sin servidores
+                                  // propios (igual que forawn_mobile).
+                                  final query =
+                                      '${titleController.text} ${artistController.text}'
+                                          .trim();
+                                  final tracks = await InnertubeService()
+                                      .searchTracks(query, limit: 5);
+                                  final results = tracks
+                                      .map(
+                                        (t) => {
+                                          'title': t.rawTitle,
+                                          'artist': t.channel,
+                                          'album': t.album,
+                                          'albumArtUrl': t.thumbnailUrl,
+                                          'source': 'YouTube Music',
+                                        },
+                                      )
+                                      .toList();
+                                  setStateDialog(() {
+                                    isLoading = false;
+                                    searchResults = results;
+                                    if (results.isEmpty) {
+                                      errorMessage = widget.getText(
+                                        'no_results',
+                                        fallback: 'No results',
+                                      );
+                                    }
+                                  });
+                                }
+                              } catch (e) {
+                                setStateDialog(() {
+                                  isLoading = false;
+                                  errorMessage = 'Error: $e';
+                                });
+                              }
+                            },
+                      icon: isLoading
+                          ? const SizedBox(
+                              width: 20,
+                              height: 20,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                color: Colors.white,
+                              ),
+                            )
+                          : const Icon(Icons.search, color: Colors.white),
+                      label: Text(
+                        widget.getText('search', fallback: 'Search'),
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: accent,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        elevation: 0,
+                      ),
+                    ),
+                  ),
+                  if (errorMessage != null)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 10),
+                      child: Text(
+                        errorMessage!,
+                        style: const TextStyle(color: Colors.redAccent),
+                        textAlign: TextAlign.center,
+                      ),
+                    ),
+                  if (searchResults.isNotEmpty) ...[
+                    const SizedBox(height: 16),
+                    const Divider(color: Colors.white24),
+                    const SizedBox(height: 8),
+                    Text(
+                      '${widget.getText('results', fallback: 'Results')} '
+                      '(${searchResults.length})',
+                      style: const TextStyle(color: Colors.white70),
+                    ),
+                    const SizedBox(height: 8),
+                    ...searchResults.map((result) {
+                      final artUrl = result['albumArtUrl'] as String?;
+                      return Padding(
+                        padding: const EdgeInsets.only(bottom: 4),
+                        child: ListTile(
+                          contentPadding: EdgeInsets.zero,
+                          dense: true,
+                          leading: ClipRRect(
+                            borderRadius: BorderRadius.circular(6),
+                            child: artUrl != null && artUrl.isNotEmpty
+                                ? Image.network(
+                                    artUrl,
+                                    width: 48,
+                                    height: 48,
+                                    fit: BoxFit.cover,
+                                    errorBuilder: (_, _, _) => const Icon(
+                                      Icons.music_note,
+                                      color: Colors.white,
+                                    ),
+                                  )
+                                : const Icon(
+                                    Icons.music_note,
+                                    color: Colors.white,
+                                    size: 48,
+                                  ),
+                          ),
+                          title: Text(
+                            result['title']?.toString() ?? 'Unknown',
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontWeight: FontWeight.bold,
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                          subtitle: Text(
+                            '${result['artist'] ?? 'Unknown'} • ${result['album'] ?? ''}',
+                            style: const TextStyle(
+                              color: Colors.white70,
+                              fontSize: 12,
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                          trailing: IconButton(
+                            icon: const Icon(
+                              Icons.check_circle,
+                              color: Colors.greenAccent,
+                              size: 30,
+                            ),
+                            onPressed: () {
+                              Navigator.pop(dialogContext);
+                              _showConfirmationDialog(
+                                parentContext,
+                                filePath,
+                                _trackMetadataFromResult(result),
+                              );
+                            },
+                          ),
                         ),
                       );
-                    }
-                  },
-                  icon: const Icon(Icons.search, color: Colors.white),
-                  label: Text(
-                    widget.getText('search', fallback: 'Search'),
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 16,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(
-                      0xFFD046FF,
-                    ), // Voucher pink/purple
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                    elevation: 0,
-                  ),
-                ),
+                    }),
+                  ],
+                ],
               ),
-            ],
+            ),
           ),
         ),
       ),
+    );
+  }
+
+  /// Convierte un resultado crudo de búsqueda en TrackMetadata para el
+  /// flujo de confirmación/aplicación existente.
+  TrackMetadata _trackMetadataFromResult(Map<String, dynamic> result) {
+    return TrackMetadata(
+      title: result['title']?.toString() ?? '',
+      artist: result['artist']?.toString() ?? '',
+      album: result['album']?.toString() ?? '',
+      year: result['year']?.toString(),
+      albumArtUrl: result['albumArtUrl']?.toString(),
+      hasAlbumArt: result['albumArtUrl'] != null,
     );
   }
 
