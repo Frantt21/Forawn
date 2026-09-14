@@ -20,7 +20,8 @@ import '../models/synced_lyrics.dart';
 import 'lyrics_display_widget.dart';
 import 'package:window_manager/window_manager.dart';
 
-import '../main.dart' show gUseNativeFrame, gShowWindowButtons, gMacTrafficLightInset;
+import '../main.dart'
+    show gUseNativeFrame, gShowWindowButtons, gMacTrafficLightInset;
 import '../services/metadata_service.dart';
 import '../services/innertube_service.dart';
 import '../services/playlist_service.dart';
@@ -269,15 +270,12 @@ class _PlayerScreenState extends State<PlayerScreen> with WindowListener {
                       ),
                       // Sin padding lateral interno.
                       padding: EdgeInsets.zero,
-                      activeTrackColor: _adjustColorForControls(
-                        _dominantColor,
-                      ),
+                      activeTrackColor: _adjustColorForControls(_dominantColor),
                       inactiveTrackColor: Colors.white10,
                       thumbColor: _adjustColorForControls(_dominantColor),
                     ),
                     child: Slider(
-                      value: (_dragSeekValue ??
-                              position.inSeconds.toDouble())
+                      value: (_dragSeekValue ?? position.inSeconds.toDouble())
                           .clamp(0.0, duration.inSeconds.toDouble()),
                       max: duration.inSeconds.toDouble() > 0
                           ? duration.inSeconds.toDouble()
@@ -524,7 +522,10 @@ class _PlayerScreenState extends State<PlayerScreen> with WindowListener {
                   const SizedBox(height: 12),
                   _buildStyledTextField(
                     controller: artistController,
-                    label: widget.getText('metadata_artist', fallback: 'Artist'),
+                    label: widget.getText(
+                      'metadata_artist',
+                      fallback: 'Artist',
+                    ),
                   ),
                   const SizedBox(height: 16),
                   SizedBox(
@@ -1112,10 +1113,15 @@ class _PlayerScreenState extends State<PlayerScreen> with WindowListener {
                                   // Use parentContext
                                   SnackBar(
                                     content: Text(
-                                      widget.getText(
-                                        'added_to_playlist',
-                                        fallback: 'Added to {name}',
-                                      ).replaceFirst('{name}', playlist.name),
+                                      widget
+                                          .getText(
+                                            'added_to_playlist',
+                                            fallback: 'Added to {name}',
+                                          )
+                                          .replaceFirst(
+                                            '{name}',
+                                            playlist.name,
+                                          ),
                                     ),
                                     behavior: SnackBarBehavior.floating,
                                     shape: RoundedRectangleBorder(
@@ -1260,7 +1266,9 @@ class _PlayerScreenState extends State<PlayerScreen> with WindowListener {
               children: [
                 GestureDetector(
                   onTap: () async {
-                    FilePickerResult? result = await FilePicker.pickFiles(type: FileType.image);
+                    FilePickerResult? result = await FilePicker.pickFiles(
+                      type: FileType.image,
+                    );
                     if (result != null) {
                       setDialogState(() {
                         selectedImagePath = result.files.single.path;
@@ -1584,8 +1592,7 @@ class _PlayerScreenState extends State<PlayerScreen> with WindowListener {
       // 3. URL cacheada: descargar los bytes una vez y guardarlos en la DB
       final cachedUrl = meta?.onlineArtworkUrl;
       if (cachedUrl != null && cachedUrl.isNotEmpty) {
-        await _downloadAndCacheArtwork(
-            path, _upscaleDeezerArtwork(cachedUrl));
+        await _downloadAndCacheArtwork(path, _upscaleDeezerArtwork(cachedUrl));
         return;
       }
 
@@ -1600,7 +1607,9 @@ class _PlayerScreenState extends State<PlayerScreen> with WindowListener {
           metadata.albumArtUrl!,
         );
         await _downloadAndCacheArtwork(
-            path, _upscaleDeezerArtwork(metadata.albumArtUrl!));
+          path,
+          _upscaleDeezerArtwork(metadata.albumArtUrl!),
+        );
       }
     } catch (e) {
       debugPrint('[PlayerScreen] Error loading online artwork: $e');
@@ -1688,10 +1697,7 @@ class _PlayerScreenState extends State<PlayerScreen> with WindowListener {
       onDoubleTap: _handleDoubleTapLike,
       child: Stack(
         fit: StackFit.expand,
-        children: [
-          const SizedBox.expand(),
-          _buildHeartOverlay(),
-        ],
+        children: [const SizedBox.expand(), _buildHeartOverlay()],
       ),
     );
   }
@@ -1722,18 +1728,12 @@ class _PlayerScreenState extends State<PlayerScreen> with WindowListener {
             valueListenable: _musicPlayer.showLyrics,
             builder: (context, showLyrics, _) {
               return TweenAnimationBuilder<double>(
-                tween: Tween(
-                  begin: 0,
-                  end: showLyrics ? 24 : 0,
-                ),
+                tween: Tween(begin: 0, end: showLyrics ? 24 : 0),
                 duration: const Duration(milliseconds: 600),
                 curve: Curves.easeInOut,
                 builder: (context, sigma, child) {
                   return ImageFiltered(
-                    imageFilter: ImageFilter.blur(
-                      sigmaX: sigma,
-                      sigmaY: sigma,
-                    ),
+                    imageFilter: ImageFilter.blur(sigmaX: sigma, sigmaY: sigma),
                     child: child,
                   );
                 },
@@ -1927,389 +1927,409 @@ class _PlayerScreenState extends State<PlayerScreen> with WindowListener {
                                                 key: const ValueKey(
                                                   'lyrics_column_view',
                                                 ),
-                                              children: [
-                                                // HEADER ROW: Artwork + Info + Controls
-                                                // Al mostrar lyrics, baja desde arriba
-                                                // (donde estaba el artwork grande); al
-                                                // volver al player, sube hacia fuera.
-                                                AnimatedSlide(
-                                                  offset: showLyrics
-                                                      ? Offset.zero
-                                                      : const Offset(0, -0.25),
-                                                  duration: const Duration(
-                                                    milliseconds: 450,
-                                                  ),
-                                                  curve: Curves.easeInOutCubic,
-                                                  child: Padding(
-                                                  padding:
-                                                      const EdgeInsets.only(
-                                                        left: 0,
-                                                        right: 0,
-                                                        top: 40,
-                                                        bottom: 10,
-                                                      ),
-                                                  child: Row(
-                                                    children: [
-                                                      // Artwork (Small)
-                                                      Container(
-                                                        width: 80,
-                                                        height: 80,
-                                                        decoration: BoxDecoration(
-                                                          borderRadius:
-                                                              BorderRadius.circular(
-                                                                8,
-                                                              ),
-                                                          image:
-                                                              _currentArt !=
-                                                                  null
-                                                              ? DecorationImage(
-                                                                  image: MemoryImage(
-                                                                    _currentArt!,
-                                                                  ),
-                                                                  fit: BoxFit
-                                                                      .cover,
-                                                                )
-                                                              : null,
-                                                          color: Colors.white12,
-                                                        ),
-                                                        child:
-                                                            _currentArt == null
-                                                            ? const Icon(
-                                                                Icons
-                                                                    .music_note,
-                                                                color: Colors
-                                                                    .white54,
-                                                              )
-                                                            : null,
-                                                      ),
-                                                      const SizedBox(width: 16),
-
-                                                      // Info: Title + Artist
-                                                      Expanded(
-                                                        child: Column(
-                                                          crossAxisAlignment:
-                                                              CrossAxisAlignment
-                                                                  .start,
-                                                          mainAxisSize:
-                                                              MainAxisSize.min,
-                                                          children: [
-                                                            Text(
-                                                              _currentTitle
-                                                                      .isEmpty
-                                                                  ? widget.getText(
-                                                                      'no_song',
-                                                                      fallback:
-                                                                          'No Song',
-                                                                    )
-                                                                  : _currentTitle,
-                                                              style: const TextStyle(
-                                                                fontSize: 20,
-                                                                fontWeight:
-                                                                    FontWeight
-                                                                        .bold,
-                                                                color: Colors
-                                                                    .white,
-                                                              ),
-                                                              maxLines: 1,
-                                                              overflow:
-                                                                  TextOverflow
-                                                                      .ellipsis,
-                                                            ),
-                                                            const SizedBox(
-                                                              height: 4,
-                                                            ),
-                                                            Text(
-                                                              _currentArtist,
-                                                              style: TextStyle(
-                                                                fontSize: 16,
-                                                                color: _adjustColorForControls(
-                                                                  _dominantColor,
-                                                                ),
-                                                              ),
-                                                              maxLines: 1,
-                                                              overflow:
-                                                                  TextOverflow
-                                                                      .ellipsis,
-                                                            ),
-                                                          ],
-                                                        ),
-                                                      ),
-
-                                                      const SizedBox(width: 16),
-
-                                                      // Mini Controls
-                                                      Row(
-                                                        mainAxisSize:
-                                                            MainAxisSize.min,
-                                                        children: [
-                                                          IconButton(
-                                                            icon: Icon(
-                                                              Icons
-                                                                  .skip_previous_rounded,
-                                                              color: _adjustColorForControls(
-                                                                _dominantColor,
-                                                              ),
-                                                            ),
-                                                            onPressed:
-                                                                _playPrevious,
+                                                children: [
+                                                  // HEADER ROW: Artwork + Info + Controls
+                                                  // Al mostrar lyrics, baja desde arriba
+                                                  // (donde estaba el artwork grande); al
+                                                  // volver al player, sube hacia fuera.
+                                                  AnimatedSlide(
+                                                    offset: showLyrics
+                                                        ? Offset.zero
+                                                        : const Offset(
+                                                            0,
+                                                            -0.25,
                                                           ),
+                                                    duration: const Duration(
+                                                      milliseconds: 450,
+                                                    ),
+                                                    curve:
+                                                        Curves.easeInOutCubic,
+                                                    child: Padding(
+                                                      padding:
+                                                          const EdgeInsets.only(
+                                                            left: 0,
+                                                            right: 0,
+                                                            top: 40,
+                                                            bottom: 10,
+                                                          ),
+                                                      child: Row(
+                                                        children: [
+                                                          // Artwork (Small)
                                                           Container(
+                                                            width: 80,
+                                                            height: 80,
                                                             decoration: BoxDecoration(
-                                                              color: _adjustColorForControls(
-                                                                _dominantColor,
-                                                              ),
-                                                              shape: BoxShape
-                                                                  .circle,
+                                                              borderRadius:
+                                                                  BorderRadius.circular(
+                                                                    8,
+                                                                  ),
+                                                              image:
+                                                                  _currentArt !=
+                                                                      null
+                                                                  ? DecorationImage(
+                                                                      image: MemoryImage(
+                                                                        _currentArt!,
+                                                                      ),
+                                                                      fit: BoxFit
+                                                                          .cover,
+                                                                    )
+                                                                  : null,
+                                                              color: Colors
+                                                                  .white12,
                                                             ),
-                                                            child: IconButton(
-                                                              icon: ValueListenableBuilder<bool>(
-                                                                valueListenable:
-                                                                    _musicPlayer
-                                                                        .isPlaying,
-                                                                builder: (ctx, isPlaying, _) => Icon(
-                                                                  isPlaying
-                                                                      ? Icons
-                                                                            .pause_rounded
-                                                                      : Icons
-                                                                            .play_arrow_rounded,
-                                                                  color: _getContrastColor(
-                                                                    _adjustColorForControls(
+                                                            child:
+                                                                _currentArt ==
+                                                                    null
+                                                                ? const Icon(
+                                                                    Icons
+                                                                        .music_note,
+                                                                    color: Colors
+                                                                        .white54,
+                                                                  )
+                                                                : null,
+                                                          ),
+                                                          const SizedBox(
+                                                            width: 16,
+                                                          ),
+
+                                                          // Info: Title + Artist
+                                                          Expanded(
+                                                            child: Column(
+                                                              crossAxisAlignment:
+                                                                  CrossAxisAlignment
+                                                                      .start,
+                                                              mainAxisSize:
+                                                                  MainAxisSize
+                                                                      .min,
+                                                              children: [
+                                                                Text(
+                                                                  _currentTitle
+                                                                          .isEmpty
+                                                                      ? widget.getText(
+                                                                          'no_song',
+                                                                          fallback:
+                                                                              'No Song',
+                                                                        )
+                                                                      : _currentTitle,
+                                                                  style: const TextStyle(
+                                                                    fontSize:
+                                                                        20,
+                                                                    fontWeight:
+                                                                        FontWeight
+                                                                            .bold,
+                                                                    color: Colors
+                                                                        .white,
+                                                                  ),
+                                                                  maxLines: 1,
+                                                                  overflow:
+                                                                      TextOverflow
+                                                                          .ellipsis,
+                                                                ),
+                                                                const SizedBox(
+                                                                  height: 4,
+                                                                ),
+                                                                Text(
+                                                                  _currentArtist,
+                                                                  style: TextStyle(
+                                                                    fontSize:
+                                                                        16,
+                                                                    color: _adjustColorForControls(
                                                                       _dominantColor,
                                                                     ),
                                                                   ),
+                                                                  maxLines: 1,
+                                                                  overflow:
+                                                                      TextOverflow
+                                                                          .ellipsis,
+                                                                ),
+                                                              ],
+                                                            ),
+                                                          ),
+
+                                                          const SizedBox(
+                                                            width: 16,
+                                                          ),
+
+                                                          // Mini Controls
+                                                          Row(
+                                                            mainAxisSize:
+                                                                MainAxisSize
+                                                                    .min,
+                                                            children: [
+                                                              IconButton(
+                                                                icon: Icon(
+                                                                  Icons
+                                                                      .skip_previous_rounded,
+                                                                  color: _adjustColorForControls(
+                                                                    _dominantColor,
+                                                                  ),
+                                                                ),
+                                                                onPressed:
+                                                                    _playPrevious,
+                                                              ),
+                                                              Container(
+                                                                decoration: BoxDecoration(
+                                                                  color: _adjustColorForControls(
+                                                                    _dominantColor,
+                                                                  ),
+                                                                  shape: BoxShape
+                                                                      .circle,
+                                                                ),
+                                                                child: IconButton(
+                                                                  icon: ValueListenableBuilder<bool>(
+                                                                    valueListenable:
+                                                                        _musicPlayer
+                                                                            .isPlaying,
+                                                                    builder:
+                                                                        (
+                                                                          ctx,
+                                                                          isPlaying,
+                                                                          _,
+                                                                        ) => Icon(
+                                                                          isPlaying
+                                                                              ? Icons.pause_rounded
+                                                                              : Icons.play_arrow_rounded,
+                                                                          color: _getContrastColor(
+                                                                            _adjustColorForControls(
+                                                                              _dominantColor,
+                                                                            ),
+                                                                          ),
+                                                                        ),
+                                                                  ),
+                                                                  onPressed:
+                                                                      _togglePlayPause,
                                                                 ),
                                                               ),
-                                                              onPressed:
-                                                                  _togglePlayPause,
-                                                            ),
-                                                          ),
-                                                          IconButton(
-                                                            icon: Icon(
-                                                              Icons
-                                                                  .skip_next_rounded,
-                                                              color: _adjustColorForControls(
-                                                                _dominantColor,
+                                                              IconButton(
+                                                                icon: Icon(
+                                                                  Icons
+                                                                      .skip_next_rounded,
+                                                                  color: _adjustColorForControls(
+                                                                    _dominantColor,
+                                                                  ),
+                                                                ),
+                                                                onPressed:
+                                                                    _playNext,
                                                               ),
-                                                            ),
-                                                            onPressed:
-                                                                _playNext,
-                                                          ),
-                                                          // Lyrics Toggle (to exit view)
-                                                          IconButton(
-                                                            icon: const Icon(
-                                                              Icons.lyrics,
-                                                            ),
-                                                            color:
-                                                                _adjustColorForControls(
+                                                              // Lyrics Toggle (to exit view)
+                                                              IconButton(
+                                                                icon: const Icon(
+                                                                  Icons.lyrics,
+                                                                ),
+                                                                color: _adjustColorForControls(
                                                                   _dominantColor,
                                                                 ),
-                                                            onPressed: () =>
-                                                                _musicPlayer
-                                                                        .showLyrics
-                                                                        .value =
-                                                                    false,
-                                                            tooltip: widget.getText(
-                                                              'hide_lyrics',
-                                                              fallback:
-                                                                  'Hide Lyrics',
-                                                            ),
-                                                          ),
-                                                          PopupMenuButton<
-                                                            String
-                                                          >(
-                                                            color: const Color(
-                                                              0xFF2C2C2E,
-                                                            ),
-                                                            shape: RoundedRectangleBorder(
-                                                              borderRadius:
-                                                                  BorderRadius.circular(
-                                                                    15,
-                                                                  ),
-                                                            ),
-                                                            elevation: 4,
-                                                            icon: Icon(
-                                                              Icons.more_vert,
-                                                              color: _adjustColorForControls(
-                                                                _dominantColor,
+                                                                onPressed: () =>
+                                                                    _musicPlayer
+                                                                            .showLyrics
+                                                                            .value =
+                                                                        false,
+                                                                tooltip: widget.getText(
+                                                                  'hide_lyrics',
+                                                                  fallback:
+                                                                      'Hide Lyrics',
+                                                                ),
                                                               ),
-                                                            ),
-                                                            onSelected: (value) async {
-                                                              if (value ==
-                                                                  'synchronize') {
-                                                                _showSyncDialog();
-                                                              } else if (value ==
-                                                                  'search_lyrics') {
-                                                                _showSearchLyricsDialog();
-                                                              } else if (value ==
-                                                                  'remove_lyrics') {
-                                                                final title =
+                                                              PopupMenuButton<
+                                                                String
+                                                              >(
+                                                                color:
+                                                                    const Color(
+                                                                      0xFF2C2C2E,
+                                                                    ),
+                                                                shape: RoundedRectangleBorder(
+                                                                  borderRadius:
+                                                                      BorderRadius.circular(
+                                                                        15,
+                                                                      ),
+                                                                ),
+                                                                elevation: 4,
+                                                                icon: Icon(
+                                                                  Icons
+                                                                      .more_vert,
+                                                                  color: _adjustColorForControls(
+                                                                    _dominantColor,
+                                                                  ),
+                                                                ),
+                                                                onSelected: (value) async {
+                                                                  if (value ==
+                                                                      'synchronize') {
+                                                                    _showSyncDialog();
+                                                                  } else if (value ==
+                                                                      'search_lyrics') {
+                                                                    _showSearchLyricsDialog();
+                                                                  } else if (value ==
+                                                                      'remove_lyrics') {
+                                                                    final title =
+                                                                        _musicPlayer
+                                                                            .currentTitle
+                                                                            .value;
+                                                                    final artist =
+                                                                        _musicPlayer
+                                                                            .currentArtist
+                                                                            .value;
+                                                                    await LyricsService()
+                                                                        .deleteLyrics(
+                                                                          title,
+                                                                          artist,
+                                                                        );
                                                                     _musicPlayer
-                                                                        .currentTitle
-                                                                        .value;
-                                                                final artist =
-                                                                    _musicPlayer
-                                                                        .currentArtist
-                                                                        .value;
-                                                                await LyricsService()
-                                                                    .deleteLyrics(
-                                                                      title,
-                                                                      artist,
-                                                                    );
-                                                                _musicPlayer
-                                                                        .currentLyrics
-                                                                        .value =
-                                                                    null;
-                                                              }
-                                                            },
-                                                            itemBuilder:
-                                                                (
-                                                                  BuildContext
-                                                                  context,
-                                                                ) =>
-                                                                    <
-                                                                      PopupMenuEntry<
-                                                                        String
-                                                                      >
-                                                                    >[
-                                                                      PopupMenuItem<
-                                                                        String
-                                                                      >(
-                                                                        value:
-                                                                            'synchronize',
-                                                                        child: Row(
-                                                                          children: [
-                                                                            const Icon(
-                                                                              Icons.timer,
-                                                                              color: Colors.white70,
-                                                                            ),
-                                                                            const SizedBox(
-                                                                              width: 8,
-                                                                            ),
-                                                                            Text(
-                                                                              widget.getText(
+                                                                            .currentLyrics
+                                                                            .value =
+                                                                        null;
+                                                                  }
+                                                                },
+                                                                itemBuilder:
+                                                                    (
+                                                                      BuildContext
+                                                                      context,
+                                                                    ) =>
+                                                                        <
+                                                                          PopupMenuEntry<
+                                                                            String
+                                                                          >
+                                                                        >[
+                                                                          PopupMenuItem<
+                                                                            String
+                                                                          >(
+                                                                            value:
                                                                                 'synchronize',
-                                                                                fallback: 'Sincronizar',
-                                                                              ),
+                                                                            child: Row(
+                                                                              children: [
+                                                                                const Icon(
+                                                                                  Icons.timer,
+                                                                                  color: Colors.white70,
+                                                                                ),
+                                                                                const SizedBox(
+                                                                                  width: 8,
+                                                                                ),
+                                                                                Text(
+                                                                                  widget.getText(
+                                                                                    'synchronize',
+                                                                                    fallback: 'Sincronizar',
+                                                                                  ),
+                                                                                ),
+                                                                              ],
                                                                             ),
-                                                                          ],
-                                                                        ),
-                                                                      ),
-                                                                      PopupMenuItem<
-                                                                        String
-                                                                      >(
-                                                                        value:
-                                                                            'search_lyrics',
-                                                                        child: Row(
-                                                                          children: [
-                                                                            const Icon(
-                                                                              Icons.search,
-                                                                              color: Colors.white70,
-                                                                            ),
-                                                                            const SizedBox(
-                                                                              width: 8,
-                                                                            ),
-                                                                            Text(
-                                                                              widget.getText(
+                                                                          ),
+                                                                          PopupMenuItem<
+                                                                            String
+                                                                          >(
+                                                                            value:
                                                                                 'search_lyrics',
-                                                                                fallback: 'Buscar lyrics',
-                                                                              ),
+                                                                            child: Row(
+                                                                              children: [
+                                                                                const Icon(
+                                                                                  Icons.search,
+                                                                                  color: Colors.white70,
+                                                                                ),
+                                                                                const SizedBox(
+                                                                                  width: 8,
+                                                                                ),
+                                                                                Text(
+                                                                                  widget.getText(
+                                                                                    'search_lyrics',
+                                                                                    fallback: 'Buscar lyrics',
+                                                                                  ),
+                                                                                ),
+                                                                              ],
                                                                             ),
-                                                                          ],
-                                                                        ),
-                                                                      ),
-                                                                      PopupMenuItem<
-                                                                        String
-                                                                      >(
-                                                                        value:
-                                                                            'remove_lyrics',
-                                                                        child: Row(
-                                                                          children: [
-                                                                            const Icon(
-                                                                              Icons.delete,
-                                                                              color: Colors.white70,
-                                                                            ),
-                                                                            const SizedBox(
-                                                                              width: 8,
-                                                                            ),
-                                                                            Text(
-                                                                              widget.getText(
+                                                                          ),
+                                                                          PopupMenuItem<
+                                                                            String
+                                                                          >(
+                                                                            value:
                                                                                 'remove_lyrics',
-                                                                                fallback: 'Eliminar lyrics',
-                                                                              ),
+                                                                            child: Row(
+                                                                              children: [
+                                                                                const Icon(
+                                                                                  Icons.delete,
+                                                                                  color: Colors.white70,
+                                                                                ),
+                                                                                const SizedBox(
+                                                                                  width: 8,
+                                                                                ),
+                                                                                Text(
+                                                                                  widget.getText(
+                                                                                    'remove_lyrics',
+                                                                                    fallback: 'Eliminar lyrics',
+                                                                                  ),
+                                                                                ),
+                                                                              ],
                                                                             ),
-                                                                          ],
-                                                                        ),
-                                                                      ),
-                                                                    ],
+                                                                          ),
+                                                                        ],
+                                                              ),
+                                                            ],
                                                           ),
                                                         ],
                                                       ),
-                                                    ],
+                                                    ),
                                                   ),
-                                                ),
-                                                ),
 
-                                                const Divider(
-                                                  color: Colors.white12,
-                                                  height: 30,
-                                                ),
+                                                  const Divider(
+                                                    color: Colors.white12,
+                                                    height: 30,
+                                                  ),
 
-                                                // LYRICS AREA
-                                                Expanded(
-                                                  child: ValueListenableBuilder<SyncedLyrics?>(
-                                                    valueListenable:
-                                                        _musicPlayer
-                                                            .currentLyrics,
-                                                    builder: (context, lyrics, _) {
-                                                      if (lyrics == null ||
-                                                          !lyrics.hasLyrics) {
-                                                        return Center(
-                                                          child: Text(
-                                                            widget.getText(
-                                                              'no_lyrics',
-                                                              fallback:
-                                                                  'No Lyrics Found',
-                                                            ),
-                                                            style:
-                                                                const TextStyle(
-                                                                  color: Colors
-                                                                      .white54,
-                                                                  fontSize: 18,
-                                                                ),
-                                                          ),
-                                                        );
-                                                      }
-                                                      return LyricsDisplay(
-                                                        key: ValueKey(
+                                                  // LYRICS AREA
+                                                  Expanded(
+                                                    child: ValueListenableBuilder<SyncedLyrics?>(
+                                                      valueListenable:
                                                           _musicPlayer
-                                                              .currentFilePath
-                                                              .value,
-                                                        ),
-                                                        lyrics: lyrics,
-                                                        currentIndexNotifier:
-                                                            _lyricIndexNotifier,
-                                                        positionNotifier:
-                                                            _musicPlayer
-                                                                .position,
-                                                        getText: widget.getText,
-                                                        textAlign:
-                                                            TextAlign.start,
-                                                        onTap: (timestamp) {
-                                                          _player.seek(
-                                                            timestamp +
-                                                                _lyricsOffset,
+                                                              .currentLyrics,
+                                                      builder: (context, lyrics, _) {
+                                                        if (lyrics == null ||
+                                                            !lyrics.hasLyrics) {
+                                                          return Center(
+                                                            child: Text(
+                                                              widget.getText(
+                                                                'no_lyrics',
+                                                                fallback:
+                                                                    'No Lyrics Found',
+                                                              ),
+                                                              style:
+                                                                  const TextStyle(
+                                                                    color: Colors
+                                                                        .white54,
+                                                                    fontSize:
+                                                                        18,
+                                                                  ),
+                                                            ),
                                                           );
-                                                        },
-                                                        lyricsOffset:
-                                                            _lyricsOffset,
-                                                      );
-                                                    },
+                                                        }
+                                                        return LyricsDisplay(
+                                                          key: ValueKey(
+                                                            _musicPlayer
+                                                                .currentFilePath
+                                                                .value,
+                                                          ),
+                                                          lyrics: lyrics,
+                                                          currentIndexNotifier:
+                                                              _lyricIndexNotifier,
+                                                          positionNotifier:
+                                                              _musicPlayer
+                                                                  .position,
+                                                          getText:
+                                                              widget.getText,
+                                                          textAlign:
+                                                              TextAlign.start,
+                                                          onTap: (timestamp) {
+                                                            _player.seek(
+                                                              timestamp +
+                                                                  _lyricsOffset,
+                                                            );
+                                                          },
+                                                          lyricsOffset:
+                                                              _lyricsOffset,
+                                                        );
+                                                      },
+                                                    ),
                                                   ),
-                                                ),
-                                              ],
+                                                ],
+                                              ),
                                             ),
                                           ),
-                                        ),
                                         ),
                                       ),
 
@@ -2341,229 +2361,217 @@ class _PlayerScreenState extends State<PlayerScreen> with WindowListener {
                                               ),
                                               curve: Curves.easeInOut,
 
-                                          child: Column(
-                                            key: const ValueKey('cover_art'),
-                                            children: [
-                                              const Spacer(),
-                                              Flexible(
-                                                flex: 12,
-                                                // En modo artwork expandido la portada es el
-                                                // fondo; aquí va un área de gestos transparente.
-                                                child: _isFullArtworkMode
-                                                    ? _buildFullArtworkGestureArea()
-                                                    : AspectRatio(
-                                                  aspectRatio: 1,
-                                                  child: ValueListenableBuilder<bool>(
-                                                    valueListenable: ValueNotifier(
-                                                      true,
-                                                    ), // Dummy wrapper to minimize changes if needed or just remove it.
-                                                    builder: (context, _, __) {
-                                                      return Container(
-                                                        decoration: BoxDecoration(
-                                                          borderRadius:
-                                                              BorderRadius.circular(
-                                                                20,
-                                                              ),
-                                                          // Sin sombra: el
-                                                          // artwork se muestra
-                                                          // limpio.
-                                                          color: Colors.white12,
-                                                        ),
-                                                        child: ClipRRect(
-                                                          borderRadius:
-                                                              BorderRadius.circular(
-                                                                20,
-                                                              ),
-                                                          child: AnimatedSwitcher(
-                                                            duration:
-                                                                const Duration(
-                                                                  milliseconds:
-                                                                      350,
-                                                                ),
-                                                            switchInCurve: Curves
-                                                                .easeOutQuad,
-                                                            switchOutCurve:
-                                                                Curves
-                                                                    .easeInQuad,
-                                                            transitionBuilder: (child, animation) {
-                                                              // Determine direction from GlobalMusicPlayer
-                                                              // 1 = Next (Enter from Right), -1 = Prev (Enter from Left)
-                                                              final direction =
-                                                                  _musicPlayer
-                                                                      .transitionDirection
-                                                                      .value;
-
-                                                              // Calculate offsets based on direction
-                                                              final inBegin =
-                                                                  Offset(
-                                                                    direction
-                                                                        .toDouble(),
-                                                                    0.0,
-                                                                  );
-                                                              final outEnd = Offset(
-                                                                -direction
-                                                                    .toDouble(),
-                                                                0.0,
-                                                              );
-
-                                                              final inAnimation =
-                                                                  Tween<Offset>(
-                                                                    begin:
-                                                                        inBegin,
-                                                                    end: Offset
-                                                                        .zero,
-                                                                  ).animate(
-                                                                    CurvedAnimation(
-                                                                      parent:
-                                                                          animation,
-                                                                      curve: Curves
-                                                                          .easeOutQuad,
-                                                                    ),
-                                                                  );
-
-                                                              final outAnimation =
-                                                                  Tween<Offset>(
-                                                                    begin:
-                                                                        outEnd, // Start at -1 if dir=1 (Wait, no. Start at 0, end at -1)
-                                                                    // BUT for exit, we map t=1->0 to Position.
-                                                                    // We want child to move FROM 0 TO -1.
-                                                                    // At t=1 (start), pos should be 0.
-                                                                    // At t=0 (end), pos should be -1.
-                                                                    // So Tween(begin: -1, end: 0) works because lerp(-1,0,1)=0, lerp(-1,0,0)=-1.
-                                                                    // IF direction=1 (Next), we want exit to Left (-1). So Tween(-1, 0).
-                                                                    // IF direction=-1 (Prev), we want exit to Right (1). So Tween(1, 0).
-                                                                    end: Offset
-                                                                        .zero,
-                                                                  ).animate(
-                                                                    CurvedAnimation(
-                                                                      parent:
-                                                                          animation,
-                                                                      curve: Curves
-                                                                          .easeInQuad,
-                                                                    ),
-                                                                  );
-
-                                                              if (child.key ==
-                                                                  ValueKey(
-                                                                    _currentTitle,
-                                                                  )) {
-                                                                return SlideTransition(
-                                                                  position:
-                                                                      inAnimation,
-                                                                  child: child,
-                                                                );
-                                                              } else {
-                                                                return SlideTransition(
-                                                                  position:
-                                                                      outAnimation,
-                                                                  child: child,
-                                                                );
-                                                              }
-                                                            },
-                                                            child: GestureDetector(
-                                                              key: ValueKey(
-                                                                _currentTitle,
-                                                              ),
-                                                              behavior:
-                                                                  HitTestBehavior
-                                                                      .opaque,
-                                                              // Gestos en la portada (forawn_mobile):
-                                                              // swipe horizontal (cambiar canción),
-                                                              // swipe vertical abajo (cerrar) y
-                                                              // doble click (dar like).
-                                                              onHorizontalDragEnd:
-                                                                  _handleHorizontalSwipe,
-                                                              onVerticalDragEnd:
-                                                                  _handleVerticalSwipe,
-                                                              onDoubleTap:
-                                                                  _handleDoubleTapLike,
-                                                              child: Stack(
-                                                                fit: StackFit
-                                                                    .expand,
-                                                                children: [
-                                                                  Container(
-                                                                    width: double
-                                                                        .infinity,
-                                                                    height: double
-                                                                        .infinity,
-                                                                    decoration:
-                                                                        _currentArt !=
-                                                                            null
-                                                                        ? BoxDecoration(
-                                                                            image:
-                                                                                DecorationImage(
-                                                                                  image:
-                                                                                      MemoryImage(
-                                                                                        _currentArt!,
-                                                                                      ),
-                                                                                  fit:
-                                                                                      BoxFit
-                                                                                          .cover,
-                                                                                  filterQuality:
-                                                                                      FilterQuality
-                                                                                          .high,
-                                                                                ),
-                                                                          )
-                                                                        : null,
-                                                                    child:
-                                                                        _currentArt ==
-                                                                            null
-                                                                        ? const Icon(
-                                                                            Icons
-                                                                                .music_note,
-                                                                            size:
-                                                                                120,
-                                                                            color:
-                                                                                Colors
-                                                                                    .white12,
-                                                                          )
-                                                                        : null,
+                                              child: Column(
+                                                key: const ValueKey(
+                                                  'cover_art',
+                                                ),
+                                                children: [
+                                                  const Spacer(),
+                                                  Flexible(
+                                                    flex: 12,
+                                                    // En modo artwork expandido la portada es el
+                                                    // fondo; aquí va un área de gestos transparente.
+                                                    child: _isFullArtworkMode
+                                                        ? _buildFullArtworkGestureArea()
+                                                        : AspectRatio(
+                                                            aspectRatio: 1,
+                                                            child: ValueListenableBuilder<bool>(
+                                                              valueListenable:
+                                                                  ValueNotifier(
+                                                                    true,
+                                                                  ), // Dummy wrapper to minimize changes if needed or just remove it.
+                                                              builder: (context, _, __) {
+                                                                return Container(
+                                                                  decoration: BoxDecoration(
+                                                                    borderRadius:
+                                                                        BorderRadius.circular(
+                                                                          20,
+                                                                        ),
+                                                                    // Sin sombra: el
+                                                                    // artwork se muestra
+                                                                    // limpio.
+                                                                    color: Colors
+                                                                        .white12,
                                                                   ),
-                                                                  // Corazón animado al dar like
-                                                                  _buildHeartOverlay(),
-                                                                ],
-                                                              ),
+                                                                  child: ClipRRect(
+                                                                    borderRadius:
+                                                                        BorderRadius.circular(
+                                                                          20,
+                                                                        ),
+                                                                    child: AnimatedSwitcher(
+                                                                      duration: const Duration(
+                                                                        milliseconds:
+                                                                            350,
+                                                                      ),
+                                                                      switchInCurve:
+                                                                          Curves
+                                                                              .easeOutQuad,
+                                                                      switchOutCurve:
+                                                                          Curves
+                                                                              .easeInQuad,
+                                                                      transitionBuilder:
+                                                                          (
+                                                                            child,
+                                                                            animation,
+                                                                          ) {
+                                                                            // Determine direction from GlobalMusicPlayer
+                                                                            // 1 = Next (Enter from Right), -1 = Prev (Enter from Left)
+                                                                            final direction =
+                                                                                _musicPlayer.transitionDirection.value;
+
+                                                                            // Calculate offsets based on direction
+                                                                            final inBegin = Offset(
+                                                                              direction.toDouble(),
+                                                                              0.0,
+                                                                            );
+                                                                            final outEnd = Offset(
+                                                                              -direction.toDouble(),
+                                                                              0.0,
+                                                                            );
+
+                                                                            final inAnimation =
+                                                                                Tween<
+                                                                                      Offset
+                                                                                    >(
+                                                                                      begin: inBegin,
+                                                                                      end: Offset.zero,
+                                                                                    )
+                                                                                    .animate(
+                                                                                      CurvedAnimation(
+                                                                                        parent: animation,
+                                                                                        curve: Curves.easeOutQuad,
+                                                                                      ),
+                                                                                    );
+
+                                                                            final outAnimation =
+                                                                                Tween<
+                                                                                      Offset
+                                                                                    >(
+                                                                                      begin: outEnd, // Start at -1 if dir=1 (Wait, no. Start at 0, end at -1)
+                                                                                      // BUT for exit, we map t=1->0 to Position.
+                                                                                      // We want child to move FROM 0 TO -1.
+                                                                                      // At t=1 (start), pos should be 0.
+                                                                                      // At t=0 (end), pos should be -1.
+                                                                                      // So Tween(begin: -1, end: 0) works because lerp(-1,0,1)=0, lerp(-1,0,0)=-1.
+                                                                                      // IF direction=1 (Next), we want exit to Left (-1). So Tween(-1, 0).
+                                                                                      // IF direction=-1 (Prev), we want exit to Right (1). So Tween(1, 0).
+                                                                                      end: Offset.zero,
+                                                                                    )
+                                                                                    .animate(
+                                                                                      CurvedAnimation(
+                                                                                        parent: animation,
+                                                                                        curve: Curves.easeInQuad,
+                                                                                      ),
+                                                                                    );
+
+                                                                            if (child.key ==
+                                                                                ValueKey(
+                                                                                  _currentTitle,
+                                                                                )) {
+                                                                              return SlideTransition(
+                                                                                position: inAnimation,
+                                                                                child: child,
+                                                                              );
+                                                                            } else {
+                                                                              return SlideTransition(
+                                                                                position: outAnimation,
+                                                                                child: child,
+                                                                              );
+                                                                            }
+                                                                          },
+                                                                      child: GestureDetector(
+                                                                        key: ValueKey(
+                                                                          _currentTitle,
+                                                                        ),
+                                                                        behavior:
+                                                                            HitTestBehavior.opaque,
+                                                                        // Gestos en la portada (forawn_mobile):
+                                                                        // swipe horizontal (cambiar canción),
+                                                                        // swipe vertical abajo (cerrar) y
+                                                                        // doble click (dar like).
+                                                                        onHorizontalDragEnd:
+                                                                            _handleHorizontalSwipe,
+                                                                        onVerticalDragEnd:
+                                                                            _handleVerticalSwipe,
+                                                                        onDoubleTap:
+                                                                            _handleDoubleTapLike,
+                                                                        child: Stack(
+                                                                          fit: StackFit
+                                                                              .expand,
+                                                                          children: [
+                                                                            Container(
+                                                                              width: double.infinity,
+                                                                              height: double.infinity,
+                                                                              decoration:
+                                                                                  _currentArt !=
+                                                                                      null
+                                                                                  ? BoxDecoration(
+                                                                                      image: DecorationImage(
+                                                                                        image: MemoryImage(
+                                                                                          _currentArt!,
+                                                                                        ),
+                                                                                        fit: BoxFit.cover,
+                                                                                        filterQuality: FilterQuality.high,
+                                                                                      ),
+                                                                                    )
+                                                                                  : null,
+                                                                              child:
+                                                                                  _currentArt ==
+                                                                                      null
+                                                                                  ? const Icon(
+                                                                                      Icons.music_note,
+                                                                                      size: 120,
+                                                                                      color: Colors.white12,
+                                                                                    )
+                                                                                  : null,
+                                                                            ),
+                                                                            // Corazón animado al dar like
+                                                                            _buildHeartOverlay(),
+                                                                          ],
+                                                                        ),
+                                                                      ),
+                                                                    ),
+                                                                  ),
+                                                                );
+                                                              },
                                                             ),
                                                           ),
-                                                        ),
-                                                      );
-                                                    },
                                                   ),
-                                                ),
+                                                  const Spacer(),
+                                                  Text(
+                                                    _currentTitle.isEmpty
+                                                        ? widget.getText(
+                                                            'no_song',
+                                                            fallback: 'No Song',
+                                                          )
+                                                        : _currentTitle,
+                                                    style: const TextStyle(
+                                                      fontSize: 28,
+                                                      fontWeight:
+                                                          FontWeight.bold,
+                                                      color: Colors.white,
+                                                    ),
+                                                    textAlign: TextAlign.center,
+                                                    maxLines: 2,
+                                                  ),
+                                                  const SizedBox(height: 8),
+                                                  Text(
+                                                    _currentArtist,
+                                                    style: TextStyle(
+                                                      fontSize: 18,
+                                                      color:
+                                                          _adjustColorForControls(
+                                                            _dominantColor,
+                                                          ),
+                                                      fontWeight:
+                                                          FontWeight.w500,
+                                                    ),
+                                                    textAlign: TextAlign.center,
+                                                  ),
+                                                ],
                                               ),
-                                              const Spacer(),
-                                              Text(
-                                                _currentTitle.isEmpty
-                                                    ? widget.getText(
-                                                        'no_song',
-                                                        fallback: 'No Song',
-                                                      )
-                                                    : _currentTitle,
-                                                style: const TextStyle(
-                                                  fontSize: 28,
-                                                  fontWeight: FontWeight.bold,
-                                                  color: Colors.white,
-                                                ),
-                                                textAlign: TextAlign.center,
-                                                maxLines: 2,
-                                              ),
-                                              const SizedBox(height: 8),
-                                              Text(
-                                                _currentArtist,
-                                                style: TextStyle(
-                                                  fontSize: 18,
-                                                  color:
-                                                      _adjustColorForControls(
-                                                        _dominantColor,
-                                                      ),
-                                                  fontWeight: FontWeight.w500,
-                                                ),
-                                                textAlign: TextAlign.center,
-                                              ),
-                                            ],
+                                            ),
                                           ),
-                                        ),
-                                        ),
                                         ),
                                       ),
                                     ],
@@ -2576,9 +2584,7 @@ class _PlayerScreenState extends State<PlayerScreen> with WindowListener {
                               valueListenable: _musicPlayer.showLyrics,
                               builder: (context, showLyrics, _) {
                                 return AnimatedSwitcher(
-                                  duration: const Duration(
-                                    milliseconds: 400,
-                                  ),
+                                  duration: const Duration(milliseconds: 400),
                                   switchInCurve: Curves.easeOutCubic,
                                   switchOutCurve: Curves.easeInCubic,
                                   transitionBuilder: (child, animation) {
@@ -2586,15 +2592,16 @@ class _PlayerScreenState extends State<PlayerScreen> with WindowListener {
                                     // (se mueven hacia el header) y entran
                                     // desde abajo al volver al player.
                                     return SlideTransition(
-                                      position: Tween<Offset>(
-                                        begin: const Offset(0, 0.4),
-                                        end: Offset.zero,
-                                      ).animate(
-                                        CurvedAnimation(
-                                          parent: animation,
-                                          curve: Curves.easeOutCubic,
-                                        ),
-                                      ),
+                                      position:
+                                          Tween<Offset>(
+                                            begin: const Offset(0, 0.4),
+                                            end: Offset.zero,
+                                          ).animate(
+                                            CurvedAnimation(
+                                              parent: animation,
+                                              curve: Curves.easeOutCubic,
+                                            ),
+                                          ),
                                       child: FadeTransition(
                                         opacity: animation,
                                         child: child,
@@ -2707,23 +2714,19 @@ class _PlayerScreenState extends State<PlayerScreen> with WindowListener {
                                                       padding: EdgeInsets.zero,
                                                       constraints:
                                                           const BoxConstraints(),
-                                                      icon:
-                                                          ValueListenableBuilder<
-                                                              PlayerState
-                                                          >(
+                                                      icon: ValueListenableBuilder<PlayerState>(
                                                         valueListenable:
                                                             _musicPlayer
                                                                 .playerState,
-                                                        builder: (ctx, state,
-                                                            _) {
+                                                        builder: (ctx, state, _) {
                                                           final isLoading =
                                                               state ==
-                                                                      PlayerState
-                                                                          .stopped &&
-                                                                  _musicPlayer
-                                                                      .currentFilePath
-                                                                      .value
-                                                                      .isNotEmpty;
+                                                                  PlayerState
+                                                                      .stopped &&
+                                                              _musicPlayer
+                                                                  .currentFilePath
+                                                                  .value
+                                                                  .isNotEmpty;
                                                           final isPlaying =
                                                               _musicPlayer
                                                                   .isPlaying
@@ -2732,21 +2735,17 @@ class _PlayerScreenState extends State<PlayerScreen> with WindowListener {
                                                               ? SizedBox(
                                                                   width: 80,
                                                                   height: 80,
-                                                                  child:
-                                                                      Center(
-                                                                    child:
-                                                                        SizedBox(
+                                                                  child: Center(
+                                                                    child: SizedBox(
                                                                       width: 36,
                                                                       height:
                                                                           36,
-                                                                      child:
-                                                                          CircularProgressIndicator(
+                                                                      child: CircularProgressIndicator(
                                                                         strokeWidth:
                                                                             3,
-                                                                        color:
-                                                                            _adjustColorForControls(
-                                                                              _dominantColor,
-                                                                            ),
+                                                                        color: _adjustColorForControls(
+                                                                          _dominantColor,
+                                                                        ),
                                                                       ),
                                                                     ),
                                                                   ),
@@ -2754,13 +2753,12 @@ class _PlayerScreenState extends State<PlayerScreen> with WindowListener {
                                                               : Icon(
                                                                   isPlaying
                                                                       ? Icons
-                                                                          .pause_rounded
+                                                                            .pause_rounded
                                                                       : Icons
-                                                                          .play_arrow_rounded,
-                                                                  color:
-                                                                      _adjustColorForControls(
-                                                                        _dominantColor,
-                                                                      ),
+                                                                            .play_arrow_rounded,
+                                                                  color: _adjustColorForControls(
+                                                                    _dominantColor,
+                                                                  ),
                                                                   size: 80,
                                                                 );
                                                         },
@@ -2836,7 +2834,7 @@ class _PlayerScreenState extends State<PlayerScreen> with WindowListener {
                                                             isLiked
                                                                 ? Icons.favorite
                                                                 : Icons
-                                                                    .favorite_border,
+                                                                      .favorite_border,
                                                             color:
                                                                 _adjustColorForControls(
                                                                   _dominantColor,
@@ -2853,8 +2851,8 @@ class _PlayerScreenState extends State<PlayerScreen> with WindowListener {
                                                         );
                                                       },
                                                     ),
-                                                      ],
-                                                    ),
+                                                  ],
+                                                ),
 
                                                 const SizedBox(height: 8),
 
@@ -2865,8 +2863,6 @@ class _PlayerScreenState extends State<PlayerScreen> with WindowListener {
                                                 _buildProgressBar(),
 
                                                 const SizedBox(height: 8),
-
-
                                               ],
                                             ),
                                           ],
@@ -3076,9 +3072,10 @@ class _PlayerScreenState extends State<PlayerScreen> with WindowListener {
                 _QueuePanel(
                   open: _showQueue,
                   getText: widget.getText,
+                  accentColor: _dominantColor ?? const Color(0xFFD046FF),
                   onPlayAtIndex: _playFile,
                   onReorder: _musicPlayer.reorderQueue,
-                  onClose: () => setState(() => _showQueue = false),
+                  onRemove: _musicPlayer.removeFromQueue,
                 ),
               ],
             ),
@@ -3153,79 +3150,79 @@ class _PlayerScreenState extends State<PlayerScreen> with WindowListener {
                         },
                         itemBuilder: (BuildContext context) =>
                             <PopupMenuEntry<String>>[
-                          PopupMenuItem<String>(
-                            value: 'add_playlist',
-                            child: Row(
-                              children: [
-                                const Icon(
-                                  Icons.playlist_add,
-                                  color: Colors.white,
-                                  size: 20,
+                              PopupMenuItem<String>(
+                                value: 'add_playlist',
+                                child: Row(
+                                  children: [
+                                    const Icon(
+                                      Icons.playlist_add,
+                                      color: Colors.white,
+                                      size: 20,
+                                    ),
+                                    const SizedBox(width: 8),
+                                    Text(
+                                      widget.getText(
+                                        'add_playlist',
+                                        fallback: 'Añadir a playlist',
+                                      ),
+                                      style: const TextStyle(
+                                        color: Colors.white,
+                                      ),
+                                    ),
+                                  ],
                                 ),
-                                const SizedBox(width: 8),
-                                Text(
-                                  widget.getText(
-                                    'add_playlist',
-                                    fallback: 'Añadir a playlist',
-                                  ),
-                                  style: const TextStyle(
-                                    color: Colors.white,
-                                  ),
+                              ),
+                              PopupMenuItem<String>(
+                                value: 'edit_metadata',
+                                child: Row(
+                                  children: [
+                                    const Icon(
+                                      Icons.edit,
+                                      color: Colors.white,
+                                      size: 20,
+                                    ),
+                                    const SizedBox(width: 8),
+                                    Text(
+                                      widget.getText(
+                                        'edit_metadata',
+                                        fallback: 'Editar metadatos',
+                                      ),
+                                      style: const TextStyle(
+                                        color: Colors.white,
+                                      ),
+                                    ),
+                                  ],
                                 ),
-                              ],
-                            ),
-                          ),
-                          PopupMenuItem<String>(
-                            value: 'edit_metadata',
-                            child: Row(
-                              children: [
-                                const Icon(
-                                  Icons.edit,
-                                  color: Colors.white,
-                                  size: 20,
+                              ),
+                              PopupMenuItem<String>(
+                                value: 'toggle_artwork_mode',
+                                child: Row(
+                                  children: [
+                                    Icon(
+                                      _isFullArtworkMode
+                                          ? Icons.crop_square
+                                          : Icons.fullscreen,
+                                      color: Colors.white,
+                                      size: 20,
+                                    ),
+                                    const SizedBox(width: 8),
+                                    Text(
+                                      widget.getText(
+                                        _isFullArtworkMode
+                                            ? 'square_artwork_mode'
+                                            : 'full_artwork_mode',
+                                        fallback: _isFullArtworkMode
+                                            ? 'Square Mode'
+                                            : 'Full Mode',
+                                      ),
+                                      style: const TextStyle(
+                                        color: Colors.white,
+                                      ),
+                                    ),
+                                  ],
                                 ),
-                                const SizedBox(width: 8),
-                                Text(
-                                  widget.getText(
-                                    'edit_metadata',
-                                    fallback: 'Editar metadatos',
-                                  ),
-                                  style: const TextStyle(
-                                    color: Colors.white,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                          PopupMenuItem<String>(
-                            value: 'toggle_artwork_mode',
-                            child: Row(
-                              children: [
-                                Icon(
-                                  _isFullArtworkMode
-                                      ? Icons.crop_square
-                                      : Icons.fullscreen,
-                                  color: Colors.white,
-                                  size: 20,
-                                ),
-                                const SizedBox(width: 8),
-                                Text(
-                                  widget.getText(
-                                    _isFullArtworkMode
-                                        ? 'square_artwork_mode'
-                                        : 'full_artwork_mode',
-                                    fallback: _isFullArtworkMode
-                                        ? 'Square Mode'
-                                        : 'Full Mode',
-                                  ),
-                                  style: const TextStyle(
-                                    color: Colors.white,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ],
+                              ),
+                            ],
                       ),
                       // Botón de volumen: popover con la barra de volumen
                       // sincronizada con GlobalMusicPlayer.
@@ -3239,9 +3236,12 @@ class _PlayerScreenState extends State<PlayerScreen> with WindowListener {
                         icon: Icon(
                           Icons.queue_music_rounded,
                           size: 18,
-                          color: _showQueue ? const Color(0xFFD046FF) : Colors.white,
+                          color: _showQueue
+                              ? const Color(0xFFD046FF)
+                              : Colors.white,
                         ),
-                        onPressed: () => setState(() => _showQueue = !_showQueue),
+                        onPressed: () =>
+                            setState(() => _showQueue = !_showQueue),
                       ),
                       if (gShowWindowButtons) ...[
                         IconButton(
@@ -3705,7 +3705,10 @@ class _PlayerScreenState extends State<PlayerScreen> with WindowListener {
                       ),
                       child: TextField(
                         controller: searchController,
-                        style: const TextStyle(color: Colors.white, fontSize: 16),
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 16,
+                        ),
                         cursorColor: const Color(0xFFD046FF),
                         onSubmitted: (_) => performSearch(),
                         decoration: InputDecoration(
@@ -3858,10 +3861,11 @@ class _PlayerScreenState extends State<PlayerScreen> with WindowListener {
                                               left: 8.0,
                                             ),
                                             child: Container(
-                                              padding: const EdgeInsets.symmetric(
-                                                horizontal: 10,
-                                                vertical: 4,
-                                              ),
+                                              padding:
+                                                  const EdgeInsets.symmetric(
+                                                    horizontal: 10,
+                                                    vertical: 4,
+                                                  ),
                                               decoration: BoxDecoration(
                                                 color: Colors.white.withOpacity(
                                                   0.1,
@@ -3869,18 +3873,16 @@ class _PlayerScreenState extends State<PlayerScreen> with WindowListener {
                                                 borderRadius:
                                                     BorderRadius.circular(20),
                                                 border: Border.all(
-                                                  color: Colors.white.withOpacity(
-                                                    0.15,
-                                                  ),
+                                                  color: Colors.white
+                                                      .withOpacity(0.15),
                                                   width: 1,
                                                 ),
                                               ),
                                               child: Text(
                                                 item.source!,
                                                 style: TextStyle(
-                                                  color: Colors.white.withOpacity(
-                                                    0.55,
-                                                  ),
+                                                  color: Colors.white
+                                                      .withOpacity(0.55),
                                                   fontSize: 11,
                                                   fontWeight: FontWeight.w500,
                                                   letterSpacing: 0.3,
@@ -3925,6 +3927,7 @@ class _PlayerScreenState extends State<PlayerScreen> with WindowListener {
     );
   }
 }
+
 /// Botón de volumen para la title bar del PlayerScreen. Al hacer clic
 /// despliega un mini contenedor (del tamaño de su contenido) con la barra
 /// de volumen sincronizada con GlobalMusicPlayer.
@@ -3932,10 +3935,7 @@ class _PlayerVolumeButton extends StatefulWidget {
   final String Function(String key, {String? fallback}) getText;
   final Color iconColor;
 
-  const _PlayerVolumeButton({
-    required this.getText,
-    required this.iconColor,
-  });
+  const _PlayerVolumeButton({required this.getText, required this.iconColor});
 
   @override
   State<_PlayerVolumeButton> createState() => _PlayerVolumeButtonState();
@@ -3984,9 +3984,7 @@ class _PlayerVolumeButtonState extends State<_PlayerVolumeButton> {
                   decoration: BoxDecoration(
                     color: const Color(0xFF2C2C2E),
                     borderRadius: BorderRadius.circular(12),
-                    border: Border.all(
-                      color: Colors.white.withOpacity(0.08),
-                    ),
+                    border: Border.all(color: Colors.white.withOpacity(0.08)),
                   ),
                   child: ValueListenableBuilder<double>(
                     valueListenable: GlobalMusicPlayer().volume,
@@ -4003,8 +4001,8 @@ class _PlayerVolumeButtonState extends State<_PlayerVolumeButton> {
                               effective <= 0.0
                                   ? Icons.volume_off_rounded
                                   : effective < 0.5
-                                      ? Icons.volume_down_rounded
-                                      : Icons.volume_up_rounded,
+                                  ? Icons.volume_down_rounded
+                                  : Icons.volume_up_rounded,
                               size: 20,
                               color: Colors.white,
                             ),
@@ -4070,11 +4068,7 @@ class _PlayerVolumeButtonState extends State<_PlayerVolumeButton> {
       link: _link,
       child: IconButton(
         tooltip: widget.getText('volume', fallback: 'Volume'),
-        icon: Icon(
-          Icons.volume_up_rounded,
-          size: 20,
-          color: widget.iconColor,
-        ),
+        icon: Icon(Icons.volume_up_rounded, size: 20, color: widget.iconColor),
         onPressed: _toggle,
       ),
     );
@@ -4090,16 +4084,18 @@ const double _kQueuePanelWidth = 300;
 class _QueuePanel extends StatelessWidget {
   final bool open;
   final String Function(String key, {String? fallback}) getText;
+  final Color accentColor;
   final void Function(int index) onPlayAtIndex;
   final void Function(int oldIndex, int newIndex) onReorder;
-  final VoidCallback onClose;
+  final void Function(int index) onRemove;
 
   const _QueuePanel({
     required this.open,
     required this.getText,
+    required this.accentColor,
     required this.onPlayAtIndex,
     required this.onReorder,
-    required this.onClose,
+    required this.onRemove,
   });
 
   @override
@@ -4115,9 +4111,13 @@ class _QueuePanel extends StatelessWidget {
         child: Container(
           margin: const EdgeInsets.fromLTRB(4, 50, 8, 12),
           decoration: BoxDecoration(
-            color: const Color(0xCC1C1C1E),
+            // Sólido con tinte del acento (mismo estilo que la QueueSheet de
+            // móvil: Color.lerp(1C1C1E, acento, 0.15)); ni gris ni
+            // translúcido.
+            color:
+                Color.lerp(const Color(0xFF1C1C1E), accentColor, 0.15) ??
+                const Color(0xFF1C1C1E),
             borderRadius: BorderRadius.circular(18),
-            border: Border.all(color: Colors.white.withOpacity(0.08)),
             boxShadow: [
               BoxShadow(
                 color: Colors.black.withOpacity(0.45),
@@ -4133,142 +4133,166 @@ class _QueuePanel extends StatelessWidget {
             child: Material(
               type: MaterialType.transparency,
               child: ValueListenableBuilder<List<FileSystemEntity>>(
-              valueListenable: player.filesList,
-              builder: (context, queue, _) {
-                return ValueListenableBuilder<int?>(
-                  valueListenable: player.currentIndex,
-                  builder: (context, currentIdx, _) {
-                    final songs = player.songsList.value;
-                    return Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        // Cabecera: título + nº de pistas + cerrar.
-                        Padding(
-                          padding: const EdgeInsets.fromLTRB(16, 12, 8, 8),
-                          child: Row(
-                            children: [
-                              const Icon(
-                                Icons.queue_music_rounded,
-                                size: 18,
-                                color: Color(0xFFD046FF),
-                              ),
-                              const SizedBox(width: 8),
-                              Expanded(
-                                child: Text(
-                                  getText('queue', fallback: 'Queue'),
-                                  style: const TextStyle(
-                                    color: Colors.white,
-                                    fontWeight: FontWeight.w700,
-                                    fontSize: 15,
-                                  ),
+                valueListenable: player.filesList,
+                builder: (context, queue, _) {
+                  return ValueListenableBuilder<int?>(
+                    valueListenable: player.currentIndex,
+                    builder: (context, currentIdx, _) {
+                      final songs = player.songsList.value;
+                      return Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          // Cabecera: título + nº de pistas + cerrar.
+                          Padding(
+                            padding: const EdgeInsets.fromLTRB(16, 12, 8, 8),
+                            child: Row(
+                              children: [
+                                Icon(
+                                  Icons.queue_music_rounded,
+                                  size: 18,
+                                  color: accentColor,
                                 ),
-                              ),
-                              Text(
-                                '${queue.length}',
-                                style: TextStyle(
-                                  color: Colors.white.withOpacity(0.5),
-                                  fontSize: 12,
-                                ),
-                              ),
-                              IconButton(
-                                icon: const Icon(
-                                  Icons.close,
-                                  size: 16,
-                                  color: Colors.white54,
-                                ),
-                                onPressed: onClose,
-                              ),
-                            ],
-                          ),
-                        ),
-                        Expanded(
-                          child: queue.isEmpty
-                              ? Center(
-                                  child: Padding(
-                                    padding: const EdgeInsets.all(24),
-                                    child: Column(
-                                      mainAxisSize: MainAxisSize.min,
-                                      children: [
-                                        Icon(
-                                          Icons.queue_music_rounded,
-                                          size: 40,
-                                          color: const Color(
-                                            0xFFD046FF,
-                                          ).withOpacity(0.4),
-                                        ),
-                                        const SizedBox(height: 12),
-                                        Text(
-                                          getText(
-                                            'queue_empty',
-                                            fallback: 'Queue is empty',
-                                          ),
-                                          textAlign: TextAlign.center,
-                                          style: TextStyle(
-                                            color: Colors.white.withOpacity(
-                                              0.5,
-                                            ),
-                                            fontSize: 13,
-                                          ),
-                                        ),
-                                      ],
+                                const SizedBox(width: 8),
+                                Expanded(
+                                  child: Text(
+                                    getText('queue', fallback: 'Queue'),
+                                    style: const TextStyle(
+                                      color: Colors.white,
+                                      fontWeight: FontWeight.w700,
+                                      fontSize: 15,
                                     ),
                                   ),
-                                )
-                              : ReorderableListView.builder(
-                                  padding: const EdgeInsets.fromLTRB(
-                                    10,
-                                    0,
-                                    10,
-                                    12,
-                                  ),
-                                  buildDefaultDragHandles: false,
-                                  proxyDecorator: (child, index, animation) =>
-                                      AnimatedBuilder(
-                                        animation: animation,
-                                        builder: (_, child) => Transform.scale(
-                                          scale:
-                                              1 + animation.value * 0.02,
-                                          child: child,
-                                        ),
-                                        child: child,
-                                      ),
-                                  itemCount: queue.length,
-                                  onReorder: onReorder,
-                                  itemBuilder: (context, i) {
-                                    final isCurrent = i == currentIdx;
-                                    // Metadatos de la pista si están cargados.
-                                    String title;
-                                    String subtitle;
-                                    if (i < songs.length) {
-                                      title = songs[i].title;
-                                      subtitle = songs[i].artist;
-                                    } else {
-                                      final name = p.basename(
-                                        queue[i].path,
-                                      );
-                                      title = name;
-                                      subtitle = '';
-                                    }
-                                    return _QueueTrackRow(
-                                      key: ValueKey('${queue[i].path}_$i'),
-                                      index: i,
-                                      title: title,
-                                      subtitle: subtitle,
-                                      isCurrent: isCurrent,
-                                      onTap: () => onPlayAtIndex(i),
-                                    );
-                                  },
                                 ),
-                        ),
-                      ],
-                    );
-                  },
+                                Text(
+                                  '${queue.length}',
+                                  style: TextStyle(
+                                    color: Colors.white.withOpacity(0.5),
+                                    fontSize: 12,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          Expanded(
+                            child: queue.isEmpty
+                                ? Center(
+                                    child: Padding(
+                                      padding: const EdgeInsets.all(24),
+                                      child: Column(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          Icon(
+                                            Icons.queue_music_rounded,
+                                            size: 40,
+                                            color: accentColor.withOpacity(0.4),
+                                          ),
+                                          const SizedBox(height: 12),
+                                          Text(
+                                            getText(
+                                              'queue_empty',
+                                              fallback: 'Queue is empty',
+                                            ),
+                                            textAlign: TextAlign.center,
+                                            style: TextStyle(
+                                              color: Colors.white.withOpacity(
+                                                0.5,
+                                              ),
+                                              fontSize: 13,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  )
+                                : ReorderableListView.builder(
+                                    padding: const EdgeInsets.fromLTRB(
+                                      10,
+                                      0,
+                                      10,
+                                      12,
+                                    ),
+                                    buildDefaultDragHandles: false,
+                                    proxyDecorator: (child, index, animation) =>
+                                        AnimatedBuilder(
+                                          animation: animation,
+                                          builder: (_, child) =>
+                                              Transform.scale(
+                                                scale:
+                                                    1 + animation.value * 0.02,
+                                                child: child,
+                                              ),
+                                          // Material requerido: el proxy del
+                                          // arrastre se renderiza en el
+                                          // Overlay raíz, fuera del Material
+                                          // de la lista.
+                                          child: Material(
+                                            type: MaterialType.transparency,
+                                            child: child,
+                                          ),
+                                        ),
+                                    itemCount: queue.length,
+                                    onReorder: onReorder,
+                                    itemBuilder: (context, i) {
+                                      final isCurrent = i == currentIdx;
+                                      // Metadatos de la pista si están cargados.
+                                      String title;
+                                      String subtitle;
+                                      if (i < songs.length) {
+                                        title = songs[i].title;
+                                        subtitle = songs[i].artist;
+                                      } else {
+                                        final name = p.basename(queue[i].path);
+                                        title = name;
+                                        subtitle = '';
+                                      }
+                                      return Dismissible(
+                                        key: ValueKey(
+                                          'dismiss_${queue[i].path}_$i',
+                                        ),
+                                        direction: DismissDirection.endToStart,
+                                        onDismissed: (_) => onRemove(i),
+                                        background: Container(
+                                          alignment: Alignment.centerRight,
+                                          padding: const EdgeInsets.only(
+                                            right: 20,
+                                          ),
+                                          decoration: BoxDecoration(
+                                            color: Colors.red.withOpacity(0.25),
+                                            borderRadius: BorderRadius.circular(
+                                              12,
+                                            ),
+                                          ),
+                                          child: const Icon(
+                                            Icons.delete_outline,
+                                            color: Colors.redAccent,
+                                          ),
+                                        ),
+                                        child: _QueueTrackRow(
+                                          key: ValueKey('${queue[i].path}_$i'),
+                                          index: i,
+                                          title: title,
+                                          subtitle: subtitle,
+                                          artwork: i < songs.length
+                                              ? songs[i].artworkData
+                                              : null,
+                                          isCurrent: isCurrent,
+                                          accentColor: accentColor,
+                                          onTap: () => onPlayAtIndex(i),
+                                        ),
+                                      );
+                                    },
+                                  ),
+                          ),
+                        ],
+                      );
+                    },
                   );
                 },
               ),
             ),
           ),
         ),
+      ),
     );
   }
 }
@@ -4279,6 +4303,8 @@ class _QueueTrackRow extends StatefulWidget {
   final int index;
   final String title;
   final String subtitle;
+  final Uint8List? artwork;
+  final Color accentColor;
   final bool isCurrent;
   final VoidCallback onTap;
 
@@ -4287,6 +4313,8 @@ class _QueueTrackRow extends StatefulWidget {
     required this.index,
     required this.title,
     required this.subtitle,
+    required this.artwork,
+    required this.accentColor,
     required this.isCurrent,
     required this.onTap,
   });
@@ -4325,12 +4353,42 @@ class _QueueTrackRowState extends State<_QueueTrackRow> {
                   ),
                   child: Row(
                     children: [
-                      SizedBox(
-                        width: 22,
-                        child: widget.isCurrent
-                            ? const Icon(
+                      // Artwork pequeño o número/equalizer si no hay carátula
+                      // (mismo patrón que la QueueSheet de móvil).
+                      Container(
+                        width: 36,
+                        height: 36,
+                        decoration: BoxDecoration(
+                          color: Colors.white.withOpacity(0.08),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        alignment: Alignment.center,
+                        clipBehavior: Clip.antiAlias,
+                        child: widget.artwork != null
+                            ? Image.memory(
+                                widget.artwork!,
+                                fit: BoxFit.cover,
+                                width: 36,
+                                height: 36,
+                                gaplessPlayback: true,
+                                errorBuilder: (_, __, ___) => widget.isCurrent
+                                    ? Icon(
+                                        Icons.equalizer,
+                                        color: widget.accentColor,
+                                        size: 14,
+                                      )
+                                    : Text(
+                                        '${widget.index + 1}',
+                                        style: TextStyle(
+                                          color: Colors.white.withOpacity(0.35),
+                                          fontSize: 11,
+                                        ),
+                                      ),
+                              )
+                            : widget.isCurrent
+                            ? Icon(
                                 Icons.equalizer,
-                                color: Color(0xFFD046FF),
+                                color: widget.accentColor,
                                 size: 14,
                               )
                             : Text(
@@ -4352,7 +4410,7 @@ class _QueueTrackRowState extends State<_QueueTrackRow> {
                               overflow: TextOverflow.ellipsis,
                               style: TextStyle(
                                 color: widget.isCurrent
-                                    ? const Color(0xFFD046FF)
+                                    ? widget.accentColor
                                     : Colors.white,
                                 fontWeight: FontWeight.w600,
                                 fontSize: 13,
@@ -4384,7 +4442,7 @@ class _QueueTrackRowState extends State<_QueueTrackRow> {
                   Icons.drag_indicator_rounded,
                   size: 18,
                   color: _hovered
-                      ? const Color(0xFFD046FF).withOpacity(0.85)
+                      ? widget.accentColor.withOpacity(0.85)
                       : Colors.white.withOpacity(0.25),
                 ),
               ),

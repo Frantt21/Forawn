@@ -167,8 +167,10 @@ class GlobalMusicPlayer {
       final savedShuffle = prefs.getBool('isShuffle') ?? false;
       final savedVolume = prefs.getDouble('volume') ?? 1.0;
       final savedLyricsVisible = prefs.getBool('lyricsVisible') ?? false;
-      _crossfadeDuration =
-          (prefs.getDouble('crossfade_duration') ?? 0.0).clamp(0.0, 12.0);
+      _crossfadeDuration = (prefs.getDouble('crossfade_duration') ?? 0.0).clamp(
+        0.0,
+        12.0,
+      );
 
       loopMode.value = LoopMode.values.firstWhere(
         (e) => e.toString().split('.').last == savedLoopMode,
@@ -214,8 +216,9 @@ class GlobalMusicPlayer {
   // Estado de reproducción
   final ValueNotifier<bool> isPlaying = ValueNotifier(false);
   // Estado real del reproductor (para el spinner de carga tipo forawn_mobile).
-  final ValueNotifier<PlayerState> playerState =
-      ValueNotifier(PlayerState.stopped);
+  final ValueNotifier<PlayerState> playerState = ValueNotifier(
+    PlayerState.stopped,
+  );
   final ValueNotifier<bool> showMiniPlayer = ValueNotifier(
     false,
   ); // Desactivado por defecto
@@ -258,13 +261,18 @@ class GlobalMusicPlayer {
   void _applyShuffleToQueue() {
     final queue = List<FileSystemEntity>.from(filesList.value);
     if (queue.length <= 1) return;
-    final current = currentIndex.value != null &&
+    final current =
+        currentIndex.value != null &&
             currentIndex.value! >= 0 &&
             currentIndex.value! < queue.length
         ? queue[currentIndex.value!]
         : null;
     _originalQueue = List<FileSystemEntity>.from(queue);
-    final newIndex = _QueueShuffle.shuffleKeepingCurrent(queue, current, _random);
+    final newIndex = _QueueShuffle.shuffleKeepingCurrent(
+      queue,
+      current,
+      _random,
+    );
     filesList.value = queue;
     if (newIndex >= 0) currentIndex.value = newIndex;
   }
@@ -276,7 +284,8 @@ class GlobalMusicPlayer {
     _originalQueue = null;
     if (saved == null) return;
     final queue = List<FileSystemEntity>.from(filesList.value);
-    final current = currentIndex.value != null &&
+    final current =
+        currentIndex.value != null &&
             currentIndex.value! >= 0 &&
             currentIndex.value! < queue.length
         ? queue[currentIndex.value!]
@@ -324,6 +333,45 @@ class GlobalMusicPlayer {
 
     filesList.value = queue;
     currentIndex.value = newCur >= 0 ? newCur : null;
+  }
+
+  /// Elimina una pista de la cola por indice (swipe del panel de cola,
+  /// mismo comportamiento que movil): ajusta el indice actual y sincroniza
+  /// el orden original si hay shuffle. La lista de metadatos (songsList)
+  /// se mantiene paralela a filesList.
+  void removeFromQueue(int index) {
+    final queue = List<FileSystemEntity>.from(filesList.value);
+    if (index < 0 || index >= queue.length) return;
+
+    queue.removeAt(index);
+
+    // Ajustar el indice de la pista en reproduccion.
+    final cur = currentIndex.value ?? -1;
+    int? newCur;
+    if (cur >= 0) {
+      if (index < cur) {
+        newCur = cur - 1;
+      } else if (index == cur) {
+        // Al quitar la pista actual, la siguiente ocupa su posicion.
+        newCur = cur < queue.length ? cur : (queue.isEmpty ? null : cur - 1);
+      } else {
+        newCur = cur;
+      }
+    }
+
+    // Sincronizar el orden original si el shuffle esta activo.
+    final orig = _originalQueue;
+    if (orig != null && index < orig.length) {
+      orig.removeAt(index);
+    }
+
+    // Mantener la lista de metadatos paralela a la cola.
+    final songs = List<Song>.from(songsList.value);
+    if (index < songs.length) songs.removeAt(index);
+    songsList.value = songs;
+
+    filesList.value = queue;
+    currentIndex.value = newCur != null && newCur >= 0 ? newCur : null;
   }
 
   /// Limpia la cola. La proxima reproduccion parte de cero.
@@ -717,7 +765,8 @@ class GlobalMusicPlayer {
     // audioplayers no siempre reporta duración al instante; exigir > 0.
     if (dur <= Duration.zero) return;
 
-    final startAt = dur - Duration(milliseconds: (_crossfadeDuration * 1000).round());
+    final startAt =
+        dur - Duration(milliseconds: (_crossfadeDuration * 1000).round());
     if (pos >= startAt && pos < dur) {
       _startCrossfade();
     }
@@ -773,7 +822,9 @@ class GlobalMusicPlayer {
       final stepMs = (_crossfadeDuration * 1000) ~/ steps;
       var step = 0;
       _fadeTimer?.cancel();
-      _fadeTimer = Timer.periodic(Duration(milliseconds: stepMs), (timer) async {
+      _fadeTimer = Timer.periodic(Duration(milliseconds: stepMs), (
+        timer,
+      ) async {
         if (!_isCrossfading) {
           timer.cancel();
           return;
@@ -821,8 +872,7 @@ class GlobalMusicPlayer {
     debugPrint('[Crossfade] Cancelled');
   }
 
-  AudioPlayer _getInactive() =>
-      _usingPrimaryPlayer ? _nextPlayer : player;
+  AudioPlayer _getInactive() => _usingPrimaryPlayer ? _nextPlayer : player;
 
   Future<void> _playFileAtIndex(int index, {bool addToHistory = true}) async {
     final file = filesList.value[index] as File;
