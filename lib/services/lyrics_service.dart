@@ -26,10 +26,13 @@ class LyricsService {
 
   // Espejos KPoe (LyricsPlus). Todos se lanzan EN PARALELO: gana el primero
   // (en orden) que responda con letras; nunca se esperan en serie.
+  // binimum.org es el espejo estable actualmente (verificado 2026-09);
+  // prjktla.my.id y workers.dev siguen como respaldo por si se recuperan.
   static const List<String> _kpoeServers = [
-    'https://lyricsplus.prjktla.my.id',
     'https://lyricsplus.binimum.org',
+    'https://lyricsplus.atomix.one',
     'https://lyricsplus.prjktla.workers.dev',
+    'https://lyricsplus.prjktla.my.id',
   ];
 
   // ------------------------------------------------------------------
@@ -100,7 +103,8 @@ class LyricsService {
       final uri = Uri.parse(
         '$server/v2/lyrics/get',
       ).replace(queryParameters: {'title': title, 'artist': artist});
-      final response = await http.get(uri).timeout(const Duration(seconds: 6));
+      // 10s: los espejos pueden tardar ~8s en pistas no cacheadas.
+      final response = await http.get(uri).timeout(const Duration(seconds: 10));
       if (response.statusCode != 200) return null;
       final data = json.decode(response.body) as Map<String, dynamic>;
       final lyricsList = data['lyrics'] as List?;
@@ -366,7 +370,8 @@ class LyricsService {
           .map((e) => '${e.key}=${Uri.encodeComponent(e.value)}')
           .join('&');
       final uri = Uri.parse('$server/v2/lyrics/get?$queryStr');
-      final response = await http.get(uri).timeout(const Duration(seconds: 6));
+      // 10s: los espejos pueden tardar ~8s en pistas no cacheadas.
+      final response = await http.get(uri).timeout(const Duration(seconds: 10));
 
       if (response.statusCode != 200) return null;
       final data = json.decode(response.body) as Map<String, dynamic>;
