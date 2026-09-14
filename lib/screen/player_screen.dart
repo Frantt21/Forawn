@@ -48,10 +48,8 @@ class _PlayerScreenState extends State<PlayerScreen> with WindowListener {
   late FocusNode _focusNode;
 
   // Local state
-  bool _showPlaylist = false;
   bool _showQueue = false;
   bool _useBlurBackground = false;
-  bool _toggleLocked = false;
 
   // Posición de la barra de progreso durante un arrastre
   // (en segundos). Mientras se arrastra se muestra esta
@@ -83,8 +81,6 @@ class _PlayerScreenState extends State<PlayerScreen> with WindowListener {
 
   // Playlist management
   List<FileSystemEntity> _files = [];
-  List<FileSystemEntity> _filteredFiles = [];
-  final TextEditingController _searchController = TextEditingController();
   final Set<int> _playedIndices = {};
 
   Future<void> _minimize() async => await windowManager.minimize();
@@ -123,7 +119,6 @@ class _PlayerScreenState extends State<PlayerScreen> with WindowListener {
     _dominantColor =
         GlobalThemeService().dominantColor.value; // Use global color directly
     _files = List<FileSystemEntity>.from(_musicPlayer.filesList.value);
-    _filteredFiles = _files;
 
     // Sync song info
     _currentTitle = _musicPlayer.currentTitle.value;
@@ -165,7 +160,6 @@ class _PlayerScreenState extends State<PlayerScreen> with WindowListener {
     _musicPlayer.position.removeListener(_updateLyricIndex);
     _lyricIndexNotifier.dispose();
     _focusNode.dispose();
-    _searchController.dispose();
     super.dispose();
   }
 
@@ -186,7 +180,6 @@ class _PlayerScreenState extends State<PlayerScreen> with WindowListener {
     if (mounted) {
       setState(() {
         _files = List<FileSystemEntity>.from(_musicPlayer.filesList.value);
-        _filterFiles(_searchController.text);
       });
     }
   }
@@ -333,29 +326,6 @@ class _PlayerScreenState extends State<PlayerScreen> with WindowListener {
         );
       },
     );
-  }
-
-  void _togglePlaylist() {
-    if (_toggleLocked) return;
-    _toggleLocked = true;
-    setState(() => _showPlaylist = !_showPlaylist);
-    Future.delayed(
-      const Duration(milliseconds: 350),
-      () => _toggleLocked = false,
-    );
-  }
-
-  void _filterFiles(String query) {
-    setState(() {
-      if (query.isEmpty) {
-        _filteredFiles = _files;
-      } else {
-        _filteredFiles = _files.where((file) {
-          final fileName = p.basename(file.path).toLowerCase();
-          return fileName.contains(query.toLowerCase());
-        }).toList();
-      }
-    });
   }
 
   // --- Metadata Editing ---
@@ -2877,196 +2847,6 @@ class _PlayerScreenState extends State<PlayerScreen> with WindowListener {
                   ),
                 ),
 
-                // Playlist Sidebar (Flat Design)
-                AnimatedContainer(
-                  duration: const Duration(milliseconds: 300),
-                  width: _showPlaylist ? 350 : 0,
-                  color: Colors
-                      .transparent, // Transparent to show global background
-                  child: Offstage(
-                    offstage: !_showPlaylist,
-                    child: Column(
-                      children: [
-                        // Simple Header
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 16,
-                            vertical: 12,
-                          ),
-                          decoration: const BoxDecoration(
-                            border: Border(
-                              bottom: BorderSide(
-                                color: Colors.white12,
-                                width: 1,
-                              ),
-                            ),
-                          ),
-                          child: Row(
-                            children: [
-                              const Icon(
-                                Icons.queue_music,
-                                color: Colors.white,
-                                size: 24,
-                              ),
-                              const SizedBox(width: 12),
-                              Text(
-                                widget.getText(
-                                  'playlist_title',
-                                  fallback: 'Start List',
-                                ),
-                                style: const TextStyle(
-                                  fontWeight: FontWeight.bold,
-                                  fontSize: 16,
-                                  color: Colors.white,
-                                ),
-                              ),
-                              const Spacer(),
-                              IconButton(
-                                icon: const Icon(
-                                  Icons.close,
-                                  size: 20,
-                                  color: Colors.white70,
-                                ),
-                                onPressed: () =>
-                                    setState(() => _showPlaylist = false),
-                              ),
-                            ],
-                          ),
-                        ),
-                        Padding(
-                          padding: const EdgeInsets.all(12),
-                          // Contenedor estilo forawn_mobile (blanco 5%, radio 16).
-                          child: Container(
-                            decoration: BoxDecoration(
-                              color: Colors.white.withOpacity(0.05),
-                              borderRadius: BorderRadius.circular(16),
-                            ),
-                            child: TextField(
-                              controller: _searchController,
-                              onChanged: _filterFiles,
-                              style: const TextStyle(
-                                color: Colors.white,
-                                fontSize: 16,
-                              ),
-                              cursorColor: const Color(0xFFD046FF),
-                              decoration: InputDecoration(
-                                isCollapsed: true,
-                                hintText: widget.getText(
-                                  'search_song',
-                                  fallback: 'Search in list...',
-                                ),
-                                hintStyle: TextStyle(
-                                  color: Colors.white.withOpacity(0.3),
-                                  fontSize: 16,
-                                ),
-                                contentPadding: const EdgeInsets.symmetric(
-                                  horizontal: 16,
-                                  vertical: 14,
-                                ),
-                                border: InputBorder.none,
-                                prefixIcon: Icon(
-                                  Icons.search,
-                                  size: 20,
-                                  color: Colors.white.withOpacity(0.5),
-                                ),
-                              ),
-                            ),
-                          ),
-                        ),
-                        Expanded(
-                          child: ListView.builder(
-                            padding: const EdgeInsets.symmetric(vertical: 8),
-                            itemCount: _filteredFiles.length,
-                            itemBuilder: (context, index) {
-                              final file = _filteredFiles[index] as File;
-                              final name = p.basename(file.path);
-                              final isPlaying =
-                                  _musicPlayer.currentFilePath.value ==
-                                  file.path;
-                              return Material(
-                                color: isPlaying
-                                    ? Colors.white.withOpacity(0.1)
-                                    : Colors.transparent,
-                                child: InkWell(
-                                  onTap: () {
-                                    final realIndex = _files.indexOf(file);
-                                    if (realIndex != -1) _playFile(realIndex);
-                                  },
-                                  child: Padding(
-                                    padding: const EdgeInsets.symmetric(
-                                      horizontal: 16,
-                                      vertical: 12,
-                                    ),
-                                    child: Row(
-                                      children: [
-                                        if (isPlaying)
-                                          const Padding(
-                                            padding: EdgeInsets.only(right: 12),
-                                            child: Icon(
-                                              Icons.equalizer,
-                                              color: Colors.white,
-                                              size: 16,
-                                            ),
-                                          )
-                                        else
-                                          const Padding(
-                                            padding: EdgeInsets.only(right: 12),
-                                            child: Text(
-                                              "•",
-                                              style: TextStyle(
-                                                color: Colors.grey,
-                                              ),
-                                            ),
-                                          ),
-                                        Expanded(
-                                          child: Text(
-                                            name,
-                                            maxLines: 1,
-                                            overflow: TextOverflow.ellipsis,
-                                            style: TextStyle(
-                                              color: isPlaying
-                                                  ? Colors.white
-                                                  : Colors.white70,
-                                              fontWeight: isPlaying
-                                                  ? FontWeight.w600
-                                                  : FontWeight.normal,
-                                              fontSize: 14,
-                                            ),
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                  ),
-                                ),
-                              );
-                            },
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-
-                // Toggle Strip
-                Container(
-                  width: 40,
-                  color: Colors.transparent,
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      IconButton(
-                        icon: Icon(
-                          _showPlaylist
-                              ? Icons.chevron_right
-                              : Icons.chevron_left,
-                          color: Colors.white60,
-                        ),
-                        onPressed: _togglePlaylist,
-                      ),
-                    ],
-                  ),
-                ),
-
                 // Panel de cola (estilo Scrup QueuePanel): se despliega desde
                 // el borde derecho con ancho fijo.
                 _QueuePanel(
@@ -3100,33 +2880,28 @@ class _PlayerScreenState extends State<PlayerScreen> with WindowListener {
                       // Espacio para traffic lights nativos en macOS
                       if (gMacTrafficLightInset > 0)
                         SizedBox(width: gMacTrafficLightInset),
-                      SizedBox(
-                        width: 36,
-                        height: 36,
-                        child: ClipRRect(
-                          borderRadius: BorderRadius.circular(8),
-                          child: Container(
-                            color: Colors.black26,
-                            alignment: Alignment.center,
-                            child: const Icon(
-                              Icons.music_note,
-                              color: Colors.white,
-                            ),
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 8),
+                      // Título de la pista en reproducción (sin icono de nota
+                      // musical ni título fijo "Music Player").
                       Expanded(
-                        child: Text(
-                          widget.getText(
-                            'music_player_title',
-                            fallback: 'Music Player',
-                          ),
-                          style: Theme.of(context).textTheme.titleSmall
-                              ?.copyWith(
-                                fontWeight: FontWeight.w600,
-                                color: Colors.white,
-                              ),
+                        child: ValueListenableBuilder<String>(
+                          valueListenable: _musicPlayer.currentTitle,
+                          builder: (context, title, _) {
+                            return Text(
+                              title.isEmpty
+                                  ? widget.getText(
+                                      'music_player_title',
+                                      fallback: 'Music Player',
+                                    )
+                                  : title,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: Theme.of(context).textTheme.titleSmall
+                                  ?.copyWith(
+                                    fontWeight: FontWeight.w600,
+                                    color: Colors.white,
+                                  ),
+                            );
+                          },
                         ),
                       ),
                       // Dots menu (añadir a playlist / editar metadatos):
