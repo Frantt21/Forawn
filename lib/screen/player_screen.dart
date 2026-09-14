@@ -3072,7 +3072,10 @@ class _PlayerScreenState extends State<PlayerScreen> with WindowListener {
                 _QueuePanel(
                   open: _showQueue,
                   getText: widget.getText,
-                  accentColor: _dominantColor ?? const Color(0xFFD046FF),
+                  // Fondo: color dominante crudo. Iconos: mismo acento
+                  // ajustado que usan los controles (slider/botones).
+                  baseColor: _dominantColor ?? const Color(0xFFD046FF),
+                  accentColor: _adjustColorForControls(_dominantColor),
                   onPlayAtIndex: _playFile,
                   onReorder: _musicPlayer.reorderQueue,
                   onRemove: _musicPlayer.removeFromQueue,
@@ -4084,6 +4087,11 @@ const double _kQueuePanelWidth = 300;
 class _QueuePanel extends StatelessWidget {
   final bool open;
   final String Function(String key, {String? fallback}) getText;
+
+  /// Acento para el FONDO (color dominante crudo, fallback púrpura).
+  final Color baseColor;
+
+  /// Acento para ICONOS/texto (mismo ajuste de brillo que los controles).
   final Color accentColor;
   final void Function(int index) onPlayAtIndex;
   final void Function(int oldIndex, int newIndex) onReorder;
@@ -4092,6 +4100,7 @@ class _QueuePanel extends StatelessWidget {
   const _QueuePanel({
     required this.open,
     required this.getText,
+    required this.baseColor,
     required this.accentColor,
     required this.onPlayAtIndex,
     required this.onReorder,
@@ -4115,7 +4124,7 @@ class _QueuePanel extends StatelessWidget {
             // móvil: Color.lerp(1C1C1E, acento, 0.15)); ni gris ni
             // translúcido.
             color:
-                Color.lerp(const Color(0xFF1C1C1E), accentColor, 0.15) ??
+                Color.lerp(const Color(0xFF1C1C1E), baseColor, 0.15) ??
                 const Color(0xFF1C1C1E),
             borderRadius: BorderRadius.circular(18),
             boxShadow: [
