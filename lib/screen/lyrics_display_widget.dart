@@ -333,10 +333,24 @@ class _LyricsDisplayState extends State<LyricsDisplay>
           ? _lines[displayIndex + 1].timestamp
           : line.timestamp + const Duration(seconds: 5);
       final wordWidgets = <Widget>[];
+      var tokenIndex = 0;
+      var tokenCount = 0;
+      // Normalización de Scrup: cada palabra del proveedor se divide en
+      // piezas sin espacios internos (mismo timestamp) para que el layout
+      // tenga EXACTAMENTE un espacio entre tokens — arregla palabras tipo
+      // 'Han ' (espacio pegado del proveedor o del cache viejo).
+      final pieces = <(String, Duration, Duration)>[];
       for (var i = 0; i < words.length; i++) {
         final w = words[i];
-        final wStart = w.timestamp;
         final wEnd = i < words.length - 1 ? words[i + 1].timestamp : endTime;
+        for (final piece in w.text.trim().split(RegExp(r'\s+'))) {
+          if (piece.isEmpty) continue;
+          pieces.add((piece, w.timestamp, wEnd));
+        }
+      }
+      tokenCount = pieces.length;
+      for (final piece in pieces) {
+        final (text, wStart, wEnd) = piece;
 
         double wordProgress = 0.0;
         if (effectivePos >= wEnd) {
@@ -351,13 +365,14 @@ class _LyricsDisplayState extends State<LyricsDisplay>
 
         wordWidgets.add(
           _LyricWord(
-            word: w.text + (i < words.length - 1 ? ' ' : ''),
+            word: text + (tokenIndex < tokenCount - 1 ? ' ' : ''),
             progress: wordProgress,
             style: style,
             activeColor: Colors.white,
             inactiveColor: Colors.white.withOpacity(0.3),
           ),
         );
+        tokenIndex++;
       }
       return Wrap(
         alignment: WrapAlignment.start,
@@ -379,7 +394,12 @@ class _LyricsDisplayState extends State<LyricsDisplay>
     String text, {
     required bool isCurrent,
   }) {
-    final words = text.split(' ');
+    // Split por whitespace (no solo espacio) para ignorar dobles espacios
+    // residuales del proveedor/cache; un separador exacto entre tokens.
+    final words = text
+        .split(RegExp(r'\s+'))
+        .where((w) => w.isNotEmpty)
+        .toList();
     final color = isCurrent
         ? Colors.white
         : Colors.white.withOpacity(0.5);
