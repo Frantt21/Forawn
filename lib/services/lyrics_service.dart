@@ -41,11 +41,18 @@ class LyricsService {
 
   /// Busca letras manualmente devolviendo una lista de resultados.
   /// KPoe primero (word-by-word, espejos en paralelo) y LRCLIB después.
-  Future<List<LyricsSearchResult>> searchLyrics(String query) async {
+  /// [titleHint]/[artistHint] (metadatos de la canción actual) generan el
+  /// candidato exacto para KPoe aunque el usuario busque "Título Artista"
+  /// con un espacio simple (igual que Scrup).
+  Future<List<LyricsSearchResult>> searchLyrics(
+    String query, {
+    String? titleHint,
+    String? artistHint,
+  }) async {
     final results = <LyricsSearchResult>[];
 
     // 1) KPoe (word-by-word): candidatos normalizados + espejos paralelos.
-    final candidates = _searchCandidates(query, null, null);
+    final candidates = _searchCandidates(query, titleHint, artistHint);
     outerKpoe:
     for (final cand in candidates) {
       final attempts = <Future<LyricsSearchResult?>>[
@@ -407,7 +414,7 @@ class LyricsService {
           words = [];
           for (final syl in syllabus) {
             final sylData = syl as Map<String, dynamic>;
-            final sylText = (sylData['text'] as String?) ?? '';
+            final sylText = ((sylData['text'] as String?) ?? '').trim();
             final sylTimeMs = (sylData['time'] as num?)?.toInt() ?? 0;
             if (sylText.isNotEmpty) {
               words.add(
@@ -715,7 +722,9 @@ class LyricsService {
   // Almacenamiento
   // ------------------------------------------------------------------
 
-  /// Obtiene lyrics almacenados localmente (JSON karaoke o LRC plano)
+  /// Obtiene lyrics almacenados localmente (JSON karaoke o LRC plano).
+  /// El cache previo a la limpieza de timestamps (sin campo 'source') se
+  /// ignora para forzar un re-fetch con la lógica actual.
   Future<SyncedLyrics?> getStoredLyrics(String title, String artist) async {
     if (_database == null) await initialize();
     try {
@@ -729,11 +738,18 @@ class LyricsService {
         final row = results.first;
         final content = row['lrc_content'] as String?;
         if (content != null && content.isNotEmpty) {
-          return _parseStoredLyrics(
+          final parsed = _parseStoredLyrics(
             content,
             row['song_title'] as String,
             row['artist'] as String,
           );
+          if (parsed != null) {
+            if (parsed.source == null || parsed.source!.trim().isEmpty) {
+              // Entrada vieja (sin fuente): ignorar y re-fetch.
+              return null;
+            }
+            return parsed;
+          }
         }
       }
       return null;

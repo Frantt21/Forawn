@@ -3608,7 +3608,13 @@ class _PlayerScreenState extends State<PlayerScreen> with WindowListener {
 
               try {
                 // FocusScope.of(context).unfocus(); // Opcional: ocultar teclado
-                final res = await LyricsService().searchLyrics(query);
+                // Hints de la canción actual: garantizan el candidato exacto
+                // para KPoe aunque el query sea "Título Artista" con espacio.
+                final res = await LyricsService().searchLyrics(
+                  query,
+                  titleHint: title,
+                  artistHint: artist,
+                );
                 if (context.mounted) {
                   setState(() {
                     results = res;

@@ -1,7 +1,6 @@
 import 'dart:ui' show ImageFilter;
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 import '../models/synced_lyrics.dart';
 
 typedef TextGetter = String Function(String key, {String? fallback});
@@ -79,8 +78,6 @@ class _LyricsDisplayState extends State<LyricsDisplay>
   List<LyricLine> _processedLines = [];
   SyncedLyrics? _lastLyrics;
 
-  // Modo karaoke (sweep palabra por palabra).
-  bool _isSweepEnabled = false;
 
   @override
   bool get wantKeepAlive => true;
@@ -157,22 +154,11 @@ class _LyricsDisplayState extends State<LyricsDisplay>
     _controller = ScrollController();
     _controller.addListener(_checkButtonVisibility);
     widget.currentIndexNotifier.addListener(_onIndexChanged);
-    _loadSweepSetting();
 
     // Crear keys para cada item (con gaps)
     for (var i = 0; i < _lines.length; i++) {
       _itemKeys[i] = GlobalKey();
     }
-  }
-
-  Future<void> _loadSweepSetting() async {
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      final enabled = prefs.getBool('lyrics_sweep_enabled') ?? false;
-      if (mounted && enabled != _isSweepEnabled) {
-        setState(() => _isSweepEnabled = enabled);
-      }
-    } catch (_) {}
   }
 
   @override
@@ -192,9 +178,6 @@ class _LyricsDisplayState extends State<LyricsDisplay>
       _showSyncButton = false;
       _lastAutoScrolledIndex = -1;
       _userHasScrolled = false;
-
-      // Recargar preferencia de sweep (puede haber cambiado en Ajustes)
-      _loadSweepSetting();
 
       // Scroll al inicio solo cuando cambia la canción
       WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -475,9 +458,7 @@ class _LyricsDisplayState extends State<LyricsDisplay>
                     );
 
                     final Widget lineContent;
-                    if (isCurrent &&
-                        _isSweepEnabled &&
-                        (line.words?.isNotEmpty ?? false)) {
+                    if (isCurrent && (line.words?.isNotEmpty ?? false)) {
                       // Solo la línea actual se reconstruye con la posición
                       lineContent = ValueListenableBuilder<Duration>(
                         valueListenable: widget.positionNotifier,
@@ -529,15 +510,6 @@ class _LyricsDisplayState extends State<LyricsDisplay>
             ),
           ),
         ),
-
-        // Pill con el proveedor de las letras (KPoe / LRCLIB)
-        if (widget.lyrics.source != null &&
-            widget.lyrics.source!.trim().isNotEmpty)
-          Positioned(
-            top: 8,
-            right: 16,
-            child: LyricsSourcePill(source: widget.lyrics.source),
-          ),
 
         // Sync Button
         if (_showSyncButton)

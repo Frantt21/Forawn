@@ -81,8 +81,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   // Player Prefs
   bool _useBlurBackground = false;
-  bool _lyricsSweepEnabled = false;
-  static const _lyricsSweepKey = 'lyrics_sweep_enabled';
   double _crossfadeDuration = 0.0;
   static const _crossfadeKey = 'crossfade_duration';
 
@@ -179,7 +177,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
       final savedLang = _prefs!.getString(_preferredLangKey);
       final discordEnabled = _prefs!.getBool(_discordEnabledKey) ?? false;
       final blurBg = _prefs!.getBool('use_blur_background') ?? false;
-      final sweepEnabled = _prefs!.getBool(_lyricsSweepKey) ?? false;
       final crossfade =
           (_prefs!.getDouble(_crossfadeKey) ?? 0.0).clamp(0.0, 12.0);
 
@@ -188,7 +185,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
         _discordEnabled = discordEnabled;
         _discordConnected = DiscordService().isConnected;
         _useBlurBackground = blurBg;
-        _lyricsSweepEnabled = sweepEnabled;
         _crossfadeDuration = crossfade;
         if (savedLang != null && savedLang.isNotEmpty) {
           _selectedLang = savedLang;
@@ -512,25 +508,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         ),
                         Divider(height: 1, color: currentTheme.dividerColor),
                         _SettingsTile(
-                          leadingIcon: Icons.animation,
-                          leadingColor: Colors.blueAccent,
-                          title: get(
-                            'lyrics_sweep_title',
-                            fallback: 'Karaoke Sweep',
-                          ),
-                          subtitle: get(
-                            'lyrics_sweep_sub',
-                            fallback:
-                                'Highlight lyrics word by word in the player',
-                          ),
-                          trailing: Switch(
-                            value: _lyricsSweepEnabled,
-                            onChanged: _toggleLyricsSweep,
-                            activeColor: Colors.blueAccent,
-                          ),
-                        ),
-                        Divider(height: 1, color: currentTheme.dividerColor),
-                        _SettingsTile(
                           leadingIcon: Icons.palette,
                           leadingColor: Colors.purpleAccent,
                           title: get(
@@ -679,15 +656,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
       GlobalThemeService().blurBackground.value = value;
       if (!mounted) return;
       setState(() => _useBlurBackground = value);
-    } catch (_) {}
-  }
-
-  Future<void> _toggleLyricsSweep(bool value) async {
-    try {
-      _prefs ??= await SharedPreferences.getInstance();
-      await _prefs!.setBool(_lyricsSweepKey, value);
-      if (!mounted) return;
-      setState(() => _lyricsSweepEnabled = value);
     } catch (_) {}
   }
 
