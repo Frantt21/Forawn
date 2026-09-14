@@ -75,8 +75,7 @@ class MiniPlayerVisibility {
     blockedByOverlay.value = _manualOverlayBlocked || _modalRouteCount > 0;
   }
 
-  static bool get isVisible =>
-      playerTabActive.value && !fullPlayerOpen.value;
+  static bool get isVisible => playerTabActive.value && !fullPlayerOpen.value;
 
   MiniPlayerVisibility._();
 }
@@ -220,87 +219,93 @@ class _MiniPlayerState extends State<MiniPlayer> {
           onTap: _openFullPlayer,
           child: Container(
             height: 70,
-            decoration: BoxDecoration(
-              // Shadow moved to outer container for proper rendering
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withOpacity(0.3),
-                  blurRadius: 20,
-                  offset: const Offset(0, 10),
-                ),
-              ],
-              borderRadius: BorderRadius.circular(24),
-            ),
             child: ClipRRect(
               borderRadius: BorderRadius.circular(24),
-              child: Stack(
-                children: [
-                  // Blur Effect (mismo sigma que forawn_mobile)
-                  Positioned.fill(
-                    child: BackdropFilter(
-                      filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
-                      child: Container(color: Colors.transparent),
-                    ),
+              clipBehavior: Clip.antiAlias,
+              // Estructura IDÉNTICA a forawn_mobile: ClipRRect >
+              // BackdropFilter > AnimatedContainer (color + sombra dentro,
+              // con su propio borderRadius). Capas extra (sombra en
+              // contenedor externo, máscaras, clips dobles) pintan
+              // elementos translúcidos con esquinas cuadradas en Windows.
+              child: BackdropFilter(
+                filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+                child: AnimatedContainer(
+                  duration: const Duration(milliseconds: 500),
+                  curve: Curves.easeInOut,
+                  decoration: BoxDecoration(
+                    // Misma transparencia que forawn_mobile, sin borde.
+                    color: (dominantColor ?? const Color(0xFF2D2D2D))
+                        .withOpacity(0.7),
+                    borderRadius: BorderRadius.circular(24),
+                    // Sombra DENTRO (como móvil): en un contenedor externo
+                    // la sombra se pinta SIN el radio y asoma como rectángulo
+                    // negro translúcido por las esquinas.
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withOpacity(0.3),
+                        blurRadius: 20,
+                        offset: const Offset(0, 10),
+                      ),
+                    ],
                   ),
-                  // Content
-                  AnimatedContainer(
-                    duration: const Duration(milliseconds: 500),
-                    curve: Curves.easeInOut,
-                    decoration: BoxDecoration(
-                      // Misma transparencia que forawn_mobile, sin borde.
-                      color: (dominantColor ?? const Color(0xFF2D2D2D))
-                          .withOpacity(0.7),
-                      borderRadius: BorderRadius.circular(24),
-                    ),
-                    child: Stack(
-                      children: [
-                        // Progress background layer (como forawn_mobile):
-                        // banda blanca 5% que crece con el avance de la
-                        // pista, de borde a borde del miniplayer.
-                        Positioned.fill(
-                          child: ValueListenableBuilder<Duration>(
-                            valueListenable: _musicPlayer.duration,
-                            builder: (context, duration, _) {
-                              return ValueListenableBuilder<Duration>(
-                                valueListenable: _musicPlayer.position,
-                                builder: (context, position, __) {
-                                  final progress = duration.inMilliseconds > 0
-                                      ? (position.inMilliseconds /
-                                            duration.inMilliseconds)
+                  child: Stack(
+                    children: [
+                      // Progress background layer (como forawn_mobile):
+                      // banda blanca 5% que crece con el avance de la
+                      // pista, de borde a borde del miniplayer.
+                      Positioned.fill(
+                        child: ValueListenableBuilder<Duration>(
+                          valueListenable: _musicPlayer.duration,
+                          builder: (context, duration, _) {
+                            return ValueListenableBuilder<Duration>(
+                              valueListenable: _musicPlayer.position,
+                              builder: (context, position, __) {
+                                final progress = duration.inMilliseconds > 0
+                                    ? (position.inMilliseconds /
+                                              duration.inMilliseconds)
                                           .clamp(0.0, 1.0)
-                                      : 0.0;
-                                  return Align(
-                                    alignment: Alignment.centerLeft,
-                                    child: FractionallySizedBox(
-                                      widthFactor: progress,
-                                      child: Container(
-                                        color: Colors.white.withOpacity(0.05),
-                                      ),
+                                    : 0.0;
+                                return Align(
+                                  alignment: Alignment.centerLeft,
+                                  child: FractionallySizedBox(
+                                    widthFactor: progress,
+                                    child: Container(
+                                      color: Colors.white.withOpacity(0.05),
                                     ),
-                                  );
-                                },
-                              );
-                            },
-                          ),
+                                  ),
+                                );
+                              },
+                            );
+                          },
                         ),
-                        // Content
-                        Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 8),
-                          child: Row(
-                            children: [
-                              // Artwork
-                              Padding(
-                                padding: const EdgeInsets.all(8.0),
-                                child: Hero(
-                                  tag: 'mini_player_art',
-                                  child: ClipRRect(
-                                    borderRadius: BorderRadius.circular(16),
-                                    child: AspectRatio(
-                                      aspectRatio: 1,
-                                      child: AnimatedSwitcher(
-                                        duration:
-                                            const Duration(milliseconds: 300),
-                                        transitionBuilder: (
+                      ),
+                      // Content
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 8),
+                        child: Row(
+                          children: [
+                            // Artwork
+                            Padding(
+                              padding: const EdgeInsets.all(8.0),
+                              child: Hero(
+                                tag: 'mini_player_art',
+                                // Recorte por decoración (no ClipRRect):
+                                // el clip geométrico puede perderse al
+                                // reparentar el Hero y quedan esquinas
+                                // cuadradas; BoxDecoration siempre pinta
+                                // el radio.
+                                child: Container(
+                                  width: 54,
+                                  height: 54,
+                                  clipBehavior: Clip.antiAlias,
+                                  decoration: BoxDecoration(
+                                    borderRadius: BorderRadius.circular(14),
+                                    color: Colors.grey[850],
+                                  ),
+                                  child: AnimatedSwitcher(
+                                    duration: const Duration(milliseconds: 300),
+                                    transitionBuilder:
+                                        (
                                           Widget child,
                                           Animation<double> animation,
                                         ) {
@@ -312,116 +317,107 @@ class _MiniPlayerState extends State<MiniPlayer> {
                                             ),
                                           );
                                         },
-                                        key: ValueKey(
-                                          art.hashCode,
-                                        ), // Force rebuild on art change
-                                        child: art != null
-                                            ? Image.memory(
-                                                art,
-                                                key: ValueKey(art.hashCode),
-                                                fit: BoxFit.cover,
-                                              )
-                                            : Container(
-                                                key: const ValueKey(
-                                                  'placeholder',
-                                                ),
-                                                color: Colors.grey[850],
-                                                child: const Icon(
-                                                  Icons.music_note,
-                                                  color: Colors.white54,
-                                                ),
-                                              ),
-                                      ),
-                                    ),
+                                    key: ValueKey(
+                                      art.hashCode,
+                                    ), // Force rebuild on art change
+                                    child: art != null
+                                        ? Image.memory(
+                                            art,
+                                            key: ValueKey(art.hashCode),
+                                            fit: BoxFit.cover,
+                                          )
+                                        : const Icon(
+                                            Icons.music_note,
+                                            color: Colors.white54,
+                                          ),
                                   ),
                                 ),
                               ),
+                            ),
 
-                              // Title/Artist
-                              Expanded(
-                                child: Padding(
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 12,
-                                  ),
-                                  child: Column(
-                                    mainAxisAlignment: MainAxisAlignment.center,
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.start,
-                                    children: [
-                                      Text(
-                                        title.isEmpty
-                                            ? widget.getText(
-                                                'no_song',
-                                                fallback: 'No Song',
-                                              )
-                                            : title,
-                                        maxLines: 1,
-                                        overflow: TextOverflow.ellipsis,
-                                        style: const TextStyle(
-                                          color: Colors.white,
-                                          fontWeight: FontWeight.bold,
-                                          fontSize: 14,
-                                        ),
+                            // Title/Artist
+                            Expanded(
+                              child: Padding(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 12,
+                                ),
+                                child: Column(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      title.isEmpty
+                                          ? widget.getText(
+                                              'no_song',
+                                              fallback: 'No Song',
+                                            )
+                                          : title,
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: const TextStyle(
+                                        color: Colors.white,
+                                        fontWeight: FontWeight.bold,
+                                        fontSize: 14,
                                       ),
-                                      ValueListenableBuilder<String>(
-                                        valueListenable:
-                                            _musicPlayer.currentArtist,
-                                        builder: (context, artist, _) {
-                                          return Text(
-                                            artist,
-                                            maxLines: 1,
-                                            overflow: TextOverflow.ellipsis,
-                                            style: const TextStyle(
-                                              color: Colors.white70,
-                                              fontSize: 12,
-                                            ),
-                                          );
-                                        },
-                                      ),
-                                    ],
-                                  ),
+                                    ),
+                                    ValueListenableBuilder<String>(
+                                      valueListenable:
+                                          _musicPlayer.currentArtist,
+                                      builder: (context, artist, _) {
+                                        return Text(
+                                          artist,
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                          style: const TextStyle(
+                                            color: Colors.white70,
+                                            fontSize: 12,
+                                          ),
+                                        );
+                                      },
+                                    ),
+                                  ],
                                 ),
                               ),
+                            ),
 
-                              // Controls
-                              Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  ValueListenableBuilder<bool>(
-                                    valueListenable: _musicPlayer.isPlaying,
-                                    builder: (context, isPlaying, _) {
-                                      return IconButton(
-                                        icon: Icon(
-                                          isPlaying
-                                              ? Icons.pause_rounded
-                                              : Icons.play_arrow_rounded,
-                                          color: Colors.white,
-                                        ),
-                                        onPressed: () {
-                                          GlobalKeyboardService()
-                                              .requestTogglePlayPause();
-                                        },
-                                      );
-                                    },
+                            // Controls
+                            Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                ValueListenableBuilder<bool>(
+                                  valueListenable: _musicPlayer.isPlaying,
+                                  builder: (context, isPlaying, _) {
+                                    return IconButton(
+                                      icon: Icon(
+                                        isPlaying
+                                            ? Icons.pause_rounded
+                                            : Icons.play_arrow_rounded,
+                                        color: Colors.white,
+                                      ),
+                                      onPressed: () {
+                                        GlobalKeyboardService()
+                                            .requestTogglePlayPause();
+                                      },
+                                    );
+                                  },
+                                ),
+                                IconButton(
+                                  icon: const Icon(
+                                    Icons.skip_next_rounded,
+                                    color: Colors.white,
                                   ),
-                                  IconButton(
-                                    icon: const Icon(
-                                      Icons.skip_next_rounded,
-                                      color: Colors.white,
-                                    ),
-                                    onPressed: () {
-                                      GlobalKeyboardService().requestPlayNext();
-                                    },
-                                  ),
-                                ],
-                              ),
-                            ],
-                          ),
+                                  onPressed: () {
+                                    GlobalKeyboardService().requestPlayNext();
+                                  },
+                                ),
+                              ],
+                            ),
+                          ],
                         ),
-                      ],
-                    ),
+                      ),
+                    ],
                   ),
-                ],
+                ),
               ),
             ),
           ),
@@ -434,26 +430,29 @@ class _MiniPlayerState extends State<MiniPlayer> {
     // Ocultar el miniplayer de inmediato (antes incluso de que el
     // initState del PlayerScreen repita la señal).
     MiniPlayerVisibility.setFullPlayerOpen(true);
-    appNavigatorKey.currentState?.push(
-      PageRouteBuilder(
-        transitionDuration: const Duration(milliseconds: 450),
-        pageBuilder: (context, animation, secondaryAnimation) =>
-            PlayerScreen(getText: widget.getText),
-        transitionsBuilder: (context, animation, secondaryAnimation, child) {
-          final curved = CurvedAnimation(
-            parent: animation,
-            curve: Curves.easeOutCubic,
-            reverseCurve: Curves.easeInCubic,
-          );
-          return SlideTransition(
-            position: Tween<Offset>(
-              begin: const Offset(0.0, 1.0),
-              end: Offset.zero,
-            ).animate(curved),
-            child: child,
-          );
-        },
-      ),
-    ).whenComplete(() => MiniPlayerVisibility.setFullPlayerOpen(false));
+    appNavigatorKey.currentState
+        ?.push(
+          PageRouteBuilder(
+            transitionDuration: const Duration(milliseconds: 450),
+            pageBuilder: (context, animation, secondaryAnimation) =>
+                PlayerScreen(getText: widget.getText),
+            transitionsBuilder:
+                (context, animation, secondaryAnimation, child) {
+                  final curved = CurvedAnimation(
+                    parent: animation,
+                    curve: Curves.easeOutCubic,
+                    reverseCurve: Curves.easeInCubic,
+                  );
+                  return SlideTransition(
+                    position: Tween<Offset>(
+                      begin: const Offset(0.0, 1.0),
+                      end: Offset.zero,
+                    ).animate(curved),
+                    child: child,
+                  );
+                },
+          ),
+        )
+        .whenComplete(() => MiniPlayerVisibility.setFullPlayerOpen(false));
   }
 }
