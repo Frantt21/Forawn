@@ -9,6 +9,9 @@ class LyricsSearchResult {
   final String plainLyrics;
   final String syncedLyrics;
 
+  /// Proveedor del resultado ('KPoe' o 'LRCLIB').
+  final String? source;
+
   LyricsSearchResult({
     required this.id,
     required this.trackName,
@@ -18,6 +21,7 @@ class LyricsSearchResult {
     required this.synced,
     required this.plainLyrics,
     required this.syncedLyrics,
+    this.source,
   });
 
   factory LyricsSearchResult.fromJson(Map<String, dynamic> json) {
@@ -32,6 +36,7 @@ class LyricsSearchResult {
           (json['syncedLyrics'] as String).isNotEmpty,
       plainLyrics: json['plainLyrics'] as String? ?? '',
       syncedLyrics: json['syncedLyrics'] as String? ?? '',
+      source: json['source'] as String?,
     );
   }
 }

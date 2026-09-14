@@ -9,6 +9,36 @@ typedef TextGetter = String Function(String key, {String? fallback});
 /// Línea fantasma para gaps instrumentales (forawn_mobile).
 const String kGapMarker = '•••';
 
+/// Pill discreta que muestra el proveedor de las letras ('KPoe',
+/// 'LRCLIB'...). Se muestra solo si hay fuente conocida.
+class LyricsSourcePill extends StatelessWidget {
+  final String? source;
+
+  const LyricsSourcePill({super.key, this.source});
+
+  @override
+  Widget build(BuildContext context) {
+    if (source == null || source!.trim().isEmpty) return const SizedBox.shrink();
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+      decoration: BoxDecoration(
+        color: Colors.white.withOpacity(0.1),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: Colors.white.withOpacity(0.15), width: 1),
+      ),
+      child: Text(
+        source!,
+        style: TextStyle(
+          color: Colors.white.withOpacity(0.55),
+          fontSize: 11,
+          fontWeight: FontWeight.w500,
+          letterSpacing: 0.3,
+        ),
+      ),
+    );
+  }
+}
+
 class LyricsDisplay extends StatefulWidget {
   final SyncedLyrics lyrics;
   final ValueNotifier<int?> currentIndexNotifier;
@@ -499,6 +529,15 @@ class _LyricsDisplayState extends State<LyricsDisplay>
             ),
           ),
         ),
+
+        // Pill con el proveedor de las letras (KPoe / LRCLIB)
+        if (widget.lyrics.source != null &&
+            widget.lyrics.source!.trim().isNotEmpty)
+          Positioned(
+            top: 8,
+            right: 16,
+            child: LyricsSourcePill(source: widget.lyrics.source),
+          ),
 
         // Sync Button
         if (_showSyncButton)

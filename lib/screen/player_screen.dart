@@ -3755,6 +3755,7 @@ class _PlayerScreenState extends State<PlayerScreen> with WindowListener {
                                       item.syncedLyrics.isNotEmpty
                                           ? item.syncedLyrics
                                           : item.plainLyrics,
+                                      source: item.source,
                                     );
 
                                     // Actualizar player
@@ -3764,6 +3765,7 @@ class _PlayerScreenState extends State<PlayerScreen> with WindowListener {
                                       lrcContent: item.syncedLyrics.isNotEmpty
                                           ? item.syncedLyrics
                                           : item.plainLyrics,
+                                      source: item.source,
                                     );
                                     _musicPlayer.currentLyrics.value =
                                         newLyrics;
@@ -3821,6 +3823,44 @@ class _PlayerScreenState extends State<PlayerScreen> with WindowListener {
                                             ],
                                           ),
                                         ),
+                                        // Pill con la fuente de las lyrics
+                                        if (item.source != null &&
+                                            item.source!.trim().isNotEmpty)
+                                          Padding(
+                                            padding: const EdgeInsets.only(
+                                              left: 8.0,
+                                            ),
+                                            child: Container(
+                                              padding: const EdgeInsets.symmetric(
+                                                horizontal: 10,
+                                                vertical: 4,
+                                              ),
+                                              decoration: BoxDecoration(
+                                                color: Colors.white.withOpacity(
+                                                  0.1,
+                                                ),
+                                                borderRadius:
+                                                    BorderRadius.circular(20),
+                                                border: Border.all(
+                                                  color: Colors.white.withOpacity(
+                                                    0.15,
+                                                  ),
+                                                  width: 1,
+                                                ),
+                                              ),
+                                              child: Text(
+                                                item.source!,
+                                                style: TextStyle(
+                                                  color: Colors.white.withOpacity(
+                                                    0.55,
+                                                  ),
+                                                  fontSize: 11,
+                                                  fontWeight: FontWeight.w500,
+                                                  letterSpacing: 0.3,
+                                                ),
+                                              ),
+                                            ),
+                                          ),
                                         if (item.synced)
                                           Padding(
                                             padding: const EdgeInsets.only(

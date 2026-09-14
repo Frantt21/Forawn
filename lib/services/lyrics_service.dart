@@ -75,7 +75,10 @@ class LyricsService {
       if (response.statusCode == 200) {
         final List lrclibResults = json.decode(response.body);
         for (final e in lrclibResults) {
-          results.add(LyricsSearchResult.fromJson(e as Map<String, dynamic>));
+          final map = e as Map<String, dynamic>;
+          // Etiquetar la fuente (LRCLIB no incluye este campo en su JSON).
+          map['source'] = 'LRCLIB';
+          results.add(LyricsSearchResult.fromJson(map));
         }
       }
     } catch (e) {
@@ -141,6 +144,7 @@ class LyricsService {
         synced: true,
         syncedLyrics: lrcLines.join('\n'),
         plainLyrics: plainLines.join('\n'),
+        source: 'KPoe',
       );
     } catch (_) {
       return null;
@@ -152,8 +156,9 @@ class LyricsService {
   Future<void> saveManualLyrics(
     String songTitle,
     String artist,
-    String lrcContent,
-  ) async {
+    String lrcContent, {
+    String? source,
+  }) async {
     try {
       // Detectar si el LRC trae tags de karaoke <mm:ss.xx> para guardar
       // el JSON que los preserva.
@@ -163,6 +168,7 @@ class LyricsService {
           songTitle: songTitle,
           artist: artist,
           lrcContent: lrcContent,
+          source: source,
         );
         await _storeLyrics(
           songTitle,
@@ -172,12 +178,13 @@ class LyricsService {
         );
         _cache[_key(songTitle, artist)] = lyrics;
       } else {
-        await _storeLyrics(songTitle, artist, lrcContent, notFound: false);
         final lyrics = SyncedLyrics.fromLRC(
           songTitle: songTitle,
           artist: artist,
           lrcContent: lrcContent,
+          source: source,
         );
+        await _storeLyrics(songTitle, artist, lrcContent, notFound: false);
         _cache[_key(songTitle, artist)] = lyrics;
       }
       _log.info('Lyrics manually saved for: $songTitle - $artist');
@@ -420,7 +427,12 @@ class LyricsService {
       }
 
       lines.sort((a, b) => a.timestamp.compareTo(b.timestamp));
-      return SyncedLyrics(songTitle: title, artist: artist, lines: lines);
+      return SyncedLyrics(
+        songTitle: title,
+        artist: artist,
+        lines: lines,
+        source: 'KPoe',
+      );
     } catch (_) {
       return null;
     }
@@ -477,6 +489,7 @@ class LyricsService {
               songTitle: originalTitle,
               artist: originalArtist,
               lrcContent: syncedLyricsRaw,
+              source: 'LRCLIB',
             );
 
             await _storeLyrics(
@@ -636,7 +649,11 @@ class LyricsService {
       }
       return lineMap;
     }).toList();
-    return json.encode({'format': 'karaoke', 'lines': linesJson});
+    return json.encode({
+      'format': 'karaoke',
+      if (lyrics.source != null) 'source': lyrics.source,
+      'lines': linesJson,
+    });
   }
 
   /// Parsea letras almacenadas: JSON (word-by-word) o LRC plano.
@@ -670,7 +687,12 @@ class LyricsService {
             );
           }).toList();
           lines.sort((a, b) => a.timestamp.compareTo(b.timestamp));
-          return SyncedLyrics(songTitle: title, artist: artist, lines: lines);
+          return SyncedLyrics(
+            songTitle: title,
+            artist: artist,
+            lines: lines,
+            source: data['source'] as String?,
+          );
         }
       } catch (_) {}
     }

@@ -89,10 +89,14 @@ class SyncedLyrics {
   final String artist;
   final List<LyricLine> lines;
 
+  /// Proveedor de las letras ('KPoe', 'LRCLIB' o null si se desconoce).
+  final String? source;
+
   SyncedLyrics({
     required this.songTitle,
     required this.artist,
     required this.lines,
+    this.source,
   });
 
   /// Crea SyncedLyrics desde el formato LRC completo
@@ -100,6 +104,7 @@ class SyncedLyrics {
     required String songTitle,
     required String artist,
     required String lrcContent,
+    String? source,
   }) {
     final lines = <LyricLine>[];
 
@@ -118,7 +123,12 @@ class SyncedLyrics {
     // Ordenar por timestamp
     lines.sort((a, b) => a.timestamp.compareTo(b.timestamp));
 
-    return SyncedLyrics(songTitle: songTitle, artist: artist, lines: lines);
+    return SyncedLyrics(
+      songTitle: songTitle,
+      artist: artist,
+      lines: lines,
+      source: source,
+    );
   }
 
   /// Obtiene la línea actual basada en la posición de reproducción
