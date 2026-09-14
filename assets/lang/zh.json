@@ -482,5 +482,6 @@
   "favorite_songs_desc": "你喜欢的歌曲",
   "no_songs_to_add": "没有可添加的歌曲",
   "synchronization": "同步",
-  "adjust_lyrics_time": "调整歌词时间"
+  "adjust_lyrics_time": "调整歌词时间",
+  "queue_empty": "队列为空"
 }

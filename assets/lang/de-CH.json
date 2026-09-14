@@ -482,5 +482,6 @@
   "favorite_songs_desc": "Songs, die dir gefallen",
   "no_songs_to_add": "Keine Songs zum Hinzufügen",
   "synchronization": "Synchronisation",
-  "adjust_lyrics_time": "Textzeit anpassen"
+  "adjust_lyrics_time": "Textzeit anpassen",
+  "queue_empty": "Warteschlange ist leer"
 }

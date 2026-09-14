@@ -48,6 +48,7 @@ class _PlayerScreenState extends State<PlayerScreen> with WindowListener {
 
   // Local state
   bool _showPlaylist = false;
+  bool _showQueue = false;
   bool _useBlurBackground = false;
   bool _toggleLocked = false;
 
@@ -3069,6 +3070,16 @@ class _PlayerScreenState extends State<PlayerScreen> with WindowListener {
                     ],
                   ),
                 ),
+
+                // Panel de cola (estilo Scrup QueuePanel): se despliega desde
+                // el borde derecho con ancho fijo.
+                _QueuePanel(
+                  open: _showQueue,
+                  getText: widget.getText,
+                  onPlayAtIndex: _playFile,
+                  onReorder: _musicPlayer.reorderQueue,
+                  onClose: () => setState(() => _showQueue = false),
+                ),
               ],
             ),
 
@@ -3221,6 +3232,16 @@ class _PlayerScreenState extends State<PlayerScreen> with WindowListener {
                       _PlayerVolumeButton(
                         getText: widget.getText,
                         iconColor: Colors.white,
+                      ),
+                      // Toggle de la cola de reproducción (panel derecho).
+                      IconButton(
+                        tooltip: widget.getText('queue', fallback: 'Queue'),
+                        icon: Icon(
+                          Icons.queue_music_rounded,
+                          size: 18,
+                          color: _showQueue ? const Color(0xFFD046FF) : Colors.white,
+                        ),
+                        onPressed: () => setState(() => _showQueue = !_showQueue),
                       ),
                       if (gShowWindowButtons) ...[
                         IconButton(
@@ -4055,6 +4076,321 @@ class _PlayerVolumeButtonState extends State<_PlayerVolumeButton> {
           color: widget.iconColor,
         ),
         onPressed: _toggle,
+      ),
+    );
+  }
+}
+
+/// Ancho fijo del panel de cola abierto (misma filosofía que Scrup).
+const double _kQueuePanelWidth = 300;
+
+/// Panel de cola de reproducción (lógica de Scrup QueuePanel): contenedor
+/// flotante oscuro que SE DESPLIEGA desde el borde derecho. Lista
+/// reordenable; la pista actual resaltada; tap para saltar a esa pista.
+class _QueuePanel extends StatelessWidget {
+  final bool open;
+  final String Function(String key, {String? fallback}) getText;
+  final void Function(int index) onPlayAtIndex;
+  final void Function(int oldIndex, int newIndex) onReorder;
+  final VoidCallback onClose;
+
+  const _QueuePanel({
+    required this.open,
+    required this.getText,
+    required this.onPlayAtIndex,
+    required this.onReorder,
+    required this.onClose,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final player = GlobalMusicPlayer();
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 320),
+      curve: Curves.easeOutCubic,
+      width: open ? _kQueuePanelWidth : 0,
+      color: Colors.transparent,
+      child: Offstage(
+        offstage: !open,
+        child: Container(
+          margin: const EdgeInsets.fromLTRB(4, 50, 8, 12),
+          decoration: BoxDecoration(
+            color: const Color(0xCC1C1C1E),
+            borderRadius: BorderRadius.circular(18),
+            border: Border.all(color: Colors.white.withOpacity(0.08)),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.45),
+                blurRadius: 28,
+                offset: const Offset(0, 12),
+              ),
+            ],
+          ),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(18),
+            // Material requerido: ReorderableListView/InkWell lo necesitan
+            // como ancestro ("No Material widget found").
+            child: Material(
+              type: MaterialType.transparency,
+              child: ValueListenableBuilder<List<FileSystemEntity>>(
+              valueListenable: player.filesList,
+              builder: (context, queue, _) {
+                return ValueListenableBuilder<int?>(
+                  valueListenable: player.currentIndex,
+                  builder: (context, currentIdx, _) {
+                    final songs = player.songsList.value;
+                    return Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        // Cabecera: título + nº de pistas + cerrar.
+                        Padding(
+                          padding: const EdgeInsets.fromLTRB(16, 12, 8, 8),
+                          child: Row(
+                            children: [
+                              const Icon(
+                                Icons.queue_music_rounded,
+                                size: 18,
+                                color: Color(0xFFD046FF),
+                              ),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: Text(
+                                  getText('queue', fallback: 'Queue'),
+                                  style: const TextStyle(
+                                    color: Colors.white,
+                                    fontWeight: FontWeight.w700,
+                                    fontSize: 15,
+                                  ),
+                                ),
+                              ),
+                              Text(
+                                '${queue.length}',
+                                style: TextStyle(
+                                  color: Colors.white.withOpacity(0.5),
+                                  fontSize: 12,
+                                ),
+                              ),
+                              IconButton(
+                                icon: const Icon(
+                                  Icons.close,
+                                  size: 16,
+                                  color: Colors.white54,
+                                ),
+                                onPressed: onClose,
+                              ),
+                            ],
+                          ),
+                        ),
+                        Expanded(
+                          child: queue.isEmpty
+                              ? Center(
+                                  child: Padding(
+                                    padding: const EdgeInsets.all(24),
+                                    child: Column(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        Icon(
+                                          Icons.queue_music_rounded,
+                                          size: 40,
+                                          color: const Color(
+                                            0xFFD046FF,
+                                          ).withOpacity(0.4),
+                                        ),
+                                        const SizedBox(height: 12),
+                                        Text(
+                                          getText(
+                                            'queue_empty',
+                                            fallback: 'Queue is empty',
+                                          ),
+                                          textAlign: TextAlign.center,
+                                          style: TextStyle(
+                                            color: Colors.white.withOpacity(
+                                              0.5,
+                                            ),
+                                            fontSize: 13,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                )
+                              : ReorderableListView.builder(
+                                  padding: const EdgeInsets.fromLTRB(
+                                    10,
+                                    0,
+                                    10,
+                                    12,
+                                  ),
+                                  buildDefaultDragHandles: false,
+                                  proxyDecorator: (child, index, animation) =>
+                                      AnimatedBuilder(
+                                        animation: animation,
+                                        builder: (_, child) => Transform.scale(
+                                          scale:
+                                              1 + animation.value * 0.02,
+                                          child: child,
+                                        ),
+                                        child: child,
+                                      ),
+                                  itemCount: queue.length,
+                                  onReorder: onReorder,
+                                  itemBuilder: (context, i) {
+                                    final isCurrent = i == currentIdx;
+                                    // Metadatos de la pista si están cargados.
+                                    String title;
+                                    String subtitle;
+                                    if (i < songs.length) {
+                                      title = songs[i].title;
+                                      subtitle = songs[i].artist;
+                                    } else {
+                                      final name = p.basename(
+                                        queue[i].path,
+                                      );
+                                      title = name;
+                                      subtitle = '';
+                                    }
+                                    return _QueueTrackRow(
+                                      key: ValueKey('${queue[i].path}_$i'),
+                                      index: i,
+                                      title: title,
+                                      subtitle: subtitle,
+                                      isCurrent: isCurrent,
+                                      onTap: () => onPlayAtIndex(i),
+                                    );
+                                  },
+                                ),
+                        ),
+                      ],
+                    );
+                  },
+                  );
+                },
+              ),
+            ),
+          ),
+        ),
+    );
+  }
+}
+
+/// Fila reordenable de la cola: grip de arrastre + tap para reproducir
+/// (mismo patrón que Scrup _QueueTrackRow).
+class _QueueTrackRow extends StatefulWidget {
+  final int index;
+  final String title;
+  final String subtitle;
+  final bool isCurrent;
+  final VoidCallback onTap;
+
+  const _QueueTrackRow({
+    super.key,
+    required this.index,
+    required this.title,
+    required this.subtitle,
+    required this.isCurrent,
+    required this.onTap,
+  });
+
+  @override
+  State<_QueueTrackRow> createState() => _QueueTrackRowState();
+}
+
+class _QueueTrackRowState extends State<_QueueTrackRow> {
+  bool _hovered = false;
+
+  @override
+  Widget build(BuildContext context) {
+    return MouseRegion(
+      cursor: SystemMouseCursors.basic,
+      onEnter: (_) => setState(() => _hovered = true),
+      onExit: (_) => setState(() => _hovered = false),
+      child: Padding(
+        padding: const EdgeInsets.only(bottom: 4),
+        child: Row(
+          children: [
+            Expanded(
+              child: InkWell(
+                onTap: widget.onTap,
+                borderRadius: BorderRadius.circular(10),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 8,
+                  ),
+                  decoration: BoxDecoration(
+                    color: widget.isCurrent
+                        ? Colors.white.withOpacity(0.1)
+                        : Colors.transparent,
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: Row(
+                    children: [
+                      SizedBox(
+                        width: 22,
+                        child: widget.isCurrent
+                            ? const Icon(
+                                Icons.equalizer,
+                                color: Color(0xFFD046FF),
+                                size: 14,
+                              )
+                            : Text(
+                                '${widget.index + 1}',
+                                style: TextStyle(
+                                  color: Colors.white.withOpacity(0.35),
+                                  fontSize: 11,
+                                ),
+                              ),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              widget.title,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                color: widget.isCurrent
+                                    ? const Color(0xFFD046FF)
+                                    : Colors.white,
+                                fontWeight: FontWeight.w600,
+                                fontSize: 13,
+                              ),
+                            ),
+                            if (widget.subtitle.isNotEmpty)
+                              Text(
+                                widget.subtitle,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(
+                                  color: Colors.white.withOpacity(0.45),
+                                  fontSize: 11,
+                                ),
+                              ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+            ReorderableDragStartListener(
+              index: widget.index,
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 4),
+                child: Icon(
+                  Icons.drag_indicator_rounded,
+                  size: 18,
+                  color: _hovered
+                      ? const Color(0xFFD046FF).withOpacity(0.85)
+                      : Colors.white.withOpacity(0.25),
+                ),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

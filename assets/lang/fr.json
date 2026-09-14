@@ -482,5 +482,6 @@
   "favorite_songs_desc": "Les chansons que tu aimes",
   "no_songs_to_add": "Aucune chanson à ajouter",
   "synchronization": "Synchronisation",
-  "adjust_lyrics_time": "Ajuster le temps des paroles"
+  "adjust_lyrics_time": "Ajuster le temps des paroles",
+  "queue_empty": "La file d'attente est vide"
 }

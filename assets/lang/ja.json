@@ -484,5 +484,6 @@
   "favorite_songs_desc": "お気に入りの曲",
   "no_songs_to_add": "追加できる曲がありません",
   "synchronization": "同期",
-  "adjust_lyrics_time": "歌詞のタイミングを調整"
+  "adjust_lyrics_time": "歌詞のタイミングを調整",
+  "queue_empty": "キューは空です"
 }

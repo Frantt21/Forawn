@@ -483,5 +483,6 @@
   "favorite_songs_desc": "좋아하는 곡",
   "no_songs_to_add": "추가할 곡이 없습니다",
   "synchronization": "동기화",
-  "adjust_lyrics_time": "가사 타이밍 조정"
+  "adjust_lyrics_time": "가사 타이밍 조정",
+  "queue_empty": "대기열이 비어 있습니다"
 }

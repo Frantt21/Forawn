@@ -2,6 +2,7 @@ import 'package:audioplayers/audioplayers.dart';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:io';
+import 'dart:math';
 import 'dart:typed_data';
 import 'dart:async';
 import 'package:path/path.dart' as p;
@@ -13,6 +14,36 @@ import 'music_state_service.dart';
 import 'discord_service.dart';
 
 enum LoopMode { off, all, one }
+
+/// Utilidades de shuffle para la cola (mismas que Scrup, core/queue_shuffle).
+/// La aleatoriedad vive en el ORDEN de la cola, no en el reproductor.
+class _QueueShuffle {
+  /// Baraja la cola manteniendo la pista actual reconocible. Devuelve el
+  /// nuevo índice de la pista actual (-1 si no hay).
+  static int shuffleKeepingCurrent<T>(List<T> queue, T? current, Random r) {
+    if (queue.length > 1) queue.shuffle(r);
+    if (current == null) return -1;
+    return queue.indexWhere((t) => identical(t, current));
+  }
+
+  /// Restaura el orden original al apagar shuffle (estilo Spotify).
+  static (List<T>, int) restoreQueueOrder<T>(
+    List<T> queue,
+    List<T> original,
+    T? current,
+  ) {
+    final restored = <T>[...original];
+    for (final t in queue) {
+      if (!original.any((o) => identical(o, t))) {
+        restored.add(t);
+      }
+    }
+    final index = current == null
+        ? -1
+        : restored.indexWhere((t) => identical(t, current));
+    return (restored, index);
+  }
+}
 
 class GlobalMusicPlayer {
   static final GlobalMusicPlayer _instance = GlobalMusicPlayer._internal();
@@ -215,6 +246,93 @@ class GlobalMusicPlayer {
 
   // Lista de archivos
   final ValueNotifier<List<FileSystemEntity>> filesList = ValueNotifier([]);
+
+  // ── Cola estilo Scrup ─────────────────────────────────────────────────
+  // Orden original pre-shuffle (se restaura al apagar el shuffle).
+  List<FileSystemEntity>? _originalQueue;
+  final Random _random = Random();
+
+  /// Aplica shuffle a la cola manteniendo la pista actual (Scrup:
+  /// shuffleKeepingCurrent). La aleatoriedad vive en el orden de la cola,
+  /// no en la eleccion del siguiente indice.
+  void _applyShuffleToQueue() {
+    final queue = List<FileSystemEntity>.from(filesList.value);
+    if (queue.length <= 1) return;
+    final current = currentIndex.value != null &&
+            currentIndex.value! >= 0 &&
+            currentIndex.value! < queue.length
+        ? queue[currentIndex.value!]
+        : null;
+    _originalQueue = List<FileSystemEntity>.from(queue);
+    final newIndex = _QueueShuffle.shuffleKeepingCurrent(queue, current, _random);
+    filesList.value = queue;
+    if (newIndex >= 0) currentIndex.value = newIndex;
+  }
+
+  /// Restaura el orden original al apagar shuffle (Scrup:
+  /// restoreQueueOrder, estilo Spotify).
+  void _restoreQueueOrder() {
+    final saved = _originalQueue;
+    _originalQueue = null;
+    if (saved == null) return;
+    final queue = List<FileSystemEntity>.from(filesList.value);
+    final current = currentIndex.value != null &&
+            currentIndex.value! >= 0 &&
+            currentIndex.value! < queue.length
+        ? queue[currentIndex.value!]
+        : null;
+    final (restored, index) = _QueueShuffle.restoreQueueOrder(
+      queue,
+      saved,
+      current,
+    );
+    filesList.value = restored;
+    if (index >= 0) currentIndex.value = index;
+  }
+
+  /// Mueve una pista dentro de la cola (drag & drop del panel de cola).
+  /// Ajusta el indice actual y sincroniza el orden original si hay shuffle.
+  void reorderQueue(int oldIndex, int newIndex) {
+    final queue = List<FileSystemEntity>.from(filesList.value);
+    if (oldIndex < 0 ||
+        oldIndex >= queue.length ||
+        newIndex < 0 ||
+        newIndex >= queue.length) {
+      return;
+    }
+
+    final moved = queue.removeAt(oldIndex);
+    queue.insert(newIndex, moved);
+
+    // Actualizar el indice de la pista actual si fue movida.
+    final cur = currentIndex.value ?? -1;
+    var newCur = cur;
+    if (cur == oldIndex) {
+      newCur = newIndex;
+    } else if (oldIndex < cur && newIndex >= cur) {
+      newCur = cur - 1;
+    } else if (oldIndex > cur && newIndex <= cur) {
+      newCur = cur + 1;
+    }
+
+    // Sincronizar el orden original si el shuffle esta activo.
+    final orig = _originalQueue;
+    if (orig != null && oldIndex < orig.length && newIndex < orig.length) {
+      final origMoved = orig.removeAt(oldIndex);
+      orig.insert(newIndex, origMoved);
+    }
+
+    filesList.value = queue;
+    currentIndex.value = newCur >= 0 ? newCur : null;
+  }
+
+  /// Limpia la cola. La proxima reproduccion parte de cero.
+  void clearQueue() {
+    filesList.value = [];
+    _originalQueue = null;
+    currentIndex.value = null;
+    playedIndices.clear();
+  }
 
   // Lista de Song objects con metadatos
   final ValueNotifier<List<Song>> songsList = ValueNotifier([]);
@@ -562,25 +680,13 @@ class GlobalMusicPlayer {
     await _playFileAtIndex(prevIdx);
   }
 
+  /// Con el shuffle en el ORDEN de la cola (Scrup), el siguiente índice es
+  /// simplemente el adyacente; el historial de índices ya no decide nada.
   int _getNextShuffleIndex() {
     final list = filesList.value;
     if (list.isEmpty) return 0;
-
-    if (playedIndices.length >= list.length) {
-      playedIndices.clear();
-    }
-
-    int index;
-    // Evitar loop infinito si solo hay 1 canción
-    if (list.length == 1) return 0;
-
-    // Intentar encontrar un índice no reproducido
-    int attempts = 0;
-    do {
-      index = DateTime.now().millisecond % list.length; // Simple random hook
-    } while (playedIndices.contains(index) && attempts++ < 20);
-
-    return index;
+    final current = currentIndex.value ?? -1;
+    return (current + 1) % list.length;
   }
 
   // --- Crossfade (adaptado de forawn_mobile AudioPlayerService) ---
@@ -875,9 +981,16 @@ class GlobalMusicPlayer {
       playedIndices.clear();
     });
 
-    // Guardar automáticamente cambios en shuffle
+    // Guardar automáticamente cambios en shuffle. El shuffle ahora vive en
+    // el ORDEN de la cola (Scrup): al activar se baraja la cola manteniendo
+    // la pista actual; al desactivar se restaura el orden original.
     isShuffle.addListener(() {
       saveShuffle(isShuffle.value);
+      if (isShuffle.value) {
+        _applyShuffleToQueue();
+      } else {
+        _restoreQueueOrder();
+      }
       playedIndices.clear();
     });
   }

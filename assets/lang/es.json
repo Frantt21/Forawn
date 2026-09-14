@@ -489,5 +489,6 @@
   "deezer_precise": "Deezer (Más Preciso)",
   "youtube_music_source": "YouTube Music",
   "synchronization": "Sincronización",
-  "adjust_lyrics_time": "Ajusta el tiempo de las letras"
+  "adjust_lyrics_time": "Ajusta el tiempo de las letras",
+  "queue_empty": "La cola está vacía"
 }

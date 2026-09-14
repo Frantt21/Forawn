@@ -482,5 +482,6 @@
   "favorite_songs_desc": "Utwory, które lubisz",
   "no_songs_to_add": "Brak utworów do dodania",
   "synchronization": "Synchronizacja",
-  "adjust_lyrics_time": "Dopasuj czas tekstu"
+  "adjust_lyrics_time": "Dopasuj czas tekstu",
+  "queue_empty": "Kolejka jest pusta"
 }

@@ -483,5 +483,6 @@
   "favorite_songs_desc": "Песни, которые вам нравятся",
   "no_songs_to_add": "Нет песен для добавления",
   "synchronization": "Синхронизация",
-  "adjust_lyrics_time": "Настроить время текста"
+  "adjust_lyrics_time": "Настроить время текста",
+  "queue_empty": "Очередь пуста"
 }

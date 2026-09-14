@@ -488,5 +488,6 @@
   "deezer_precise": "Deezer (More Precise)",
   "youtube_music_source": "YouTube Music",
   "synchronization": "Synchronization",
-  "adjust_lyrics_time": "Adjust lyrics timing"
+  "adjust_lyrics_time": "Adjust lyrics timing",
+  "queue_empty": "Queue is empty"
 }
