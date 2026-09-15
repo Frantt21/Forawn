@@ -72,6 +72,9 @@ class DownloadManager extends ChangeNotifier {
   }
 
   // actualizador atomico de tareas
+  DateTime _lastPersist = DateTime.fromMillisecondsSinceEpoch(0);
+  Timer? _persistDebounce;
+
   Future<void> _updateTask(
     DownloadTask task, {
     DownloadStatus? status,
@@ -90,8 +93,38 @@ class DownloadManager extends ChangeNotifier {
     debugPrint(
       '[DownloadManager] _updateTask persist ${task.id} status=${task.status} progress=${task.progress} error=${task.errorMessage}',
     );
-    await _savePersisted();
+    // Notificar a la UI SIEMPRE (barata); persistir con throttle: serializar
+    // 200+ tareas a JSON en cada línea de progreso de yt-dlp satura el event
+    // loop y hace que la barra salte (0% → 65% → 90%). El estado terminal se
+    // persiste inmediato para no perder el historial.
     notifyListeners();
+    _schedulePersist(
+      force: status == DownloadStatus.completed ||
+          status == DownloadStatus.failed ||
+          status == DownloadStatus.cancelled,
+    );
+  }
+
+  void _schedulePersist({bool force = false}) {
+    if (force) {
+      _persistDebounce?.cancel();
+      _persistDebounce = null;
+      _lastPersist = DateTime.now();
+      unawaited(_savePersisted());
+      return;
+    }
+    final since = DateTime.now().difference(_lastPersist);
+    if (since >= const Duration(seconds: 2)) {
+      _lastPersist = DateTime.now();
+      unawaited(_savePersisted());
+      return;
+    }
+    // Trailing flush: garantiza que el último progreso quede guardado.
+    _persistDebounce ??= Timer(const Duration(seconds: 2), () {
+      _persistDebounce = null;
+      _lastPersist = DateTime.now();
+      unawaited(_savePersisted());
+    });
   }
 
   // API
@@ -237,6 +270,19 @@ class DownloadManager extends ChangeNotifier {
     }
   }
 
+  /// Reporta el progreso SOLO si sube respecto al último valor notificado de
+  /// la tarea. yt-dlp emite el progreso de CADA archivo por separado (video
+  /// + audio en descargas multi-formato: 100% → 2% al empezar el audio), y
+  /// sin este guard la barra de la UI retrocede.
+  void _reportProgress(DownloadTask t, double value) {
+    final v = value.clamp(0.0, 1.0);
+    if (v > t.progress) {
+      unawaited(
+        _updateTask(t, progress: v),
+      );
+    }
+  }
+
   // ejecutor de tarea
   Future<void> _startTask(DownloadTask t) async {
     debugPrint('[DownloadManager] _startTask begin ${t.id} "${t.title}"');
@@ -275,7 +321,7 @@ class DownloadManager extends ChangeNotifier {
           onProgressLine: (line) async {
             final pval = _parseYtdlpPercent(line);
             if (pval != null) {
-              await _updateTask(t, progress: pval);
+              _reportProgress(t, pval);
             }
           },
         );
@@ -375,7 +421,7 @@ class DownloadManager extends ChangeNotifier {
         onProgressLine: (line) async {
           final pval = _parseYtdlpPercent(line);
           if (pval != null) {
-            await _updateTask(t, progress: pval * (hasFfmpeg ? 0.9 : 1.0));
+            _reportProgress(t, pval * (hasFfmpeg ? 0.9 : 1.0));
           }
         },
       );
@@ -467,7 +513,7 @@ class DownloadManager extends ChangeNotifier {
           onProgressLine: (ln) async {
             final pct = _parseFfmpegPercent(ln, null);
             if (pct != null) {
-              await _updateTask(t, progress: 0.9 + pct * 0.1);
+              _reportProgress(t, 0.9 + pct * 0.1);
             }
           },
         );
@@ -751,9 +797,11 @@ class DownloadManager extends ChangeNotifier {
       '--newline',
       '--no-post-overwrites', // Evitar post-procesar archivos existentes
       '--add-header',
-      'User-Agent: Mozilla/5.0',
-      '--add-header',
-      'Referer: https://www.youtube.com',
+      // UA por sitio: YouTube genérico; TikTok/IG/etc. navegador móvil.
+      'User-Agent: ${TaskTypePlatformX.uaForSite(queryOrUrl)}',
+      // Sin Referer fijo: el descargador acepta URLs de cualquier sitio
+      // soportado por yt-dlp (YouTube, Instagram, TikTok, Twitter, etc.) y
+      // un Referer de YouTube en otros dominios puede provocar 403.
       // Embeber metadatos de Innertube/YouTube en el archivo mediante ffmpeg.
       //
       // Estrategia (verificada empíricamente):
@@ -778,6 +826,14 @@ class DownloadManager extends ChangeNotifier {
       '--replace-in-metadata', 'title', r'\s{2,}', ' ',
     ];
 
+    // ffmpeg SIEMPRE que exista: la pista de VIDEO lo necesita para el merge
+    // (bv*+ba) y para --embed-metadata/--embed-thumbnail/--convert-thumbnails
+    // (antes solo se pasaba en extractAudio, por eso toda descarga de video
+    // fallaba con "ffmpeg not found" aunque existiera en tools/).
+    if (File(ffmpegExe).existsSync()) {
+      args.addAll(['--ffmpeg-location', ffmpegExe]);
+    }
+
     if (extractAudio && File(ffmpegExe).existsSync()) {
       args.addAll([
         '--extract-audio',
@@ -793,10 +849,42 @@ class DownloadManager extends ChangeNotifier {
     }
 
     if (formatId != null && formatId.isNotEmpty) {
-      args.addAll(['-f', formatId]);
+      if (TaskTypePlatformX.hasEphemeralFormatIds(queryOrUrl)) {
+        // Sitios con format_ids efímeros (Instagram, TikTok): el ID mostrado
+        // en el diálogo viene de UNA extracción y puede no existir en la
+        // nueva extracción de la descarga ("Requested format is not
+        // available"). Descartamos el ID y seleccionamos por ALTURA: yt-dlp
+        // elige el mejor formato <= altura objetivo con audio fallback.
+        final h = int.tryParse(RegExp(r'(\d{3,4})p').firstMatch(formatId)?.group(1) ?? '');
+        args.addAll([
+          '-f',
+          h != null
+              ? 'bv*[ext=mp4][height<=$h]+ba[ext=m4a]/b[ext=mp4][height<=$h]/b[height<=$h]/b'
+              : 'bv*[ext=mp4]+ba[ext=m4a]/b[ext=mp4]/b',
+        ]);
+      } else {
+        args.addAll(['-f', formatId]);
+      }
     } else if (!extractAudio) {
-      // Default for video if no format selected: best video+audio
-      args.addAll(['-f', 'bestvideo+bestaudio/best']);
+      // Default for video if no format selected: best video+audio.
+      // Se prefieren pistas mp4/m4a: el contenedor webm final de
+      // bestvideo+bestaudio no soporta --embed-thumbnail y yt-dlp aborta
+      // con "Supported filetypes for thumbnail embedding are: ...".
+      args.addAll(['-f', 'bv*[ext=mp4]+ba[ext=m4a]/b[ext=mp4]/b']);
+    }
+
+    // Forzar contenedor mp4 en descargas de VIDEO: --embed-thumbnail /
+    // --convert-thumbnails solo funcionan en mp3/mkv/ogg/flac/m4a/mp4/m4v/mov.
+    // Un merge o stream único en webm (vp9/opus) rompe el postprocesado.
+    // --merge-output-format convierte el merge; --remux-video cubre streams
+    // únicos (picks explícitos de formatos webm) con remux -c copy a mp4.
+    if (!extractAudio) {
+      args.addAll([
+        '--merge-output-format',
+        'mp4',
+        '--remux-video',
+        'mp4',
+      ]);
     }
 
     debugPrint('[DownloadManager] yt-dlp args: ${args.join(' ')}');

@@ -129,6 +129,30 @@ class ToolsService {
     } else {
       debugPrint('[ToolsService] Todos los tools están presentes');
     }
+
+    // Auto-actualización en background (no bloquea el arranque): los
+    // extractores de sitios como Instagram/TikTok cambian constantemente y
+    // un yt-dlp viejo falla con "Requested format is not available" o 403.
+    // Se usa el canal NIGHTLY, igual que hace youtubedl-android en Forawn
+    // Mobile, porque las correcciones de extractores aterrizan ahí antes.
+    unawaited(_updateYtDlpNightly());
+  }
+
+  /// Actualiza yt-dlp al canal nightly en background (best-effort).
+  Future<void> _updateYtDlpNightly() async {
+    if (!hasYtDlp) return;
+    try {
+      final res = await Process.run(ytDlpPath, const [
+        '--update-to',
+        'nightly',
+      ]).timeout(const Duration(seconds: 60));
+      final out = '${res.stdout}${res.stderr}'.trim();
+      debugPrint(
+        '[ToolsService] yt-dlp nightly update: ${out.split('\n').last}',
+      );
+    } catch (_) {
+      // Sin red o timeout: se mantiene la versión actual.
+    }
   }
 
   /// Lista de tools que faltan (o que están corruptos/incompletos)

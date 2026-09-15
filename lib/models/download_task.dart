@@ -2,6 +2,52 @@ enum DownloadStatus { queued, running, completed, failed, cancelled }
 
 enum TaskType { audio, video }
 
+/// Extensión de TaskType: helpers para detección de extractor.
+extension TaskTypePlatformX on TaskType {
+  /// Sitios cuyos format_id son EFÍMEROS (se acuñan por extracción: IDs
+  /// tipo "dash-1808..." de Instagram o IDs numéricos de TikTok). Con estos
+  /// sitios el format_id cacheado del diálogo NO sirve en la descarga: la
+  /// selección se hace por altura de resolución, no por ID.
+  static const Set<String> _ephemeralHosts = {
+    'instagram.com',
+    'instagr.am',
+    'cdninstagram.com',
+    'tiktok.com',
+    'tiktokv.com',
+  };
+
+  /// Host de la URL de origen (sin www.).
+  static String _hostOf(String url) {
+    try {
+      return Uri.tryParse(url)?.host.toLowerCase() ?? '';
+    } catch (_) {
+      return '';
+    }
+  }
+
+  /// true si [url] pertenece a un sitio con format_ids efímeros.
+  static bool hasEphemeralFormatIds(String url) {
+    final host = _hostOf(url);
+    return _ephemeralHosts.any(host.endsWith);
+  }
+
+  /// true si la URL pertenece a YouTube (watch, youtu.be, shorts, music).
+  static bool isYouTubeUrl(String url) {
+    final host = _hostOf(url);
+    return host.endsWith('youtube.com') ||
+        host.endsWith('youtu.be') ||
+        host.endsWith('youtube-nocookie.com');
+  }
+
+  /// UA por sitio: YouTube mantiene el UA genérico probado; el resto de
+  /// sitios (TikTok, Instagram, Twitter...) usa un UA de navegador móvil
+  /// porque varios devuelven 403 al UA genérico "Mozilla/5.0".
+  static String uaForSite(String url) => isYouTubeUrl(url)
+      ? 'Mozilla/5.0'
+      : 'Mozilla/5.0 (Linux; Android 14; SM-A156U) AppleWebKit/537.36 '
+          '(KHTML, like Gecko) Chrome/124.0 Mobile Safari/537.36';
+}
+
 class DownloadTask {
   DownloadTask({
     required this.id,

@@ -298,7 +298,15 @@ class _VideoDownloaderScreenState extends State<VideoDownloaderScreen>
 
     final ytdlp = ToolsService().ytDlpPath;
     // Optimization: Add --flat-playlist if we suspect playlist, but simplest is standard -j
-    final args = [url, '-j', '--no-playlist', '--ignore-errors'];
+    final args = [
+      url,
+      '-j',
+      '--no-playlist',
+      '--ignore-errors',
+      // UA por sitio: TikTok/IG/etc. devuelven 403 al UA genérico.
+      '--add-header',
+      'User-Agent: ${TaskTypePlatformX.uaForSite(url)}',
+    ];
     final outBuf = StringBuffer();
     final code = await _runProcessStreamed(
       executable: ytdlp,
@@ -714,7 +722,30 @@ class _VideoDownloaderScreenState extends State<VideoDownloaderScreen>
 
     if (sel == true) {
       final title = _videoTitle ?? url;
-      await _addToQueue(url, title, formatId: chosenFormat);
+      // Sitios con format_ids efímeros (IG/TikTok): mandar la ALTURA elegida
+      // ("720p") en lugar del ID, que puede no existir en la extracción de
+      // la descarga. El manager lo convierte en -f "bv*[height<=...]+ba/b".
+      var fmt = chosenFormat;
+      if (TaskTypePlatformX.hasEphemeralFormatIds(url)) {
+        final label = _formatLabels[chosenFormat] ?? '';
+        final hm = RegExp(r'(\d{3,4})p').firstMatch(label);
+        fmt = hm != null ? '${hm.group(1)}p' : null;
+      } else if (fmt != null) {
+        // Los streams de YouTube (137/401/299, etc.) son SOLO video: si el
+        // usuario elige uno sin audio, se descargaría mudo. Detectar por
+        // acodec y fusionar el mejor audio disponible con +bestaudio/best
+        // (el manager ya fuerza merge a mp4 para --embed-thumbnail).
+        final chosen = _formats
+            .where((f) => f['format_id']?.toString() == fmt)
+            .toList();
+        if (chosen.isNotEmpty) {
+          final ac = (chosen.first['acodec']?.toString() ?? '').toLowerCase();
+          if (ac.isEmpty || ac == 'none') {
+            fmt = '$fmt+bestaudio/best';
+          }
+        }
+      }
+      await _addToQueue(url, title, formatId: fmt);
       setState(() => _selectedFormatId = chosenFormat);
     }
   }
@@ -803,7 +834,7 @@ class _VideoDownloaderScreenState extends State<VideoDownloaderScreen>
                           decoration: InputDecoration(
                             hintText: get(
                               'video_url_label',
-                              fallback: 'YouTube URL',
+                              fallback: 'Video URL',
                             ),
                             hintStyle: TextStyle(
                               color: Colors.white.withOpacity(0.3),
@@ -950,7 +981,7 @@ class _VideoDownloaderScreenState extends State<VideoDownloaderScreen>
                         Text(
                           get(
                             'enter_url_desc',
-                            fallback: 'Enter a YouTube URL to start',
+                            fallback: 'Enter a video URL to start',
                           ),
                           style: TextStyle(
                             color: Theme.of(
