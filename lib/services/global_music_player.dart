@@ -462,14 +462,12 @@ class GlobalMusicPlayer {
       }
 
       songsList.value = songs;
-      _libraryLoaded = true;
-
-      _libraryLoaded = true;
-
       debugPrint('[GlobalMusicPlayer] Library loaded: ${songs.length} songs');
 
-      // Start background color extraction
-      _processLibraryColors(musicFiles);
+      // NOTA: No se dispara ninguna campaña de extracción de colores al
+      // cargar la librería (era _processLibraryColors). Los colores se
+      // extraen bajo demanda solo cuando se reproduce una canción o vía
+      // el botón explícito "Reload Missing Colors".
     } catch (e) {
       debugPrint('[GlobalMusicPlayer] Error loading from folder: $e');
     }
@@ -1069,30 +1067,8 @@ class GlobalMusicPlayer {
     _lyricsDebounceTimer?.cancel();
   }
 
-  Future<void> _processLibraryColors(List<FileSystemEntity> files) async {
-    // Run in microtask or delayed to not block UI
-    Future.delayed(Duration.zero, () async {
-      debugPrint('[GlobalMusicPlayer] Starting background color extraction...');
-      int processed = 0;
-
-      for (final file in files) {
-        if (file is! File) continue;
-
-        try {
-          // LocalMusicDatabase handles caching efficiently.
-          // Calling getDominantColor triggers extraction/caching if needed.
-          final color = await LocalMusicDatabase().getDominantColor(file.path);
-          if (color != null) processed++;
-        } catch (e) {
-          // Ignore errors
-        }
-
-        // Yield to event loop
-        if (processed % 10 == 0) {
-          await Future.delayed(const Duration(milliseconds: 10));
-        }
-      }
-      debugPrint('[GlobalMusicPlayer] Background color extraction complete.');
-    });
-  }
+  /// (Eliminado) _processLibraryColors extraía colores de TODA la librería
+  /// en segundo plano en cada arranque. Ese trabajo masivo no debe correr
+  /// al iniciar el app: el color de cada canción se calcula lazy cuando se
+  /// reproduce o con el botón explícito de "Recargar colores faltantes".
 }

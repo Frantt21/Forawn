@@ -285,6 +285,38 @@ class LocalMusicDatabase extends ChangeNotifier {
     }
   }
 
+  /// Leer el color dominante SOLO desde caché (memoria o DB).
+  /// NUNCA extrae del artwork ni carga metadatos: si no está cacheado
+  /// devuelve null. Úsalo en recorridos de la librería (arranque, listas)
+  /// para no disparar campañas de extracción accidental.
+  Future<Color?> peekDominantColor(String filePath) async {
+    if (!_isInitialized) await initialize();
+
+    // 1. Caché en memoria
+    if (_colorCache.containsKey(filePath)) {
+      return _colorCache[filePath];
+    }
+
+    // 2. DB (solo lectura)
+    try {
+      final result = await _database!.query(
+        'colors',
+        where: 'file_path = ?',
+        whereArgs: [filePath],
+        limit: 1,
+      );
+      if (result.isNotEmpty) {
+        final color = Color(result.first['dominant_color'] as int);
+        _colorCache[filePath] = color;
+        return color;
+      }
+    } catch (e) {
+      debugPrint('[LocalMusicDB] Error peeking color from database: $e');
+    }
+
+    return null;
+  }
+
   /// Obtener color dominante de una canción
   /// Si no existe, lo extrae del artwork automáticamente
   Future<Color?> getDominantColor(String filePath) async {

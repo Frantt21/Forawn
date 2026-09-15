@@ -43,8 +43,10 @@ class Song {
       final metadata = await LocalMusicDatabase().getMetadata(filePath);
 
       if (metadata != null) {
-        // Also fetch pre-cached color if available
-        final cachedColor = await LocalMusicDatabase().getDominantColor(
+        // Leer color SOLO del caché (peek): NUNCA extraer durante el
+        // escaneo de la librería. La extracción ocurre en _extractAndCache
+        // que ya se ejecuta en otros flujos explícitos.
+        final cachedColor = await LocalMusicDatabase().peekDominantColor(
           filePath,
         );
         return Song(
