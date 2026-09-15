@@ -5,6 +5,44 @@ import 'dart:io' show HttpException;
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 
+import 'search_cache_store.dart';
+
+/// (De)serialización mínima de InnertubeTrack para el caché de búsquedas
+/// en disco (SearchCacheStore).
+class InnertubeTrackJson {
+  static Map<String, dynamic> toJson(InnertubeTrack t) => {
+        'vid': t.videoId,
+        'raw': t.rawTitle,
+        'chan': t.channel,
+        'album': t.album,
+        'thumb': t.thumbnailUrl,
+        'dur': t.durationMs,
+        'clean': t.cleanMetadata,
+      };
+
+  static InnertubeTrack fromJson(Map<String, dynamic> j) {
+    final vid = j['vid'];
+    final raw = j['raw'];
+    final chan = j['chan'];
+    if (vid is! String || vid.isEmpty) {
+      throw const FormatException('InnertubeTrack sin videoId');
+    }
+    final thumb = j['thumb'];
+    final album = j['album'];
+    final durMs = j['dur'];
+    return InnertubeTrack(
+      videoId: vid,
+      watchUrl: 'https://www.youtube.com/watch?v=$vid',
+      rawTitle: raw is String ? raw : '',
+      channel: chan is String ? chan : '',
+      album: album is String ? album : '',
+      thumbnailUrl: thumb is String ? thumb : '',
+      durationMs: durMs is int && durMs > 0 ? durMs : 0,
+      cleanMetadata: j['clean'] == true,
+    );
+  }
+}
+
 /// Resultado de pista resuelto desde Innertube.
 class InnertubeTrack {
   final String videoId;
@@ -134,6 +172,10 @@ class InnertubeService {
 
   /// Busca pistas: primero en YT Music (artwork cuadrado, metadatos limpios);
   /// si no hay resultados o falla, en YouTube WEB con limpieza local.
+  ///
+  /// El resultado se cachea en memoria (por sesión) y en disco
+  /// (SearchCacheStore, TTL 2 días) para que reabrir el app o repetir la
+  /// búsqueda no vuelva a pagar el coste de red.
   Future<List<InnertubeTrack>> searchTracks(
     String query, {
     int limit = 40,
@@ -142,6 +184,21 @@ class InnertubeService {
     final cached = _searchCache[key];
     if (cached != null) return cached;
 
+    // 0) Caché persistente (TTL 2 días)
+    try {
+      final persisted = await SearchCacheStore().getMusic(query, limit);
+      if (persisted != null && persisted.isNotEmpty) {
+        _searchCache[key] = persisted;
+        debugPrint(
+          '[InnertubeService] "$query" served from disk cache '
+          '(${persisted.length} tracks)',
+        );
+        return persisted;
+      }
+    } catch (_) {
+      // Caché ilegible: seguir con la búsqueda normal.
+    }
+
     // 1) YT Music (fuente preferida: artwork de álbum + metadatos limpios)
     final musicTracks = await _searchYtMusic(query, limit);
     if (musicTracks.isNotEmpty) {
@@ -149,6 +206,9 @@ class InnertubeService {
         '[InnertubeService] YTMusic search "$query" -> ${musicTracks.length} tracks',
       );
       _searchCache[key] = musicTracks;
+      unawaited(
+        SearchCacheStore().putMusic(query, limit, musicTracks).catchError((_) {}),
+      );
       return musicTracks;
     }
 
@@ -158,6 +218,9 @@ class InnertubeService {
       '[InnertubeService] WEB search "$query" -> ${webTracks.length} tracks (fallback)',
     );
     _searchCache[key] = webTracks;
+    unawaited(
+      SearchCacheStore().putMusic(query, limit, webTracks).catchError((_) {}),
+    );
     return webTracks;
   }
 

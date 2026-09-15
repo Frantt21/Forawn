@@ -11,6 +11,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:window_manager/window_manager.dart';
 import '../main.dart' show gUseNativeFrame;
 import '../models/download_task.dart';
+import '../services/search_cache_store.dart';
 import '../services/download_manager.dart';
 import '../services/tools_service.dart';
 import 'downloads_screen.dart';
@@ -278,11 +279,23 @@ class _VideoDownloaderScreenState extends State<VideoDownloaderScreen>
   }
 
   // --- parse yt-dlp -j output line-by-line and return FIRST valid JSON object ---
+  /// Los metadatos se cachean en disco (SearchCacheStore, TTL 2 días) con la
+  /// URL como clave: re-inspeccionar el mismo video no relanza yt-dlp -j.
   Future<Map<String, dynamic>?> _ytdlpMetadata({
     required String toolsDir,
     required String url,
     required void Function(String) logger,
   }) async {
+    // 0) Caché persistente (TTL 2 días)
+    try {
+      final cached = await SearchCacheStore().get(
+        SearchCacheStore.sourceVideo,
+        url,
+        0,
+      );
+      if (cached != null) return cached;
+    } catch (_) {}
+
     final ytdlp = ToolsService().ytDlpPath;
     // Optimization: Add --flat-playlist if we suspect playlist, but simplest is standard -j
     final args = [url, '-j', '--no-playlist', '--ignore-errors'];
@@ -312,6 +325,12 @@ class _VideoDownloaderScreenState extends State<VideoDownloaderScreen>
       try {
         final decoded = jsonDecode(line);
         if (decoded is Map<String, dynamic>) {
+          // Persistir para las próximas inspecciones (TTL 2 días).
+          unawaited(
+            SearchCacheStore()
+                .put(SearchCacheStore.sourceVideo, url, 0, decoded)
+                .catchError((_) {}),
+          );
           return decoded;
         } else {
           logger('Skipping non-object JSON metadata line');
