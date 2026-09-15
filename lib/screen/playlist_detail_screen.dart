@@ -305,16 +305,17 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
   @override
   Widget build(BuildContext context) {
     final playlist = _currentPlaylist;
-    // Para favoritos, fondo gris neutro (sin el morado)
-    final themeColor = playlist.id == 'favorites'
-        ? const Color(0xFF2C2C2E)
+    // Favoritos: fondo negro (igual que forawn_mobile). El resto: color
+    // dominante de la playlist.
+    final isFavorites = playlist.id == 'favorites';
+    final themeColor = isFavorites
+        ? Colors.black
         : (_dominantColor ?? const Color(0xFF1C1C1E));
     final isDark = themeColor.computeLuminance() < 0.5;
     final textColor = isDark ? Colors.white : Colors.black;
 
     // Botones estilo forawn_mobile: color de acento = color de texto
     // (blanco en tema oscuro, negro en tema claro).
-    final isFavorites = playlist.id == 'favorites';
     final buttonColor = textColor;
     final buttonTextColor = isDark ? Colors.black : Colors.white;
 
@@ -458,15 +459,17 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
                                       fit: BoxFit.cover,
                                     )
                                   : Container(
-                                      color: playlist.id == 'favorites'
-                                          ? Colors.purpleAccent
-                                          : Colors.grey[800],
+                                      // Igual que forawn_mobile: fondo gris
+                                      // oscuro con corazón morado centrado.
+                                      color: Colors.grey[900],
                                       child: Icon(
                                         playlist.id == 'favorites'
                                             ? Icons.favorite
                                             : Icons.music_note,
                                         size: 100 * _imageScale,
-                                        color: Colors.white.withOpacity(0.5),
+                                        color: playlist.id == 'favorites'
+                                            ? Colors.purpleAccent
+                                            : Colors.white.withOpacity(0.5),
                                       ),
                                     ),
                             ),

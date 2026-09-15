@@ -1993,20 +1993,17 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen>
             fit: StackFit.expand,
             children: [
               // Background (Special for Favorites)
+              // Igual que forawn_mobile: fondo gris oscuro con corazón
+              // morado centrado (sin degradado).
               if (isFavorite)
                 Container(
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
-                      colors: [
-                        Colors.purpleAccent.withOpacity(0.6),
-                        Colors.deepPurple.withOpacity(0.8),
-                      ],
-                    ),
-                  ),
+                  color: Colors.grey[900],
                   child: const Center(
-                    child: Icon(Icons.favorite, size: 40, color: Colors.white),
+                    child: Icon(
+                      Icons.favorite,
+                      size: 48,
+                      color: Colors.purpleAccent,
+                    ),
                   ),
                 )
               // Standard Playlist Image
