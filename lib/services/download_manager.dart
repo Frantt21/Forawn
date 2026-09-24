@@ -132,6 +132,23 @@ class DownloadManager extends ChangeNotifier {
     debugPrint(
       '[DownloadManager] addTask ${t.id} "${t.title}" source="${t.sourceUrl}"',
     );
+    // Si ya existe una tarea TERMINADA para la misma URL, reemplazarla:
+    // evita acumular fallidas viejas con errores desactualizados (p.ej. el
+    // bot-check de YouTube ya resuelto) para la misma pista.
+    final sameUrl = t.sourceUrl.isNotEmpty
+        ? _tasks.indexWhere(
+            (x) =>
+                x.sourceUrl == t.sourceUrl &&
+                x.status != DownloadStatus.running &&
+                x.status != DownloadStatus.queued,
+          )
+        : -1;
+    if (sameUrl >= 0) {
+      _tasks.removeAt(sameUrl);
+      debugPrint(
+        '[DownloadManager] addTask: replaced previous finished task at $sameUrl',
+      );
+    }
     _tasks.add(t);
     notifyListeners();
     _savePersisted();
@@ -176,6 +193,11 @@ class DownloadManager extends ChangeNotifier {
     final idx = _tasks.indexWhere((t) => t.id == id);
     if (idx >= 0) {
       final old = _tasks[idx];
+      // Reintentar REPLAZA la tarea fallida en vez de encolar una copia:
+      // si no, las fallidas viejas se acumulan en el historial para siempre
+      // (y vuelven a mostrar su error antiguo aunque la nueva descarga
+      // ya haya tenido éxito).
+      _tasks.removeAt(idx);
       final retry = DownloadTask(
         id: DateTime.now().millisecondsSinceEpoch.toString(),
         title: old.title,
@@ -187,7 +209,7 @@ class DownloadManager extends ChangeNotifier {
         bypassSpotifyApi: old.bypassSpotifyApi, // Preservar el bypass flag
       );
       debugPrint(
-        '[DownloadManager] retryTask: re-enqueue ${old.id} -> ${retry.id} (bypass: ${retry.bypassSpotifyApi})',
+        '[DownloadManager] retryTask: replace ${old.id} -> ${retry.id} (bypass: ${retry.bypassSpotifyApi})',
       );
       addTask(retry);
     } else {
@@ -427,20 +449,37 @@ class DownloadManager extends ChangeNotifier {
       );
 
       if (!exitSuccess) {
-        await _updateTask(
-          t,
-          status: DownloadStatus.failed,
-          progress: 0.0,
-          errorMessage: ytDlpError.isNotEmpty
-              ? 'yt-dlp: $ytDlpError'
-              : 'yt-dlp failed or returned non-zero exit code',
-          finishedAt: DateTime.now(),
-        );
-        debugPrint(
-          '[DownloadManager] yt-dlp reported failure for task ${t.id}',
-        );
-        Future.microtask(() => _scheduleQueue());
-        return;
+        // yt-dlp puede salir con código != 0 aunque el archivo SÍ se haya
+        // producido (--ignore-errors: falla un postprocesado tras descargar,
+        // p.ej. embed-thumbnail en webm). Si hay output real, no marcar
+        // failed: la descarga en sí tuvo éxito y el error de metadatos es
+        // secundario.
+        final dirChk = Directory(downloadFolder);
+        final produced = dirChk
+            .listSync()
+            .whereType<File>()
+            .where((f) => p.basename(f.path).startsWith(safeBase))
+            .toList();
+        if (produced.isNotEmpty) {
+          debugPrint(
+            '[DownloadManager] yt-dlp exitCode!=0 but output exists for ${t.id} — treating as completed',
+          );
+        } else {
+          await _updateTask(
+            t,
+            status: DownloadStatus.failed,
+            progress: 0.0,
+            errorMessage: ytDlpError.isNotEmpty
+                ? 'yt-dlp: $ytDlpError'
+                : 'yt-dlp failed or returned non-zero exit code',
+            finishedAt: DateTime.now(),
+          );
+          debugPrint(
+            '[DownloadManager] yt-dlp reported failure for task ${t.id}',
+          );
+          Future.microtask(() => _scheduleQueue());
+          return;
+        }
       }
 
       // resultados de yt-dlp
@@ -799,6 +838,14 @@ class DownloadManager extends ChangeNotifier {
       '--add-header',
       // UA por sitio: YouTube genérico; TikTok/IG/etc. navegador móvil.
       'User-Agent: ${TaskTypePlatformX.uaForSite(queryOrUrl)}',
+      // Cliente ANDROID para YouTube: el cliente web/visionos dispara el
+      // bot-check "Sign in to confirm you're not a bot" (verificado con el
+      // nightly 2026.09.16); el cliente android extrae y descarga sin
+      // cookies. Vacío en otros sitios (no es un extractor-args válido).
+      if (TaskTypePlatformX.extractorArgsForSite(searchArg).isNotEmpty) ...[
+        '--extractor-args',
+        TaskTypePlatformX.extractorArgsForSite(searchArg),
+      ],
       // Sin Referer fijo: el descargador acepta URLs de cualquier sitio
       // soportado por yt-dlp (YouTube, Instagram, TikTok, Twitter, etc.) y
       // un Referer de YouTube en otros dominios puede provocar 403.

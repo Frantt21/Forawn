@@ -59,6 +59,15 @@ class InnertubeTrack {
   final String thumbnailUrl;
   final int durationMs;
 
+  /// URL de watch de la pista. Las pistas de YT Music (`cleanMetadata: true`
+  /// o provenientes del browse de música) usan el dominio
+  /// `music.youtube.com` — es el mismo videoId, pero mantiene la coherencia
+  /// con la fuente del resultado; las del fallback WEB usan
+  /// `www.youtube.com`.
+  String get watchUrlForDownload => cleanMetadata
+      ? 'https://music.youtube.com/watch?v=$videoId'
+      : 'https://www.youtube.com/watch?v=$videoId';
+
   /// true si los metadatos vienen ya limpios de YT Music (no requieren la
   /// limpieza de ruido "(Official Video)", etc.).
   final bool cleanMetadata;
@@ -318,7 +327,7 @@ class InnertubeService {
   Future<String?> resolveTrackUrl(String query) async {
     final tracks = await searchTracks(query, limit: 5);
     if (tracks.isEmpty) return null;
-    return tracks.first.watchUrl;
+    return tracks.first.watchUrlForDownload;
   }
 
   // ---------------------------------------------------------------------------

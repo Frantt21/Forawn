@@ -1302,8 +1302,9 @@ class _MusicDownloaderScreenState extends State<MusicDownloaderScreen>
           'artist': artist,
           'album': track.album,
           'image': track.thumbnailUrl,
-          // URL exacta de la pista (`watch?v=VIDEOID`) devuelta por Innertube.
-          'url': track.watchUrl,
+          // URL exacta de la pista (`watch?v=VIDEOID`) devuelta por
+          // Innertube — dominio music.youtube.com para resultados de YT Music.
+          'url': track.watchUrlForDownload,
           'duration_ms': track.durationMs,
           'video_id': track.videoId,
         });

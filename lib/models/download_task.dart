@@ -46,6 +46,17 @@ extension TaskTypePlatformX on TaskType {
       ? 'Mozilla/5.0'
       : 'Mozilla/5.0 (Linux; Android 14; SM-A156U) AppleWebKit/537.36 '
           '(KHTML, like Gecko) Chrome/124.0 Mobile Safari/537.36';
+
+  /// Argumentos de extractor para URLs de YouTube ("" si no es YouTube).
+  ///
+  /// YouTube bot-chequea el cliente web/visionos por defecto desde IPs
+  /// residenciales con uso alto ("Sign in to confirm you're not a bot").
+  /// El cliente ANDROID no pasa por ese gate: verificado empíricamente que
+  /// resuelve búsqueda, metadatos y descarga sin cookies con el mismo IP
+  /// que sí falla en web. Solo se aplica a YouTube; otros sitios rompen con
+  /// extractor-args de youtube.
+  static String extractorArgsForSite(String url) =>
+      isYouTubeUrl(url) ? 'youtube:player_client=android' : '';
 }
 
 class DownloadTask {

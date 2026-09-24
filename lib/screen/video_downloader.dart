@@ -306,6 +306,13 @@ class _VideoDownloaderScreenState extends State<VideoDownloaderScreen>
       // UA por sitio: TikTok/IG/etc. devuelven 403 al UA genérico.
       '--add-header',
       'User-Agent: ${TaskTypePlatformX.uaForSite(url)}',
+      // Cliente ANDROID para YouTube: evita el bot-check "Sign in to
+      // confirm you're not a bot" del cliente web/visionos (verificado con
+      // el nightly 2026.09.16). Otros sitios no reciben extractor-args.
+      if (TaskTypePlatformX.extractorArgsForSite(url).isNotEmpty) ...[
+        '--extractor-args',
+        TaskTypePlatformX.extractorArgsForSite(url),
+      ],
     ];
     final outBuf = StringBuffer();
     final code = await _runProcessStreamed(

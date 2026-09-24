@@ -498,7 +498,10 @@ class _DownloadsScreenState extends State<DownloadsScreen>
         completed,
       ][_tabIndex];
       return Scaffold(
-        backgroundColor: const Color.fromARGB(255, 34, 34, 34),
+        // Fondo transparente para que se vea el acrílico/color de la
+        // ventana (igual que settings, translate, video, music...). El gris
+        // sólido que tenía rompía la consistencia con el resto del app.
+        backgroundColor: Colors.transparent,
         body: Column(
           children: [
             _buildTitleBar(),
