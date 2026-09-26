@@ -4,7 +4,6 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show rootBundle;
-import 'package:flutter_acrylic/flutter_acrylic.dart' as acrylic;
 import 'package:forawn/screen/qrcode_generator.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:window_manager/window_manager.dart';
@@ -27,12 +26,12 @@ import 'screen/home_content.dart';
 import 'services/global_music_player.dart';
 import 'services/local_music_database.dart';
 import 'services/tools_service.dart';
+import 'services/window_effects_service.dart';
 import 'services/window_media_service.dart';
 import 'widgets/mini_player.dart';
 import 'utils/color_utils.dart';
 
 const String kDefaultLangCode = 'en';
-const _prefEffectKey = 'window_effect';
 const _prefColorKey = 'window_color';
 const _prefDarkKey = 'window_dark';
 
@@ -73,38 +72,14 @@ Future<void> main() async {
     debugPrint('[HotkeyManager] Error unregistering: $e');
   }
 
-  // Inicializar flutter_acrylic
-  if (Platform.isWindows) {
-    try {
-      await acrylic.Window.initialize();
-      await acrylic.Window.hideWindowControls();
-      gNativeAcrylicAvailable = true;
-      final prefs = await SharedPreferences.getInstance();
-      final savedEffect = prefs.getString(_prefEffectKey) ?? 'solid';
-      final savedColor = Color(prefs.getInt(_prefColorKey) ?? 0xCC222222);
-      final savedDark = prefs.getBool(_prefDarkKey) ?? true;
-
-      // Validar que el efecto guardado sea válido
-      acrylic.WindowEffect effect;
-      try {
-        effect = acrylic.WindowEffect.values.firstWhere(
-          (e) => e.name == savedEffect,
-          orElse: () => acrylic.WindowEffect.solid,
-        );
-      } catch (_) {
-        effect = acrylic.WindowEffect.solid;
-      }
-
-      await acrylic.Window.setEffect(
-        effect: effect,
-        color: savedColor,
-        dark: savedDark,
-      );
-    } catch (e) {
-      debugPrint('[Acrylic Init Error] $e');
-      gNativeAcrylicAvailable = false;
-    }
-  } else {
+  // Inicializar efectos de ventana POR OS (WindowEffectsService valida el
+  // efecto guardado contra las capacidades reales del sistema: en Win10
+  // degrada acrylic/mica a solid/transparent por el lag del compositor).
+  try {
+    final applied = await WindowEffectsService.instance.initialize();
+    gNativeAcrylicAvailable = applied != null;
+  } catch (e) {
+    debugPrint('[Acrylic Init Error] $e');
     gNativeAcrylicAvailable = false;
   }
 
@@ -368,7 +343,7 @@ class _ForawnAppRootState extends State<ForawnAppRoot> {
     Color bg;
     if (Platform.isWindows) {
       // Windows: el fondo real es el color del acrílico guardado.
-      bg = Color(prefs.getInt(_prefColorKey) ?? 0xCC222222);
+      bg = Color(prefs.getInt(_prefColorKey) ?? kDefaultWindowColor.value);
     } else {
       // Linux/macOS: fondo sólido de la app.
       bg = isDark ? const Color(0xFF1E1E1E) : const Color(0xFFF5F5F5);
@@ -763,21 +738,29 @@ class _HomeScreenState extends State<HomeScreen> with WindowListener {
     });
   }
 
+  /// Aplica y persiste un efecto de ventana por CLAVE ('solid', 'acrylic',
+  /// 'mica', ...). La validación por OS la hace WindowEffectsService: si la
+  /// clave no existe en este sistema se degrada al primer efecto soportado.
   Future<void> _applyWindowEffect(
-    acrylic.WindowEffect effect,
+    String effectKey,
     Color color, {
     bool dark = true,
   }) async {
     try {
-      final prefs = await SharedPreferences.getInstance();
+      final options = WindowEffectsService.instance.availableEffects;
+      WindowEffectOption option;
+      try {
+        option = options.firstWhere((e) => e.key == effectKey);
+      } catch (_) {
+        option = options.first;
+      }
 
-      // Aplicar el efecto directamente
-      await acrylic.Window.setEffect(effect: effect, color: color, dark: dark);
-
-      // Guardar preferencias
-      await prefs.setString(_prefEffectKey, effect.name);
-      await prefs.setInt(_prefColorKey, color.value);
-      await prefs.setBool(_prefDarkKey, dark);
+      // Aplicar y persistir (el servicio guarda prefs y degrada si hace falta)
+      await WindowEffectsService.instance.applyAndPersist(
+        option,
+        color,
+        dark: dark,
+      );
 
       // Refresh theme in parent widget
       if (mounted &&

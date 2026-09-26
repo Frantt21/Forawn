@@ -487,5 +487,10 @@
   "no_songs_to_add": "没有可添加的歌曲",
   "synchronization": "同步",
   "adjust_lyrics_time": "调整歌词时间",
-  "queue_empty": "队列为空"
+  "queue_empty": "队列为空",
+  "effect_win10_lag": "亚克力和 Mica 在 Windows 11 上可用（Windows 10 拖动时会卡顿）。",
+  "effect_compositor_note": "原生模糊取决于你的合成器（如 KDE KWin），应用内不可用。",
+  "window_color": "颜色",
+  "dark_mode": "深色模式",
+  "window_dark_sub": "窗口效果的鲜艳度色调"
 }

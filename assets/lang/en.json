@@ -493,5 +493,10 @@
   "youtube_music_source": "YouTube Music",
   "synchronization": "Synchronization",
   "adjust_lyrics_time": "Adjust lyrics timing",
-  "queue_empty": "Queue is empty"
+  "queue_empty": "Queue is empty",
+  "effect_win10_lag": "Acrylic and Mica are available on Windows 11 (they lag when dragging on Windows 10).",
+  "effect_compositor_note": "Native blur depends on your compositor (e.g. KDE KWin) and is not available in-app.",
+  "window_color": "Color",
+  "dark_mode": "Dark mode",
+  "window_dark_sub": "Vibrancy tone of the window effect"
 }

@@ -1,21 +1,18 @@
 // settings.dart
 import 'package:flutter/material.dart';
-import 'dart:io';
-import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'main.dart' show checkForUpdate;
-import 'package:flutter_acrylic/flutter_acrylic.dart' as acrylic;
 import 'widgets/elegant_notification.dart';
 import 'services/discord_service.dart';
 import 'services/lyrics_service.dart';
 import 'services/local_music_database.dart';
 import 'services/global_theme_service.dart';
 import 'services/global_music_player.dart';
+import 'services/window_effects_service.dart';
 import 'package:forawn/version.dart';
 
 typedef TextGetter = String Function(String key, {String? fallback});
 typedef LanguageSelector = Future<void> Function(String code);
-const String _prefEffectKey = 'window_effect';
 const String _prefColorKey = 'window_color';
 const String _prefDarkKey = 'window_dark';
 
@@ -30,11 +27,10 @@ class SettingsScreen extends StatefulWidget {
   final String currentLang;
   final TextGetter getText;
   final LanguageSelector onSelectLanguage;
-  final Future<void> Function(
-    acrylic.WindowEffect effect,
-    Color color, {
-    bool dark,
-  })
+
+  /// Aplica un efecto de ventana por CLAVE ('solid', 'acrylic', 'mica', ...).
+  /// La validación por OS y la persistencia las hace WindowEffectsService.
+  final Future<void> Function(String effectKey, Color color, {bool dark})
   onChangeWindowEffect;
 
   /// Volver a home. En modo screen (IndexedStack) lo invoca el botón back
@@ -89,20 +85,17 @@ class _SettingsScreenState extends State<SettingsScreen> {
   bool _effectMenuOpen = false;
   bool _effectHovered = false;
 
-  // Visual prefs state
+  // Visual prefs state (validado POR OS vía WindowEffectsService)
   String _selectedEffectLabel = 'solid';
   String _currentEffectKey = 'solid';
   Color _selectedColor = const Color(0xFF222222);
   bool _darkMode = true;
 
-  bool _isWindows11 = false;
+  /// Opciones de efecto que soporta el OS actual (no las de otro OS).
+  List<WindowEffectOption> _effectOptions = const [];
 
-  final Map<String, acrylic.WindowEffect> effects = {
-    'acrylic': acrylic.WindowEffect.acrylic,
-    'mica': acrylic.WindowEffect.mica,
-    'solid': acrylic.WindowEffect.solid,
-    'transparent': acrylic.WindowEffect.transparent,
-  };
+  /// Nota explicativa según OS (Win10 lag, Linux compositor) o null.
+  ({String key, String fallback})? _effectNote;
 
   @override
   void initState() {
@@ -112,23 +105,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 
   Future<void> _init() async {
-    await _detectWindows11();
     _loadPrefs();
     await _loadVisualPrefs();
-  }
-
-  Future<void> _detectWindows11() async {
-    if (!Platform.isWindows) return;
-    try {
-      final proc = await Process.start('powershell', [
-        '-NoProfile',
-        '-Command',
-        r'(Get-ItemProperty "HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion").CurrentBuild',
-      ]);
-      final output = await proc.stdout.transform(const Utf8Decoder()).join();
-      final build = int.tryParse(output.trim()) ?? 0;
-      if (mounted) setState(() => _isWindows11 = build >= 22000);
-    } catch (_) {}
   }
 
   Future<void> _loadVisualPrefs() async {
@@ -136,25 +114,22 @@ class _SettingsScreenState extends State<SettingsScreen> {
     final prefs = await SharedPreferences.getInstance();
     if (!mounted) return;
 
-    final effectName = prefs.getString(_prefEffectKey) ?? 'solid';
-    final colorValue = prefs.getInt(_prefColorKey) ?? 0xFF222222;
+    // Efectos disponibles EN ESTE OS + validación del persistido.
+    final svc = WindowEffectsService.instance;
+    final options = svc.availableEffects;
+    final effective = await svc.loadPersistedOption();
+    final colorValue = prefs.getInt(_prefColorKey) ?? kDefaultWindowColor.value;
     final dark = prefs.getBool(_prefDarkKey) ?? true;
-
-    String finalEffectLabel = effectName;
-    if (!_isWindows11) finalEffectLabel = 'solid';
-    if (!effects.containsKey(finalEffectLabel)) finalEffectLabel = 'solid';
 
     if (mounted) {
       setState(() {
-        _selectedEffectLabel = finalEffectLabel;
-        _currentEffectKey = finalEffectLabel;
+        _effectOptions = options;
+        _effectNote = svc.noteForPlatform;
+        _selectedEffectLabel = effective.key;
+        _currentEffectKey = effective.key;
         _selectedColor = Color(colorValue);
         _darkMode = dark;
       });
-    }
-
-    if (!_isWindows11 && effectName != 'solid') {
-      if (mounted) await _applyEffect('solid', _selectedColor);
     }
   }
 
@@ -200,8 +175,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       _selectedColor = color;
     });
 
-    final effect = effects[label] ?? acrylic.WindowEffect.solid;
-    await widget.onChangeWindowEffect(effect, color, dark: _darkMode);
+    await widget.onChangeWindowEffect(label, color, dark: _darkMode);
   }
 
   Future<void> _toggleDiscord(bool value) async {
@@ -295,6 +269,112 @@ class _SettingsScreenState extends State<SettingsScreen> {
     }
   }
 
+  /// Menú de efectos de ventana (solo los soportados por el OS actual).
+  Future<void> _showEffectMenu(
+    BuildContext context,
+    RenderBox renderBox,
+  ) async {
+    final offset = renderBox.localToGlobal(Offset.zero);
+    final size = renderBox.size;
+    const cardBackgroundColor = Color(0xFF2C2C2E);
+    setState(() => _effectMenuOpen = true);
+
+    final selected = await showMenu<String>(
+      context: context,
+      position: RelativeRect.fromLTRB(
+        offset.dx,
+        offset.dy + size.height,
+        offset.dx + size.width,
+        offset.dy,
+      ),
+      items: _effectOptions
+          .map(
+            (o) => PopupMenuItem<String>(
+              value: o.key,
+              child: Row(
+                children: [
+                  if (o.key == _currentEffectKey)
+                    const Icon(Icons.check, color: Colors.white70, size: 18)
+                  else
+                    const SizedBox(width: 18),
+                  const SizedBox(width: 8),
+                  Text(
+                    widget.getText(
+                      'effect_${o.key}',
+                      fallback: o.fallback,
+                    ),
+                    style: const TextStyle(color: Colors.white),
+                  ),
+                ],
+              ),
+            ),
+          )
+          .toList(),
+      color: cardBackgroundColor,
+      elevation: 4,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
+    );
+
+    setState(() => _effectMenuOpen = false);
+
+    if (selected != null) {
+      await _applyEffect(selected, _selectedColor);
+    }
+  }
+
+  /// Diálogo simple de color: presets del servicio + colores extra.
+  Future<Color?> _showColorPicker() async {
+    final extra = const [
+      Colors.white,
+      Colors.black,
+      Colors.red,
+      Colors.green,
+      Colors.blue,
+      Colors.purple,
+      Colors.orange,
+      Colors.teal,
+    ];
+    final base = WindowEffectsService.instance.colorPresets;
+    final choices = <Color>[...base, ...extra.map((c) => c.withValues(alpha: 0.8))];
+
+    return showDialog<Color>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: const Color(0xFF1C1C1E),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(16),
+        ),
+        title: Text(
+          widget.getText('pick_color', fallback: 'Pick color'),
+          style: const TextStyle(color: Colors.white),
+        ),
+        content: Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: choices
+              .map(
+                (c) => MouseRegion(
+                  cursor: SystemMouseCursors.click,
+                  child: GestureDetector(
+                    onTap: () => Navigator.of(ctx).pop(c),
+                    child: Container(
+                      width: 36,
+                      height: 36,
+                      decoration: BoxDecoration(
+                        color: c,
+                        shape: BoxShape.circle,
+                        border: Border.all(color: Colors.white24),
+                      ),
+                    ),
+                  ),
+                ),
+              )
+              .toList(),
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final get = widget.getText;
@@ -382,7 +462,165 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       ],
                     ),
 
-                    // PERSONALIZATION SECTION REMOVED
+                    // ESTILO DE VENTANA (por OS)
+                    if (_effectOptions.isNotEmpty) ...[
+                      _SettingsSection(
+                        title: widget.getText('window_style', fallback: 'Window style'),
+                        children: [
+                          // Selector de efecto: SOLO los soportados por el
+                          // OS actual (validado por WindowEffectsService).
+                          Builder(
+                            builder: (ctx) {
+                              final selected = _effectOptions.firstWhere(
+                                (o) => o.key == _currentEffectKey,
+                                orElse: () => _effectOptions.first,
+                              );
+                              return _SettingsTile(
+                                leadingIcon: Icons.format_paint,
+                                leadingColor: Colors.deepPurpleAccent,
+                                title: widget.getText(
+                                  'window_style',
+                                  fallback: 'Window style',
+                                ),
+                                subtitle: widget.getText(
+                                  selected.labelKey,
+                                  fallback: selected.fallback,
+                                ),
+                                trailing: Row(
+                                  children: [
+                                    Text(
+                                      widget.getText(
+                                        selected.labelKey,
+                                        fallback: selected.fallback,
+                                      ),
+                                      style: TextStyle(
+                                        color: currentTheme.hintColor,
+                                      ),
+                                    ),
+                                    Icon(
+                                      Icons.arrow_drop_down,
+                                      color: currentTheme.hintColor,
+                                    ),
+                                  ],
+                                ),
+                                // Tile con acción real → cursor de mano.
+                                onTap: () {
+                                  final rb =
+                                      ctx.findRenderObject() as RenderBox?;
+                                  if (rb != null) _showEffectMenu(ctx, rb);
+                                },
+                              );
+                            },
+                          ),
+                          Divider(
+                            height: 1,
+                            color: currentTheme.dividerColor,
+                          ),
+                          // Color del efecto (presets + picker).
+                          _SettingsTile(
+                            leadingIcon: Icons.colorize,
+                            leadingColor: Colors.pinkAccent,
+                            title: widget.getText('window_color', fallback: 'Color'),
+                            subtitle: widget.getText(
+                              'choose_color',
+                              fallback: 'Choose color',
+                            ),
+                            trailing: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                ...WindowEffectsService.instance.colorPresets
+                                    .take(4)
+                                    .map(
+                                      (c) => GestureDetector(
+                                        onTap: () => _applyEffect(
+                                          _currentEffectKey,
+                                          c,
+                                        ),
+                                        child: Container(
+                                          width: 22,
+                                          height: 22,
+                                          margin: const EdgeInsets.only(
+                                            left: 4,
+                                          ),
+                                          decoration: BoxDecoration(
+                                            color: c,
+                                            shape: BoxShape.circle,
+                                            border: Border.all(
+                                              color: Colors.white24,
+                                            ),
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                IconButton(
+                                  tooltip: widget.getText(
+                                    'pick_color',
+                                    fallback: 'Pick color',
+                                  ),
+                                  icon: const Icon(Icons.palette, size: 20),
+                                  onPressed: () async {
+                                    final picked = await _showColorPicker();
+                                    if (picked != null) {
+                                      await _applyEffect(
+                                        _currentEffectKey,
+                                        picked,
+                                      );
+                                    }
+                                  },
+                                ),
+                              ],
+                            ),
+                          ),
+                          Divider(
+                            height: 1,
+                            color: currentTheme.dividerColor,
+                          ),
+                          // Modo oscuro (afecta la vibrancy del efecto).
+                          _SettingsTile(
+                            leadingIcon: Icons.dark_mode,
+                            leadingColor: Colors.indigoAccent,
+                            title: widget.getText('dark_mode', fallback: 'Dark mode'),
+                            subtitle: widget.getText(
+                              'window_dark_sub',
+                              fallback: 'Vibrancy tone of the window effect',
+                            ),
+                            trailing: Switch(
+                              value: _darkMode,
+                              onChanged: (v) {
+                                setState(() => _darkMode = v);
+                                _applyEffect(_currentEffectKey, _selectedColor);
+                              },
+                            ),
+                          ),
+                          if (_effectNote != null)
+                            Padding(
+                              padding: const EdgeInsets.fromLTRB(16, 4, 16, 12),
+                              child: Row(
+                                children: [
+                                  Icon(
+                                    Icons.info_outline,
+                                    size: 14,
+                                    color: currentTheme.hintColor,
+                                  ),
+                                  const SizedBox(width: 8),
+                                  Expanded(
+                                    child: Text(
+                                      widget.getText(
+                                        _effectNote!.key,
+                                        fallback: _effectNote!.fallback,
+                                      ),
+                                      style: TextStyle(
+                                        fontSize: 11,
+                                        color: currentTheme.hintColor,
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                        ],
+                      ),
+                    ],
 
                     // MUSIC PLAYER
                     _SettingsSection(

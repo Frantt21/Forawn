@@ -487,5 +487,10 @@
   "no_songs_to_add": "Aucune chanson à ajouter",
   "synchronization": "Synchronisation",
   "adjust_lyrics_time": "Ajuster le temps des paroles",
-  "queue_empty": "La file d'attente est vide"
+  "queue_empty": "La file d'attente est vide",
+  "effect_win10_lag": "Acrylique et Mica sont disponibles sur Windows 11 (lags au déplacement sur Windows 10).",
+  "effect_compositor_note": "Le flou natif dépend de votre compositeur (ex. KDE KWin) et n’est pas disponible dans l’app.",
+  "window_color": "Couleur",
+  "dark_mode": "Mode sombre",
+  "window_dark_sub": "Teinte de vibration de l’effet de fenêtre"
 }

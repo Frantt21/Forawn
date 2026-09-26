@@ -488,5 +488,10 @@
   "no_songs_to_add": "Нет песен для добавления",
   "synchronization": "Синхронизация",
   "adjust_lyrics_time": "Настроить время текста",
-  "queue_empty": "Очередь пуста"
+  "queue_empty": "Очередь пуста",
+  "effect_win10_lag": "Акрил и Mica доступны в Windows 11 (в Windows 10 лагает при перетаскивании).",
+  "effect_compositor_note": "Нативное размытие зависит от композитора (напр. KDE KWin) и недоступно из приложения.",
+  "window_color": "Цвет",
+  "dark_mode": "Тёмная тема",
+  "window_dark_sub": "Оттенок вибрации эффекта окна"
 }

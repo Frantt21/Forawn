@@ -487,5 +487,10 @@
   "no_songs_to_add": "Brak utworów do dodania",
   "synchronization": "Synchronizacja",
   "adjust_lyrics_time": "Dopasuj czas tekstu",
-  "queue_empty": "Kolejka jest pusta"
+  "queue_empty": "Kolejka jest pusta",
+  "effect_win10_lag": "Akryl i Mica są dostępne w Windows 11 (w Windows 10 zacina się przy przeciąganiu).",
+  "effect_compositor_note": "Natywne rozmycie zależy od kompozytora (np. KDE KWin) i nie jest dostępne w aplikacji.",
+  "window_color": "Kolor",
+  "dark_mode": "Tryb ciemny",
+  "window_dark_sub": "Odcień wibracji efektu okna"
 }

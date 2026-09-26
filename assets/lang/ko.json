@@ -488,5 +488,10 @@
   "no_songs_to_add": "추가할 곡이 없습니다",
   "synchronization": "동기화",
   "adjust_lyrics_time": "가사 타이밍 조정",
-  "queue_empty": "대기열이 비어 있습니다"
+  "queue_empty": "대기열이 비어 있습니다",
+  "effect_win10_lag": "아크릴과 Mica는 Windows 11에서 사용할 수 있습니다(Windows 10에서는 드래그 시 끊김).",
+  "effect_compositor_note": "네이티브 블러는 컴포지터(예: KDE KWin)에 따라 다르며 앱에서 사용할 수 없습니다.",
+  "window_color": "색상",
+  "dark_mode": "다크 모드",
+  "window_dark_sub": "창 효과의 바이브런시 톤"
 }

@@ -487,5 +487,10 @@
   "no_songs_to_add": "Não há músicas para adicionar",
   "synchronization": "Sincronização",
   "adjust_lyrics_time": "Ajustar o tempo das letras",
-  "queue_empty": "A fila está vazia"
+  "queue_empty": "A fila está vazia",
+  "effect_win10_lag": "Acrílico e Mica estão disponíveis no Windows 11 (no Windows 10 há lag ao arrastar).",
+  "effect_compositor_note": "O desfoque nativo depende do seu compositor (ex. KDE KWin) e não está disponível no app.",
+  "window_color": "Cor",
+  "dark_mode": "Modo escuro",
+  "window_dark_sub": "Tom de vibração do efeito da janela"
 }
