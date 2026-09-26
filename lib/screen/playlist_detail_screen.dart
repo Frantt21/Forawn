@@ -608,6 +608,8 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
                         final artwork = metadata?.artwork;
 
                         return ListTile(
+                          // Tile clickeable (reproduce la canción).
+                          mouseCursor: SystemMouseCursors.click,
                           key: ValueKey(song.id),
                           leading: Container(
                             width: 50,
