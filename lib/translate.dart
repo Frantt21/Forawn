@@ -11,6 +11,7 @@ import 'package:translator/translator.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:path/path.dart' as p;
 import 'package:shared_preferences/shared_preferences.dart';
+import 'services/window_effects_service.dart';
 
 typedef TextGetter = String Function(String key, {String? fallback});
 
@@ -231,7 +232,13 @@ class _TranslateScreenState extends State<TranslateScreen> {
     final textColor = Colors.white;
     // Verde como color principal de esta pantalla (igual que forawn_mobile).
     const accentColor = Colors.greenAccent;
-    const cardBackgroundColor = Color(0xFF1C1C1E);
+    // Superficie adaptada: sólida por defecto, overlay translúcido si hay
+    // efecto de ventana activo (acrylic/mica) para que se vea el material.
+    final cardBackgroundColor = WindowEffectsService.instance.surface(
+      context,
+      solid: const Color(0xFF1C1C1E),
+      overlay: 0.08,
+    );
 
     return Scaffold(
       backgroundColor: Colors.transparent,

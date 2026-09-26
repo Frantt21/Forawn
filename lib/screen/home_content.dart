@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import '../services/window_effects_service.dart';
 
 
 class HomeContent extends StatefulWidget {
@@ -144,8 +145,13 @@ class _HomeContentState extends State<HomeContent> {
       child: Container(
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
-          // Mismo color de card que forawn_mobile.
-          color: const Color.fromARGB(255, 45, 45, 45),
+          // Superficie adaptada al efecto de ventana: gris sólido por
+          // defecto, overlay translúcido con acrylic/mica activos.
+          color: WindowEffectsService.instance.surface(
+            context,
+            solid: const Color.fromARGB(255, 45, 45, 45),
+            overlay: 0.06,
+          ),
           borderRadius: BorderRadius.circular(12),
         ),
         child: Column(

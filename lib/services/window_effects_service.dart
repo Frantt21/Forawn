@@ -22,7 +22,8 @@
 // de color que ofrece settings.
 import 'dart:io';
 import 'package:flutter/foundation.dart';
-import 'package:flutter/painting.dart' show Color;
+import 'package:flutter/material.dart'
+    show Color, Colors, Theme, Brightness, BuildContext;
 import 'package:flutter_acrylic/flutter_acrylic.dart' as acrylic;
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -42,8 +43,36 @@ class WindowEffectsService {
   bool _isWindows11 = false;
   String _osLabel = 'Windows';
 
+  /// Clave del efecto actualmente aplicado ('solid', 'acrylic', ...).
+  String? _currentKey;
+
   /// true si el plugin se inicializó y el OS soporta efectos nativos.
   bool get nativeAvailable => _nativeAvailable;
+
+  /// Clave del efecto activo (null si no se aplicó ninguno).
+  String? get currentKey => _currentKey;
+
+  /// true cuando hay un efecto TRANSLÚCIDO activo (acrylic, mica, sidebar,
+  /// transparent...). Con 'solid' o sin efecto nativo devuelve false y las
+  /// superficies deben usar sus colores por defecto.
+  bool get translucentSurfaces =>
+      _nativeAvailable && _currentKey != null && _currentKey != 'solid';
+
+  /// Color de superficie adaptado al efecto de ventana activo:
+  ///  · Sin efecto translúcido → [solid] (color hardcodeado actual).
+  ///  · Con efecto (acrylic/mica/...) → overlay translúcido que deja ver
+  ///    el material del compositor detrás (white/black [overlay] según tema).
+  Color surface(
+    BuildContext context, {
+    Color solid = const Color(0xFF1C1C1E),
+    double overlay = 0.06,
+  }) {
+    if (!translucentSurfaces) return solid;
+    final dark = Theme.of(context).brightness == Brightness.dark;
+    return dark
+        ? Colors.white.withOpacity(overlay)
+        : Colors.black.withOpacity(overlay);
+  }
 
   /// true solo en Windows 11 (build >= 22000): acrylic/mica sin lag.
   bool get isWindows11 => _isWindows11;
@@ -236,6 +265,7 @@ class WindowEffectsService {
         color: color,
         dark: dark,
       );
+      _currentKey = chosen.key;
       debugPrint(
         '[WindowEffects] applied "${chosen.key}" on $_osLabel (win11=$_isWindows11)',
       );
@@ -255,6 +285,7 @@ class WindowEffectsService {
         color: color,
         dark: dark,
       );
+      _currentKey = option.key;
       final prefs = await SharedPreferences.getInstance();
       await prefs.setString(_prefEffectKey, option.key);
       await prefs.setInt(_prefColorKey, color.value);

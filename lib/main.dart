@@ -762,6 +762,13 @@ class _HomeScreenState extends State<HomeScreen> with WindowListener {
         dark: dark,
       );
 
+      if (mounted) {
+        // Recrear las screens cacheadas: sus superficies adaptativas leen
+        // el efecto actual en build() y el IndexedStack no reconstruye
+        // widgets idénticos por su cuenta.
+        setState(_initializeScreens);
+      }
+
       // Refresh theme in parent widget
       if (mounted &&
           context.findAncestorStateOfType<_ForawnAppRootState>() != null) {

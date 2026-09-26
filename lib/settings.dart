@@ -1049,8 +1049,13 @@ class _SettingsSection extends StatelessWidget {
       valueListenable: themeService.dominantColor,
       builder: (context, dominantColor, _) {
         // Use GlobalThemeService color if available, otherwise use theme's card color
-        // Use hardcoded color to match input fields as requested
-        const containerColor = Color.fromARGB(255, 45, 45, 45);
+        // Superficie adaptada al efecto de ventana (solid por defecto,
+        // overlay translúcido con acrylic/mica activos).
+        final containerColor = WindowEffectsService.instance.surface(
+          context,
+          solid: const Color.fromARGB(255, 45, 45, 45),
+          overlay: 0.06,
+        );
 
         return Column(
           crossAxisAlignment: CrossAxisAlignment.start,
