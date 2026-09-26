@@ -1021,9 +1021,14 @@ class _HomeScreenState extends State<HomeScreen> with WindowListener {
                                         // Transparente en el resto de screens:
                                         // la ventana (o el acrílico) se ve a
                                         // través. Sin borde inferior. En el
-                                        // player, negra como el screen.
+                                        // player, negra como el screen, pero
+                                        // atenuada si hay efecto translúcido
+                                        // (misma tono que el fondo del screen).
                                         color: isPlayerScreen
-                                            ? Colors.black
+                                            ? (WindowEffectsService.instance
+                                                    .translucentSurfaces
+                                                ? Colors.black.withOpacity(0.55)
+                                                : Colors.black)
                                             : Colors.transparent,
                                       ),
                                       child: IconTheme(

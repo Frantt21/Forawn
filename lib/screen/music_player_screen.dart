@@ -20,6 +20,7 @@ import '../services/global_theme_service.dart';
 import '../services/playlist_service.dart';
 import '../models/playlist_model.dart';
 import '../models/song_model.dart';
+import '../services/window_effects_service.dart';
 import '../widgets/playlist_dialogs.dart';
 
 import 'player_screen.dart';
@@ -1134,10 +1135,21 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen>
   }
 
   Widget _buildLibraryView() {
+    // isCurrent == false: hay una ruta encima (playlist detail, player
+    // completo, diálogos). Pintar el fondo TRANSPARENTE en ese caso evita el
+    // doble apilado de oscuridad: el acento translúcido de la ruta superior
+    // se compone directo contra el material de la ventana, así el efecto
+    // también se ve durante la animación de apertura (sin "pop" al terminar).
+    final coveredByRoute = ModalRoute.of(context)?.isCurrent == false;
     return Scaffold(
       // Screen de música negro puro, igual que forawn_mobile
-      // (Color(0xFF000000)).
-      backgroundColor: const Color(0xFF000000),
+      // (Color(0xFF000000)). Con efecto de ventana translúcido se atenúa
+      // para dejar ver el material (acrylic/mica) sin perder contraste.
+      backgroundColor: coveredByRoute
+          ? Colors.transparent
+          : WindowEffectsService.instance.translucentSurfaces
+              ? Colors.black.withOpacity(0.55)
+              : const Color(0xFF000000),
       body: Stack(
         children: [
           Column(
@@ -1612,7 +1624,13 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen>
         height: 160,
         margin: const EdgeInsets.only(bottom: 8),
         decoration: BoxDecoration(
-          color: const Color(0xFF1C1C1E),
+          // Superficie adaptativa: sólida por defecto, translúcida con
+          // efecto de ventana activo (mantiene los acentos encima).
+          color: WindowEffectsService.instance.surface(
+            context,
+            solid: const Color(0xFF1C1C1E),
+            overlay: 0.07,
+          ),
           borderRadius: BorderRadius.circular(12),
         ),
         child: ClipRRect(
@@ -1632,7 +1650,11 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen>
                   art != null
                       ? Image.memory(art, fit: BoxFit.cover)
                       : Container(
-                          color: Colors.grey[900],
+                          color: WindowEffectsService.instance.surface(
+                            context,
+                            solid: const Color(0xFF262626),
+                            overlay: 0.08,
+                          ),
                           child: const Icon(
                             Icons.music_note,
                             size: 50,
@@ -1751,7 +1773,13 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen>
             margin: const EdgeInsets.only(bottom: 8),
             padding: EdgeInsets.zero,
             decoration: BoxDecoration(
-              color: const Color(0xFF1C1C1E),
+              // Superficie adaptativa: sólida por defecto, translúcida con
+          // efecto de ventana activo (mantiene los acentos encima).
+          color: WindowEffectsService.instance.surface(
+            context,
+            solid: const Color(0xFF1C1C1E),
+            overlay: 0.07,
+          ),
               borderRadius: BorderRadius.circular(12),
               border: isCurrentSong && dominantColor != null
                   ? Border.all(color: dominantColor, width: 3)
@@ -1774,7 +1802,11 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen>
                       art != null
                           ? Image.memory(art, fit: BoxFit.cover)
                           : Container(
-                              color: Colors.grey[900],
+                              color: WindowEffectsService.instance.surface(
+                            context,
+                            solid: const Color(0xFF262626),
+                            overlay: 0.08,
+                          ),
                               child: const Icon(
                                 Icons.music_note,
                                 size: 50,
@@ -1993,7 +2025,13 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen>
         width: width,
         height: height,
         decoration: BoxDecoration(
-          color: const Color(0xFF1C1C1E),
+          // Superficie adaptativa: sólida por defecto, translúcida con
+          // efecto de ventana activo (mantiene los acentos encima).
+          color: WindowEffectsService.instance.surface(
+            context,
+            solid: const Color(0xFF1C1C1E),
+            overlay: 0.07,
+          ),
           borderRadius: BorderRadius.circular(12),
           // Sin borde ni sombra en las tarjetas de playlist.
           boxShadow: null,
@@ -2447,7 +2485,11 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen>
                                 width: 48,
                                 height: 48,
                                 decoration: BoxDecoration(
-                                  color: Colors.grey[850],
+                                  color: WindowEffectsService.instance.surface(
+                                    context,
+                                    solid: const Color(0xFF262626),
+                                    overlay: 0.08,
+                                  ),
                                   borderRadius: BorderRadius.circular(8),
                                   image: playlist.imagePath != null
                                       ? DecorationImage(
@@ -2654,7 +2696,12 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen>
         onTap: () => _showCreatePlaylistDialog(),
         child: Container(
         decoration: BoxDecoration(
-          color: Colors.grey[900], // Fondo oscuro sutil
+          // Fondo oscuro sutil (adaptativo al efecto de ventana)
+          color: WindowEffectsService.instance.surface(
+            context,
+            solid: const Color(0xFF262626),
+            overlay: 0.08,
+          ),
           borderRadius: BorderRadius.circular(12),
         ),
         child: Column(

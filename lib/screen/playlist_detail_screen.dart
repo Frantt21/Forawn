@@ -9,6 +9,7 @@ import '../models/song_model.dart';
 import '../services/playlist_service.dart';
 import '../services/global_music_player.dart';
 import '../services/local_music_database.dart';
+import '../services/window_effects_service.dart';
 import '../widgets/app_title_bar.dart';
 import '../widgets/add_songs_sheet.dart';
 import '../widgets/playlist_dialogs.dart';
@@ -309,12 +310,27 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
   Widget build(BuildContext context) {
     final playlist = _currentPlaylist;
     // Favoritos: fondo negro (igual que forawn_mobile). El resto: color
-    // dominante de la playlist.
+    // dominante de la playlist (acento).
     final isFavorites = playlist.id == 'favorites';
-    final themeColor = isFavorites
+    final baseAccent = isFavorites
         ? Colors.black
         : (_dominantColor ?? const Color(0xFF1C1C1E));
-    final isDark = themeColor.computeLuminance() < 0.5;
+    // Con efecto de ventana translúcido el acento se MANTIENE pero
+    // atenuado (alpha) para que el material (acrylic/mica) se vea detrás.
+    // El alpha se ajusta a la INTENSIDAD del color: los fuertes/saturados
+    // (rosa, rojo) tapan más el material, así que bajan más; los neutros
+    // (grises) un poco menos; favoritos (negro) como el fondo del player.
+    double settleAlpha = 1.0;
+    if (WindowEffectsService.instance.translucentSurfaces) {
+      if (isFavorites) {
+        settleAlpha = 0.55;
+      } else {
+        final hsl = HSLColor.fromColor(baseAccent);
+        settleAlpha = hsl.saturation < 0.12 ? 0.72 : 0.66;
+      }
+    }
+    final themeColor = baseAccent.withOpacity(settleAlpha);
+    final isDark = baseAccent.computeLuminance() < 0.5;
     final textColor = isDark ? Colors.white : Colors.black;
 
     // Botones estilo forawn_mobile: color de acento = color de texto
@@ -463,8 +479,14 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
                                     )
                                   : Container(
                                       // Igual que forawn_mobile: fondo gris
-                                      // oscuro con corazón morado centrado.
-                                      color: Colors.grey[900],
+                                      // oscuro con corazón morado centrado
+                                      // (adaptativo al efecto de ventana).
+                                      color: WindowEffectsService.instance
+                                          .surface(
+                                        context,
+                                        solid: const Color(0xFF262626),
+                                        overlay: 0.08,
+                                      ),
                                       child: Icon(
                                         playlist.id == 'favorites'
                                             ? Icons.favorite
@@ -616,7 +638,11 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
                             height: 50,
                             decoration: BoxDecoration(
                               borderRadius: BorderRadius.circular(8),
-                              color: Colors.grey[800],
+                              color: WindowEffectsService.instance.surface(
+                                context,
+                                solid: const Color(0xFF2C2C2C),
+                                overlay: 0.08,
+                              ),
                               image: artwork != null
                                   ? DecorationImage(
                                       image: MemoryImage(artwork),
