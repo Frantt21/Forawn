@@ -72,12 +72,12 @@ Future<void> main() async {
     debugPrint('[HotkeyManager] Error unregistering: $e');
   }
 
-  // Inicializar efectos de ventana POR OS (WindowEffectsService valida el
-  // efecto guardado contra las capacidades reales del sistema: en Win10
-  // degrada acrylic/mica a solid/transparent por el lag del compositor).
+  // Inicializar efectos de ventana POR OS (valida el efecto guardado contra
+  // las capacidades reales del sistema). La APLICACIÓN del efecto es
+  // diferida: se hace UNA sola vez con la ventana ya visible.
   try {
-    final applied = await WindowEffectsService.instance.initialize();
-    gNativeAcrylicAvailable = applied != null;
+    await WindowEffectsService.instance.initialize();
+    gNativeAcrylicAvailable = WindowEffectsService.instance.nativeAvailable;
   } catch (e) {
     debugPrint('[Acrylic Init Error] $e');
     gNativeAcrylicAvailable = false;
@@ -110,6 +110,16 @@ Future<void> main() async {
       );
       await windowManager.show();
       await windowManager.focus();
+      // Aplicar el efecto UNA sola vez con la ventana YA VISIBLE: el
+      // compositor no toma el backdrop si setEffect corre antes del show,
+      // y aplicar varias veces (ACCENT_DISABLED → apply repetido) corrompe
+      // el DWM: efecto perdido y rendimiento desplomado. La guardia interna
+      // hace que las llamadas extra sean no-op.
+      unawaited(
+        Future.delayed(const Duration(milliseconds: 80), () {
+          WindowEffectsService.instance.applyPersistedOnce();
+        }),
+      );
     });
   } catch (e) {
     debugPrint('[Main] window_manager init error: $e');
@@ -270,6 +280,11 @@ class _ForawnAppRootState extends State<ForawnAppRoot> {
   late FocusNode _globalFocusNode;
   bool _isDarkBackground = true; // Track if background is dark or light
 
+  /// true cuando el efecto del compositor ya fue aplicado en esta sesión:
+  /// la superficie Flutter pasa a transparente. Antes de eso pinta sólida
+  /// (evita el frame negro del arranque sin backdrop).
+  bool _effectsApplied = false;
+
   /// Color real de fondo de la ventana. En Windows es el color del acrílico
   /// elegido por el usuario; en Linux/macOS el fondo sólido de la app.
   /// Se usa para calcular el contraste de la title bar (texto/iconos).
@@ -295,6 +310,22 @@ class _ForawnAppRootState extends State<ForawnAppRoot> {
 
     // Cargar librería de música globalmente al inicio de la app
     _loadMusicLibrary();
+
+    // Fallback del arranque: si el apply post-show no alcanzó a ejecutarse
+    // (timing del compositor), este primer frame lo cubre. La guardia
+    // de sesión hace que solo UNA de las dos llame a setEffect.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      Future.delayed(const Duration(milliseconds: 250), () {
+        WindowEffectsService.instance.applyPersistedOnce();
+      });
+    });
+
+    // Pintar la superficie transparente SOLO cuando el backdrop ya está
+    // aplicado (completa tras el apply único post-show, o al instante si
+    // el usuario ya cambió el efecto/color en settings).
+    WindowEffectsService.instance.applied.then((_) {
+      if (mounted) setState(() => _effectsApplied = true);
+    });
   }
 
   /// Con TitleBarStyle.hidden, el plugin de window_manager recorta el area
@@ -394,11 +425,16 @@ class _ForawnAppRootState extends State<ForawnAppRoot> {
         keyboardService.handleKeyboardEvent(event);
       },
       child: ColoredBox(
-        // En Linux/macOS (o si el acrílico nativo falla) la ventana no tiene
-        // efecto de fondo del SO: la escena es transparente y se vería negra.
-        // Pintamos un fondo sólido acorde al tema en esos casos.
+        // La superficie Flutter es transparente SOLO cuando el efecto del
+        // compositor ya está activo (backdrop aplicado post-show). Antes de
+        // eso se pinta fondo sólido: si la escena transparente se renderiza
+        // sin backdrop, la ventana abre en NEGRO (bug de arranque).
         color: gNativeAcrylicAvailable
-            ? Colors.transparent
+            ? (_effectsApplied
+                ? Colors.transparent
+                : (_isDarkBackground
+                      ? const Color(0xFF1E1E1E)
+                      : const Color(0xFFF5F5F5)))
             : _isDarkBackground
             ? const Color(0xFF1E1E1E)
             : const Color(0xFFF5F5F5),
@@ -755,7 +791,8 @@ class _HomeScreenState extends State<HomeScreen> with WindowListener {
         option = options.first;
       }
 
-      // Aplicar y persistir (el servicio guarda prefs y degrada si hace falta)
+      // Aplicar y persistir (el servicio completa su completer `applied`,
+      // que pone la superficie transparente vía el listener del root).
       await WindowEffectsService.instance.applyAndPersist(
         option,
         color,

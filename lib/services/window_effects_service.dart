@@ -20,6 +20,7 @@
 // El servicio centraliza: qué efectos existen en el OS actual, validación
 // del efecto persistido (degrada a solid si no es soportado) y los presets
 // de color que ofrece settings.
+import 'dart:async';
 import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart'
@@ -42,6 +43,27 @@ class WindowEffectsService {
   bool _nativeAvailable = false;
   bool _isWindows11 = false;
   String _osLabel = 'Windows';
+
+  /// Guardia: el efecto se aplica UNA sola vez por sesión de la app.
+  ///
+  /// Cada SetEffect en Windows hace ACCENT_DISABLED → re-aplicar; llamarlo
+  /// varias veces (arranque + refuerzos) corrompe el backdrop del DWM (el
+  /// efecto desaparece) y degrada el rendimiento del compositor (~3 FPS).
+  bool _appliedThisSession = false;
+
+  /// Completa cuando el efecto de la sesión ya fue aplicado (o no
+  /// corresponde). La UI puede await-arlo para pintar transparente solo
+  /// cuando el backdrop del compositor ya está activo (evita el frame
+  /// negro del arranque: antes de completarse, la app pinta fondo sólido).
+  final Completer<void> _appliedCompleter = Completer<void>();
+
+  /// Future que se completa al aplicar el efecto de la sesión.
+  Future<void> get applied => _appliedCompleter.future;
+
+  /// Debounce de persistencia: escribir prefs en CADA movimiento de
+  /// color/efecto es innecesario; el efecto se aplica al instante, la
+  /// escritura se agrupa.
+  Timer? _persistDebounce;
 
   /// Clave del efecto actualmente aplicado ('solid', 'acrylic', ...).
   String? _currentKey;
@@ -202,12 +224,13 @@ class WindowEffectsService {
         Color(0x99303034), // gris humo más translúcido
       ];
 
-  /// Inicializa el plugin (solo Windows: es donde la app lo usa hoy) y
-  /// aplica el efecto persistido, degradándolo si el OS no lo soporta.
-  /// Devuelve el efecto efectivamente aplicado (o null si no se aplicó
-  /// ninguno, p. ej. Linux/macOS sin efecto o error).
-  Future<acrylic.WindowEffect?> initialize() async {
-    if (_initialized) return null;
+  /// Inicializa el plugin (solo Windows) y valida el efecto persistido
+  /// contra el OS. NO aplica el efecto aquí: aplicarlo antes de que la
+  /// ventana sea visible hace que Windows no tome el backdrop (abre negro)
+  /// y re-aplicarlo varias veces corrompe el DWM. La aplicación única
+  /// diferida la hace [applyPersistedOnce] cuando la ventana ya es visible.
+  Future<void> initialize() async {
+    if (_initialized) return;
     _initialized = true;
 
     _osLabel = Platform.isWindows
@@ -223,9 +246,18 @@ class WindowEffectsService {
         _nativeAvailable = true;
         _isWindows11 = await _detectWindows11Build();
 
+        // Solo VALIDAR el persistido (degrada la clave si el OS no lo
+        // soporta); la aplicación real es diferida a applyPersistedOnce.
         final prefs = await SharedPreferences.getInstance();
-        final applied = await _applySavedEffect(prefs);
-        return applied;
+        final savedKey = prefs.getString(_prefEffectKey) ?? 'solid';
+        final supported = availableEffects;
+        try {
+          _currentKey = supported.firstWhere((e) => e.key == savedKey).key;
+        } catch (_) {
+          _currentKey = supported.first.key;
+          await prefs.setString(_prefEffectKey, _currentKey!);
+        }
+        return;
       }
       // Linux/macOS: la app pinta fondo sólido propio (gNativeAcrylicAvailable
       // queda false y el ColoredBox de main.dart cubre la ventana).
@@ -234,7 +266,6 @@ class WindowEffectsService {
       debugPrint('[WindowEffects] initialize error: $e');
       _nativeAvailable = false;
     }
-    return null;
   }
 
   /// Aplica el efecto guardado en prefs; si el OS actual no lo soporta,
@@ -276,7 +307,30 @@ class WindowEffectsService {
     }
   }
 
-  /// Aplica un efecto en caliente (desde settings) y lo persiste.
+  /// Aplica el efecto persistido UNA SOLA VEZ por sesión, con la ventana
+  /// ya visible. Llamadas posteriores son no-op (protege el DWM de los
+  /// toggles repetidos ACCENT_DISABLED → apply que rompen el backdrop y
+  /// hunden el rendimiento).
+  Future<void> applyPersistedOnce() async {
+    if (!_nativeAvailable || _appliedThisSession || _currentKey == null) {
+      if (!_appliedCompleter.isCompleted) _appliedCompleter.complete();
+      return;
+    }
+    _appliedThisSession = true;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await _applySavedEffect(prefs);
+      debugPrint('[WindowEffects] applied "$_currentKey" (once, post-show)');
+    } catch (e) {
+      debugPrint('[WindowEffects] applyPersistedOnce error: $e');
+    } finally {
+      if (!_appliedCompleter.isCompleted) _appliedCompleter.complete();
+    }
+  }
+
+  /// Aplica un efecto en caliente (desde settings) y lo persiste con
+  /// debounce. Marca la sesión como aplicada: si el usuario ya eligió
+  /// efecto/color, el apply diferido del arranque debe ser no-op.
   Future<void> applyAndPersist(WindowEffectOption option, Color color,
       {bool dark = true}) async {
     try {
@@ -285,11 +339,18 @@ class WindowEffectsService {
         color: color,
         dark: dark,
       );
+      _appliedThisSession = true;
       _currentKey = option.key;
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.setString(_prefEffectKey, option.key);
-      await prefs.setInt(_prefColorKey, color.value);
-      await prefs.setBool(_prefDarkKey, dark);
+      if (!_appliedCompleter.isCompleted) _appliedCompleter.complete();
+      _persistDebounce?.cancel();
+      _persistDebounce = Timer(const Duration(milliseconds: 350), () async {
+        try {
+          final prefs = await SharedPreferences.getInstance();
+          await prefs.setString(_prefEffectKey, option.key);
+          await prefs.setInt(_prefColorKey, color.value);
+          await prefs.setBool(_prefDarkKey, dark);
+        } catch (_) {}
+      });
     } catch (e) {
       debugPrint('[WindowEffects] applyAndPersist error: $e');
     }
