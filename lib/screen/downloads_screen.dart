@@ -490,6 +490,29 @@ class _DownloadsScreenState extends State<DownloadsScreen>
     );
   }
 
+  /// Elimina las tareas del estado (o estados) que muestra la tab activa.
+  /// En curso: cancela y borra las running · En cola: las queued · Errores:
+  /// las failed · Completadas: completed + cancelled.
+  void _clearActiveTab() {
+    const running = DownloadStatus.running;
+    const queued = DownloadStatus.queued;
+    const completed = DownloadStatus.completed;
+    const failed = DownloadStatus.failed;
+    const cancelled = DownloadStatus.cancelled;
+    final states = switch (_tabIndex) {
+      0 => {running},
+      1 => {queued},
+      2 => {completed, cancelled},
+      3 => {failed},
+      _ => <DownloadStatus>{},
+    };
+    try {
+      _dm.clearByStatus(states);
+    } catch (e) {
+      debugPrint('[DownloadsScreen] Error clearing tab $_tabIndex: $e');
+    }
+  }
+
   Future<void> _openFile(String path) async {
     try {
       if (Platform.isWindows) {
@@ -570,16 +593,12 @@ class _DownloadsScreenState extends State<DownloadsScreen>
                     style: const TextStyle(fontSize: 12),
                   ),
                   const Spacer(),
+                  // Clear borra SOLO las tareas del estado (o estados) de
+                  // la tab activa; deshabilitado si la tab no tiene tareas.
                   TextButton.icon(
-                    onPressed: () {
-                      try {
-                        _dm.clearCompleted();
-                      } catch (e) {
-                        debugPrint(
-                          '[DownloadsScreen] Error clearing completed: $e',
-                        );
-                      }
-                    },
+                    onPressed: visible.isEmpty
+                        ? null
+                        : _clearActiveTab,
                     icon: const Icon(Icons.delete_sweep, size: 18),
                     label: Text(get('clear_completed', fallback: 'Clear')),
                     style: TextButton.styleFrom(

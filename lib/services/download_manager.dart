@@ -189,6 +189,62 @@ class DownloadManager extends ChangeNotifier {
     }
   }
 
+  /// Elimina las tareas cuyo estado esté en [states]. Si se incluyen estados
+  /// activos (running/queued), mata sus procesos y los marca como canceladas
+  /// antes de borrarlas (síncrono, sin depender del camino async de
+  /// [cancelTask]). Luego re-agenda la cola por si se liberaron slots.
+  void clearByStatus(Set<DownloadStatus> states) {
+    if (states.isEmpty) return;
+
+    // 1. Cancelar de verdad las activas que coincidan: matar proceso y
+    //    marcar cancelled en el mismo ciclo síncrono.
+    final active = _tasks
+        .where(
+          (t) =>
+              (t.status == DownloadStatus.running ||
+                  t.status == DownloadStatus.queued) &&
+              states.contains(t.status),
+        )
+        .toList();
+    for (final t in active) {
+      final proc = _runningProcs.remove(t.id);
+      if (proc != null) {
+        try {
+          proc.kill(ProcessSignal.sigkill);
+          debugPrint('[DownloadManager] clearByStatus: killed proc ${t.id}');
+        } catch (e) {
+          debugPrint(
+            '[DownloadManager] clearByStatus: error killing ${t.id}: $e',
+          );
+        }
+      }
+      t.status = DownloadStatus.cancelled;
+      t.finishedAt = DateTime.now();
+    }
+
+    // 2. Borrar todo lo que coincida (las activas ya quedaron cancelled, y
+    //    cancelled cuenta como pedida cuando se pidió running/queued).
+    final wanted = Set<DownloadStatus>.from(states);
+    if (states.contains(DownloadStatus.running) ||
+        states.contains(DownloadStatus.queued)) {
+      wanted.add(DownloadStatus.cancelled);
+    }
+    final before = _tasks.length;
+    _tasks.removeWhere((t) => wanted.contains(t.status));
+
+    if (_tasks.length != before) {
+      debugPrint(
+        '[DownloadManager] clearByStatus $states removed ${before - _tasks.length} tasks',
+      );
+      notifyListeners();
+      _savePersisted();
+      // Se liberaron slots de concurrencia: re-agendar.
+      Future.microtask(() => _scheduleQueue());
+    } else {
+      debugPrint('[DownloadManager] clearByStatus $states: nothing to remove');
+    }
+  }
+
   void retryTask(String id) {
     final idx = _tasks.indexWhere((t) => t.id == id);
     if (idx >= 0) {
