@@ -27,6 +27,9 @@ import 'package:flutter/material.dart'
     show Color, Colors, Theme, Brightness, BuildContext;
 import 'package:flutter_acrylic/flutter_acrylic.dart' as acrylic;
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:window_manager/window_manager.dart';
+
+import 'win_diag.dart';
 
 const String _prefEffectKey = 'window_effect';
 const String _prefColorKey = 'window_color';
@@ -56,6 +59,42 @@ class WindowEffectsService {
   /// cuando el backdrop del compositor ya está activo (evita el frame
   /// negro del arranque: antes de completarse, la app pinta fondo sólido).
   final Completer<void> _appliedCompleter = Completer<void>();
+
+  /// Instante del último setEffect. Se usa para debouncear los refuerzos:
+  /// el backdrop del DWM puede no tomarse si el apply inicial corre con la
+  /// ventana desenfocada (p. ej. el usuario minimiza la carpeta del .exe
+  /// mientras Forawn abre), y se re-aplica al recuperar el foco.
+  DateTime? _lastApplyAt;
+
+  /// true si la ventana se minimizó después del último apply: al restaurar,
+  /// el SYSTEMBACKDROP_TYPE se pierde y hay que re-aplicarlo. No aplica al
+  /// simple desenfoque, que no destruye el backdrop.
+  bool _minimizedSinceApplied = false;
+
+  /// Anti-solapamiento: evita que dos eventos (focus + restore) lancen dos
+  /// setEffect simultáneos, que se corrompen entre sí.
+  bool _reapplying = false;
+
+  /// Guardia del reintento diferido del apply inicial (ver
+  /// [_scheduleFocusRetry]).
+  bool _focusRetryScheduled = false;
+
+  /// Anti-carrera del apply inicial: el timer de reintento y el evento de
+  /// foco pueden disparar a la vez; sin esta guardia ambos pasaban el chequeo
+  /// de [_appliedThisSession] y se hacían dos setEffect superpuestos.
+  bool _applyingInitial = false;
+
+  /// true cuando el apply inicial se difirió por falta de foco. En ese caso
+  /// el DWM ya compuso la ventana en su estado inactivo y, aunque después
+  /// reciba foco, sigue pintando el material como sólido (verificado: la
+  /// ventana es foreground y backdrop=3, pero sigue gris). La única salida es
+  /// RECREAR la composición (hide → show) antes de aplicar el efecto.
+  bool _applyWasDeferred = false;
+
+  /// Color e intensidad vigentes en memoria: necesarios para re-aplicar sin
+  /// depender de prefs (que tienen debounce de escritura).
+  Color _currentColor = kDefaultWindowColor;
+  bool _currentDark = true;
 
   /// Future que se completa al aplicar el efecto de la sesión.
   Future<void> get applied => _appliedCompleter.future;
@@ -257,6 +296,9 @@ class WindowEffectsService {
           _currentKey = supported.first.key;
           await prefs.setString(_prefEffectKey, _currentKey!);
         }
+        unawaited(_log(
+          'init: $_osLabel native=$_nativeAvailable win11=$_isWindows11 key=$_currentKey',
+        ));
         return;
       }
       // Linux/macOS: la app pinta fondo sólido propio (gNativeAcrylicAvailable
@@ -289,6 +331,8 @@ class WindowEffectsService {
 
     final color = Color(prefs.getInt(_prefColorKey) ?? kDefaultWindowColor.value);
     final dark = prefs.getBool(_prefDarkKey) ?? true;
+    _currentColor = color;
+    _currentDark = dark;
 
     try {
       await acrylic.Window.setEffect(
@@ -297,6 +341,7 @@ class WindowEffectsService {
         dark: dark,
       );
       _currentKey = chosen.key;
+      _lastApplyAt = DateTime.now();
       debugPrint(
         '[WindowEffects] applied "${chosen.key}" on $_osLabel (win11=$_isWindows11)',
       );
@@ -312,19 +357,193 @@ class WindowEffectsService {
   /// toggles repetidos ACCENT_DISABLED → apply que rompen el backdrop y
   /// hunden el rendimiento).
   Future<void> applyPersistedOnce() async {
-    if (!_nativeAvailable || _appliedThisSession || _currentKey == null) {
+    if (!_nativeAvailable || _currentKey == null) {
+      // Sin efecto nativo (Linux/macOS/solid): la superficie sólida es el
+      // estado final, no hay nada más que esperar.
       if (!_appliedCompleter.isCompleted) _appliedCompleter.complete();
       return;
     }
-    _appliedThisSession = true;
+    if (_appliedThisSession) {
+      // Ya aplicado en esta sesión: los refuerzos por foco/minimizado los
+      // maneja el propio servicio (onWindowFocused/onWindowRestored).
+      if (!_appliedCompleter.isCompleted) _appliedCompleter.complete();
+      return;
+    }
+    if (_applyingInitial) return;
+    _applyingInitial = true;
+    // Si el efecto es translúcido y la ventana aún NO está activa, diferir:
+    // en Windows el DWM deja el material en su estado "sólido" (gris plano,
+    // el que se ve para ventanas inactivas) cuando el PRIMER setEffect corre
+    // inactivo, y re-aplicarlo después NO lo recupera. Aplicando por primera
+    // vez ya activa se comporta igual que el arranque enfocado que sí anda.
     try {
+      if (translucentSurfaces && !await _isWindowFocused()) {
+        _applyWasDeferred = true;
+        await _log('apply deferred: window not focused yet (key=$_currentKey)');
+        _scheduleFocusRetry();
+        return;
+      }
+      if (_applyWasDeferred) {
+        _applyWasDeferred = false;
+        await _log('recreating composition before first apply');
+        await _recreateComposition();
+      }
+      _appliedThisSession = true;
+      _minimizedSinceApplied = false;
       final prefs = await SharedPreferences.getInstance();
       await _applySavedEffect(prefs);
-      debugPrint('[WindowEffects] applied "$_currentKey" (once, post-show)');
-    } catch (e) {
-      debugPrint('[WindowEffects] applyPersistedOnce error: $e');
-    } finally {
+      await _log('applied "$_currentKey" (once, post-show)');
       if (!_appliedCompleter.isCompleted) _appliedCompleter.complete();
+    } catch (e) {
+      await _log('applyPersistedOnce error: $e');
+      if (!_appliedCompleter.isCompleted) _appliedCompleter.complete();
+    } finally {
+      _applyingInitial = false;
+    }
+  }
+
+  /// Recrea la composición de la ventana (hide → show → focus). Fuerza al
+  /// DWM a rehacer el estado visual de la ventana, necesario porque si el
+  /// primer frame se compuso con la ventana inactiva el material queda
+  /// "pegado" en sólido y re-aplicar el atributo no lo cambia.
+  Future<void> _recreateComposition() async {
+    try {
+      await windowManager.hide();
+      await windowManager.show();
+      await windowManager.focus();
+      // Pequeña espera para que el compositor procese el show antes del
+      // setEffect (aplicar en el mismo frame no siempre engancha).
+      await Future<void>.delayed(const Duration(milliseconds: 60));
+    } catch (e) {
+      debugPrint('[WindowEffects] recreate composition error: $e');
+    }
+  }
+
+  /// Reintenta el apply diferido por falta de foco (cubre el caso de que la
+  /// ventana ya estuviera activa y no llegue ningún evento de foco).
+  void _scheduleFocusRetry() {
+    if (_focusRetryScheduled) return;
+    _focusRetryScheduled = true;
+    Timer(const Duration(milliseconds: 500), () {
+      _focusRetryScheduled = false;
+      if (!_appliedThisSession) applyPersistedOnce();
+    });
+  }
+
+  /// La ventana perdió el foco (solo traza; el acrílico pasa a sólido por
+  /// diseño de Windows).
+  Future<void> onWindowBlurred() async {
+    if (!_nativeAvailable) return;
+    await _log('blur event');
+  }
+
+  /// La ventana pasó a primer plano. El backdrop SYSTEMBACKDROP_TYPE del DWM
+  /// en Windows solo se "engancha" de forma confiable si setEffect corre con
+  /// la ventana ya activa; si el apply del arranque cayó con la ventana
+  /// desenfocada (p. ej. se minimizó la carpeta del .exe), el efecto queda
+  /// sin aplicar. Re-aplicar al recuperar el foco lo restaura.
+  ///
+  /// Se hace SIEMPRE (no solo la primera vez) porque el foco puede perderse
+  /// varias veces tras el arranque; se debouncea para no togglear el DWM si
+  /// el foco oscila rápido (cada setEffect = ACCENT_DISABLED → apply).
+  Future<void> onWindowFocused() async {
+    if (!_nativeAvailable) return;
+    await _log(
+      'focus event (applied=$_appliedThisSession '
+      'translucent=$translucentSurfaces key=$_currentKey)',
+    );
+    if (!_appliedThisSession) {
+      // El apply del arranque se difirió por falta de foco: aplicarlo ahora
+      // que la ventana ya está activa.
+      await applyPersistedOnce();
+      return;
+    }
+    if (!translucentSurfaces) {
+      if (!_appliedCompleter.isCompleted) _appliedCompleter.complete();
+      return;
+    }
+    await _reapplyCurrentOnce('focus');
+    if (!_appliedCompleter.isCompleted) _appliedCompleter.complete();
+  }
+
+  /// La ventana se minimizó: en Windows el backdrop se pierde al restaurar.
+  void onWindowMinimized() {
+    if (!_nativeAvailable) return;
+    _minimizedSinceApplied = true;
+    unawaited(_log('minimize event'));
+  }
+
+  /// La ventana se restauró desde minimizado: re-aplicar el backdrop si se
+  /// había perdido. Una vez por restauración, nunca en bucle.
+  Future<void> onWindowRestored() async {
+    if (!_nativeAvailable || !_minimizedSinceApplied) return;
+    _minimizedSinceApplied = false;
+    await _log('restore event (translucent=$translucentSurfaces)');
+    if (translucentSurfaces) {
+      await _reapplyCurrentOnce('restore');
+    }
+  }
+
+  /// Re-aplica el efecto vigente en memoria (sin leer prefs). Serializado:
+  /// ignora llamadas concurrentes porque cada setEffect hace ACCENT_DISABLED
+  /// → apply y dos solapados se corrompen.
+  Future<void> _reapplyCurrentOnce(String reason) async {
+    if (_reapplying) return;
+    final option = _optionByKey(_currentKey);
+    if (option == null) return;
+    // Debounce: evita ráfagas (focus+restore seguidos) que togglearían el
+    // DWM innecesariamente.
+    final now = DateTime.now();
+    if (_lastApplyAt != null &&
+        now.difference(_lastApplyAt!).inMilliseconds < 400) {
+      return;
+    }
+    _reapplying = true;
+    _lastApplyAt = now;
+    try {
+      await acrylic.Window.setEffect(
+        effect: option.effect,
+        color: _currentColor,
+        dark: _currentDark,
+      );
+      await _log('re-applied "$_currentKey" ($reason)');
+    } catch (e) {
+      await _log('reapply ($reason) error: $e');
+    } finally {
+      _reapplying = false;
+    }
+  }
+
+  /// Log del ciclo de vida del backdrop. Escribe también en
+  /// %TEMP%/forawn_effects.log para diagnosticar sin consola (el usuario
+  /// ejecuta el .exe de release).
+  Future<void> _log(String message) async {
+    debugPrint('[WindowEffects] $message');
+    try {
+      final file = File(
+        '${Directory.systemTemp.path}${Platform.pathSeparator}forawn_effects.log',
+      );
+      await file.writeAsString(
+        '${DateTime.now().toIso8601String()} $message ${windowDiag()}\n',
+        mode: FileMode.append,
+        flush: true,
+      );
+    } catch (_) {}
+  }
+
+  WindowEffectOption? _optionByKey(String? key) {
+    if (key == null) return null;
+    for (final option in availableEffects) {
+      if (option.key == key) return option;
+    }
+    return null;
+  }
+
+  Future<bool> _isWindowFocused() async {
+    try {
+      return await windowManager.isFocused();
+    } catch (_) {
+      return true; // Sin dato fiable: asumir foco (comportamiento previo).
     }
   }
 
@@ -340,7 +559,11 @@ class WindowEffectsService {
         dark: dark,
       );
       _appliedThisSession = true;
+      _lastApplyAt = DateTime.now();
+      _minimizedSinceApplied = false;
       _currentKey = option.key;
+      _currentColor = color;
+      _currentDark = dark;
       if (!_appliedCompleter.isCompleted) _appliedCompleter.complete();
       _persistDebounce?.cancel();
       _persistDebounce = Timer(const Duration(milliseconds: 350), () async {

@@ -39,6 +39,7 @@ dependencies:
   url_launcher: ^6.1.10
   window_manager: ^0.5.2
   flutter_acrylic: ^1.1.0
+  ffi: ^2.1.0
   sqflite: ^2.3.0
   path_provider: ^2.1.1
   image: ^4.0.17

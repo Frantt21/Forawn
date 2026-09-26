@@ -26,6 +26,7 @@ import 'screen/home_content.dart';
 import 'services/global_music_player.dart';
 import 'services/local_music_database.dart';
 import 'services/tools_service.dart';
+import 'services/win_diag.dart';
 import 'services/window_effects_service.dart';
 import 'services/window_media_service.dart';
 import 'widgets/mini_player.dart';
@@ -110,6 +111,13 @@ Future<void> main() async {
       );
       await windowManager.show();
       await windowManager.focus();
+      // Reforzar que la ventana quede en primer plano durante el arranque.
+      // En Windows, si el usuario minimiza/cambia de ventana justo al abrir,
+      // `focus()` puede ser rechazado por el foreground lock y el DWM compone
+      // el primer frame con la ventana inactiva: el efecto de ventana queda
+      // en su estado sólido de forma permanente. Reintentar unos instantes
+      // cubre esa carrera.
+      unawaited(_ensureForeground());
       // Aplicar el efecto UNA sola vez con la ventana YA VISIBLE: el
       // compositor no toma el backdrop si setEffect corre antes del show,
       // y aplicar varias veces (ACCENT_DISABLED → apply repetido) corrompe
@@ -166,6 +174,35 @@ Future<void> main() async {
   }
 
   runApp(ForawnAppRoot(initialLangCode: currentLang, initialLangMap: lang));
+}
+
+/// Reintenta poner la ventana en primer plano durante el arranque.
+///
+/// Ver [forceForeground]: el foreground lock de Windows puede rechazar el
+/// `focus()` inicial si el usuario minimiza/cambia de ventana justo al abrir,
+/// y entonces el DWM compone el primer frame con la ventana inactiva y el
+/// efecto de ventana queda roto de forma permanente. Reintentar unos
+/// instantes cubre esa carrera (deja de insistir en cuanto tiene el foco).
+Future<void> _ensureForeground() async {
+  if (!Platform.isWindows) return;
+  // Insistir durante ~1.2s: la ventana necesita estar en primer plano cuando
+  // se compone el PRIMER frame (el motor lo dibuja unos cientos de ms después
+  // de show()), no solo en el instante inmediato a show(). Por eso no
+  // cortamos en el primer `isFocused` true, sino que sostenemos el foco un
+  // momento.
+  for (var attempt = 0; attempt < 8; attempt++) {
+    var focused = false;
+    try {
+      focused = await windowManager.isFocused();
+    } catch (_) {}
+    if (!focused) {
+      forceForeground();
+      try {
+        if (!await windowManager.isFocused()) await windowManager.focus();
+      } catch (_) {}
+    }
+    await Future<void>.delayed(const Duration(milliseconds: 150));
+  }
 }
 
 /// Carga un idioma desde los assets empaquetados de la app.
@@ -274,7 +311,8 @@ class ForawnAppRoot extends StatefulWidget {
   State<ForawnAppRoot> createState() => _ForawnAppRootState();
 }
 
-class _ForawnAppRootState extends State<ForawnAppRoot> {
+class _ForawnAppRootState extends State<ForawnAppRoot>
+    with WindowListener, WidgetsBindingObserver {
   late String _langCode;
   late Map<String, String> _langMap;
   late FocusNode _globalFocusNode;
@@ -307,6 +345,19 @@ class _ForawnAppRootState extends State<ForawnAppRoot> {
 
     // Inicializar servicio de teclado global
     GlobalKeyboardService().initialize(_globalFocusNode, null);
+
+    // Observar foco/minimizado de la ventana: si el efecto se aplicó sin
+    // foco (p. ej. el usuario minimizó la carpeta del .exe justo al abrir) o
+    // la ventana se restauró desde minimizado, el DWM pierde el backdrop y
+    // hay que re-aplicarlo. Ver handlers onWindow*.
+    try {
+      windowManager.addListener(this);
+    } catch (e) {
+      debugPrint('[Main] window listener error: $e');
+    }
+    // Señal de foco a nivel Flutter (complementa onWindowFocus): al volver a
+    // primer plano se refuerza el backdrop del compositor.
+    WidgetsBinding.instance.addObserver(this);
 
     // Cargar librería de música globalmente al inicio de la app
     _loadMusicLibrary();
@@ -394,8 +445,41 @@ class _ForawnAppRootState extends State<ForawnAppRoot> {
 
   @override
   void dispose() {
+    try {
+      windowManager.removeListener(this);
+    } catch (_) {}
+    WidgetsBinding.instance.removeObserver(this);
     _globalFocusNode.dispose();
     super.dispose();
+  }
+
+  // --- Eventos de ventana (backdrop del compositor) ---------------------
+
+  @override
+  void onWindowFocus() {
+    WindowEffectsService.instance.onWindowFocused();
+  }
+
+  @override
+  void onWindowBlur() {
+    WindowEffectsService.instance.onWindowBlurred();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      WindowEffectsService.instance.onWindowFocused();
+    }
+  }
+
+  @override
+  void onWindowMinimize() {
+    WindowEffectsService.instance.onWindowMinimized();
+  }
+
+  @override
+  void onWindowRestore() {
+    WindowEffectsService.instance.onWindowRestored();
   }
 
   Future<void> _changeLanguage(String newCode) async {
