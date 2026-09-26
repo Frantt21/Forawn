@@ -464,6 +464,48 @@ class _ForawnAppRootState extends State<ForawnAppRoot> {
                     ),
                   ),
                   dividerColor: Colors.white.withOpacity(0.1),
+                  // Cursor de mano (pointer) en todos los interactivos
+                  // Material: en desktop M3 los defaults resuelven flecha
+                  // (SystemMouseCursors.basic) en lugar de 'click'.
+                  switchTheme: const SwitchThemeData(
+                    mouseCursor: WidgetStatePropertyAll(
+                      SystemMouseCursors.click,
+                    ),
+                  ),
+                  iconButtonTheme: IconButtonThemeData(
+                    style: ButtonStyle(
+                      mouseCursor: WidgetStatePropertyAll(
+                        SystemMouseCursors.click,
+                      ),
+                    ),
+                  ),
+                  // ListTile SIN cursor global: la mayoría de los tiles de
+                  // la app no son clickeables (el pointer va en cada tile
+                  // clickeable, no en el contenedor).
+                  popupMenuTheme: const PopupMenuThemeData(
+                    mouseCursor: WidgetStatePropertyAll(
+                      SystemMouseCursors.click,
+                    ),
+                  ),
+                  textButtonTheme: TextButtonThemeData(
+                    style: ButtonStyle(
+                      mouseCursor: WidgetStatePropertyAll(
+                        SystemMouseCursors.click,
+                      ),
+                    ),
+                  ),
+                  elevatedButtonTheme: ElevatedButtonThemeData(
+                    style: ButtonStyle(
+                      mouseCursor: WidgetStatePropertyAll(
+                        SystemMouseCursors.click,
+                      ),
+                    ),
+                  ),
+                  checkboxTheme: const CheckboxThemeData(
+                    mouseCursor: WidgetStatePropertyAll(
+                      SystemMouseCursors.click,
+                    ),
+                  ),
                 )
               : ThemeData.light(useMaterial3: true).copyWith(
                   appBarTheme: const AppBarTheme(
@@ -497,6 +539,48 @@ class _ForawnAppRootState extends State<ForawnAppRoot> {
                     ),
                   ),
                   dividerColor: Colors.black.withOpacity(0.1),
+                  // Cursor de mano (pointer) en todos los interactivos
+                  // Material: en desktop M3 los defaults resuelven flecha
+                  // (SystemMouseCursors.basic) en lugar de 'click'.
+                  switchTheme: const SwitchThemeData(
+                    mouseCursor: WidgetStatePropertyAll(
+                      SystemMouseCursors.click,
+                    ),
+                  ),
+                  iconButtonTheme: IconButtonThemeData(
+                    style: ButtonStyle(
+                      mouseCursor: WidgetStatePropertyAll(
+                        SystemMouseCursors.click,
+                      ),
+                    ),
+                  ),
+                  // ListTile SIN cursor global: la mayoría de los tiles de
+                  // la app no son clickeables (el pointer va en cada tile
+                  // clickeable, no en el contenedor).
+                  popupMenuTheme: const PopupMenuThemeData(
+                    mouseCursor: WidgetStatePropertyAll(
+                      SystemMouseCursors.click,
+                    ),
+                  ),
+                  textButtonTheme: TextButtonThemeData(
+                    style: ButtonStyle(
+                      mouseCursor: WidgetStatePropertyAll(
+                        SystemMouseCursors.click,
+                      ),
+                    ),
+                  ),
+                  elevatedButtonTheme: ElevatedButtonThemeData(
+                    style: ButtonStyle(
+                      mouseCursor: WidgetStatePropertyAll(
+                        SystemMouseCursors.click,
+                      ),
+                    ),
+                  ),
+                  checkboxTheme: const CheckboxThemeData(
+                    mouseCursor: WidgetStatePropertyAll(
+                      SystemMouseCursors.click,
+                    ),
+                  ),
                 ),
           debugShowCheckedModeBanner: false,
           navigatorKey: appNavigatorKey,

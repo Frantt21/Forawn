@@ -867,6 +867,11 @@ class _SettingsTile extends StatelessWidget {
       color: Colors.transparent,
       child: InkWell(
         onTap: onTap,
+        // El tile entero NO es un botón: el cursor de mano solo aplica si
+        // la fila tiene acción (p. ej. idioma); si no, flecha normal.
+        mouseCursor: onTap != null
+            ? SystemMouseCursors.click
+            : MouseCursor.defer,
         borderRadius: BorderRadius.circular(16),
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),

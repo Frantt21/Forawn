@@ -1149,6 +1149,8 @@ class _MusicDownloaderScreenState extends State<MusicDownloaderScreen>
                                 }
 
                                 return ListTile(
+                                  // Tile clickeable (abre el downloader).
+                                  mouseCursor: SystemMouseCursors.click,
                                   contentPadding: const EdgeInsets.symmetric(
                                     horizontal: 12,
                                     vertical: 8,
@@ -1261,6 +1263,7 @@ class _MusicDownloaderScreenState extends State<MusicDownloaderScreen>
             FloatingActionButton(
               tooltip: widget.getText('open_downloads', fallback: 'Downloads'),
               onPressed: _openDownloadsScreen,
+              mouseCursor: SystemMouseCursors.click,
               backgroundColor: const Color.fromARGB(255, 224, 64, 251),
               foregroundColor: Colors.black87,
               heroTag: 'spotify_downloads_fab',

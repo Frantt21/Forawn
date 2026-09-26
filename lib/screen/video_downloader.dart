@@ -1013,6 +1013,7 @@ class _VideoDownloaderScreenState extends State<VideoDownloaderScreen>
           heroTag: 'video_downloads_fab',
           tooltip: get('open_downloads', fallback: 'Downloads'),
           onPressed: _openDownloadsScreen,
+          mouseCursor: SystemMouseCursors.click,
           backgroundColor: const Color.fromARGB(255, 224, 64, 251),
           foregroundColor: Colors.black87,
           child: const Icon(Icons.download),

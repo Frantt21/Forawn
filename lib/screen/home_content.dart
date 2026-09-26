@@ -138,6 +138,9 @@ class _HomeContentState extends State<HomeContent> {
       borderRadius: BorderRadius.circular(12),
       splashColor: Colors.transparent,
       highlightColor: Colors.transparent,
+      // El InkWell pinta su propio MouseRegion: sin esto el cursor no se
+      // propaga a través del splash/highlight transparentes.
+      mouseCursor: SystemMouseCursors.click,
       child: Container(
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
