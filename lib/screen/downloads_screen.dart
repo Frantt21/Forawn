@@ -28,8 +28,22 @@ class _DownloadsScreenState extends State<DownloadsScreen>
   bool _listenerAdded = false;
   bool _observerAdded = false;
 
-  /// Tab activo de las pills: 0 En curso, 1 En cola, 2 Completadas.
+  /// Tab activo de las pills: 0 En curso, 1 En cola, 2 Completadas, 3 Errores.
   int _tabIndex = 0;
+
+  /// Claves de locale y fallbacks de cada tab (mismo orden que [groups]).
+  static const List<String> _tabKeys = [
+    'tab_in_progress',
+    'tab_queued',
+    'tab_completed',
+    'tab_failed',
+  ];
+  static const List<String> _tabFallbacks = [
+    'In progress',
+    'Queued',
+    'Completed',
+    'Failed',
+  ];
 
   @override
   void dispose() {
@@ -224,8 +238,9 @@ class _DownloadsScreenState extends State<DownloadsScreen>
 
   /// Pill de tab con el estilo de local_music de forawn_mobile:
   /// AnimatedContainer r20, activa white 20% + texto blanco, inactiva
-  /// white 5% + white60, bold 15, transición de 200ms.
-  Widget _buildPill(String title, int index) {
+  /// white 5% + white60, bold 15, transición de 200ms. Muestra la cantidad
+  /// de tareas de la tab (solo si hay al menos una).
+  Widget _buildPill(String title, int index, int count) {
     final isSelected = _tabIndex == index;
     return GestureDetector(
       onTap: () => setState(() => _tabIndex = index),
@@ -238,21 +253,41 @@ class _DownloadsScreenState extends State<DownloadsScreen>
               : Colors.white.withOpacity(0.05), // Inactiva
           borderRadius: BorderRadius.circular(20),
         ),
-        child: Text(
-          title,
-          style: TextStyle(
-            color: isSelected ? Colors.white : Colors.white60,
-            fontSize: 15,
-            fontWeight: FontWeight.bold,
-            height: 1.0,
-          ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              title,
+              style: TextStyle(
+                color: isSelected ? Colors.white : Colors.white60,
+                fontSize: 15,
+                fontWeight: FontWeight.bold,
+                height: 1.0,
+              ),
+            ),
+            if (count > 0) ...[
+              const SizedBox(width: 6),
+              Text(
+                '$count',
+                style: TextStyle(
+                  color: isSelected
+                      ? Colors.white70
+                      : Colors.white.withOpacity(0.35),
+                  fontSize: 12,
+                  fontWeight: FontWeight.bold,
+                  height: 1.0,
+                ),
+              ),
+            ],
+          ],
         ),
       ),
     );
   }
 
-  /// Fila de pills En curso / En cola / Completadas (igual que forawn_mobile).
-  Widget _buildPillTabs() {
+  /// Fila de pills En curso / En cola / Completadas / Errores
+  /// (base de forawn_mobile + tab propia para las fallidas).
+  Widget _buildPillTabs(List<List<DownloadTask>> groups) {
     final get = widget.getText;
     return Padding(
       padding: const EdgeInsets.fromLTRB(12, 4, 12, 8),
@@ -261,14 +296,14 @@ class _DownloadsScreenState extends State<DownloadsScreen>
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            _buildPill(
-              get('tab_in_progress', fallback: 'In progress'),
-              0,
-            ),
-            const SizedBox(width: 8),
-            _buildPill(get('tab_queued', fallback: 'Queued'), 1),
-            const SizedBox(width: 8),
-            _buildPill(get('tab_completed', fallback: 'Completed'), 2),
+            for (var i = 0; i < groups.length; i++) ...[
+              if (i > 0) const SizedBox(width: 8),
+              _buildPill(
+                get(_tabKeys[i], fallback: _tabFallbacks[i]),
+                i,
+                groups[i].length,
+              ),
+            ],
           ],
         ),
       ),
@@ -473,14 +508,10 @@ class _DownloadsScreenState extends State<DownloadsScreen>
     try {
       final get = widget.getText;
       final tasks = _dm.tasksReversed;
-      // Filtrado por tab, mismo reparto que forawn_mobile: los fallos se
-      // muestran en "En curso" (con retry) y las canceladas en "Completadas".
+      // Filtrado por tab: las fallidas tienen su tab "Errores" propia (con
+      // retry) y las canceladas siguen en "Completadas".
       final inProgress = tasks
-          .where(
-            (t) =>
-                t.status == DownloadStatus.running ||
-                t.status == DownloadStatus.failed,
-          )
+          .where((t) => t.status == DownloadStatus.running)
           .toList();
       final queued = tasks
           .where((t) => t.status == DownloadStatus.queued)
@@ -492,11 +523,19 @@ class _DownloadsScreenState extends State<DownloadsScreen>
                 t.status == DownloadStatus.cancelled,
           )
           .toList();
-      final visible = [
+      final failed = tasks
+          .where((t) => t.status == DownloadStatus.failed)
+          .toList();
+      final groups = [
         inProgress,
         queued,
         completed,
-      ][_tabIndex];
+        failed,
+      ];
+      final safeIndex = _tabIndex >= groups.length
+          ? groups.length - 1
+          : _tabIndex;
+      final visible = groups[safeIndex];
       return Scaffold(
         // Fondo transparente para que se vea el acrílico/color de la
         // ventana (igual que settings, translate, video, music...). El gris
@@ -505,7 +544,7 @@ class _DownloadsScreenState extends State<DownloadsScreen>
         body: Column(
           children: [
             _buildTitleBar(),
-            _buildPillTabs(),
+            _buildPillTabs(groups),
             Expanded(
               child: Padding(
                 padding: const EdgeInsets.all(12),
