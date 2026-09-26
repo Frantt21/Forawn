@@ -58,28 +58,31 @@ class _PlaylistCreateDialogState extends State<PlaylistCreateDialog> {
       children: [
         // Imagen opcional (radio 16, cuadrada, como mobile).
         Center(
-          child: GestureDetector(
-            onTap: _pickImage,
-            child: Container(
-              width: 110,
-              height: 110,
-              decoration: BoxDecoration(
-                color: Colors.white.withOpacity(0.05),
-                borderRadius: BorderRadius.circular(16),
-                image: _selectedImagePath != null
-                    ? DecorationImage(
-                        image: FileImage(File(_selectedImagePath!)),
-                        fit: BoxFit.cover,
+          child: MouseRegion(
+            cursor: SystemMouseCursors.click,
+            child: GestureDetector(
+              onTap: _pickImage,
+              child: Container(
+                width: 110,
+                height: 110,
+                decoration: BoxDecoration(
+                  color: Colors.white.withOpacity(0.05),
+                  borderRadius: BorderRadius.circular(16),
+                  image: _selectedImagePath != null
+                      ? DecorationImage(
+                          image: FileImage(File(_selectedImagePath!)),
+                          fit: BoxFit.cover,
+                        )
+                      : null,
+                ),
+                child: _selectedImagePath == null
+                    ? Icon(
+                        Icons.add_photo_alternate,
+                        color: Colors.white.withOpacity(0.4),
+                        size: 36,
                       )
                     : null,
               ),
-              child: _selectedImagePath == null
-                  ? Icon(
-                      Icons.add_photo_alternate,
-                      color: Colors.white.withOpacity(0.4),
-                      size: 36,
-                    )
-                  : null,
             ),
           ),
         ),
@@ -171,25 +174,28 @@ class _PlaylistEditDialogState extends State<PlaylistEditDialog> {
       },
       children: [
         Center(
-          child: GestureDetector(
-            onTap: _pickImage,
-            child: Container(
-              width: 110,
-              height: 110,
-              decoration: BoxDecoration(
-                color: Colors.white.withOpacity(0.05),
-                borderRadius: BorderRadius.circular(16),
-                image: _selectedImagePath != null
-                    ? DecorationImage(image: _imageProvider, fit: BoxFit.cover)
+          child: MouseRegion(
+            cursor: SystemMouseCursors.click,
+            child: GestureDetector(
+              onTap: _pickImage,
+              child: Container(
+                width: 110,
+                height: 110,
+                decoration: BoxDecoration(
+                  color: Colors.white.withOpacity(0.05),
+                  borderRadius: BorderRadius.circular(16),
+                  image: _selectedImagePath != null
+                      ? DecorationImage(image: _imageProvider, fit: BoxFit.cover)
+                      : null,
+                ),
+                child: _selectedImagePath == null
+                    ? Icon(
+                        Icons.add_a_photo,
+                        color: Colors.white.withOpacity(0.4),
+                        size: 36,
+                      )
                     : null,
               ),
-              child: _selectedImagePath == null
-                  ? Icon(
-                      Icons.add_a_photo,
-                      color: Colors.white.withOpacity(0.4),
-                      size: 36,
-                    )
-                  : null,
             ),
           ),
         ),

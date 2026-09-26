@@ -1372,9 +1372,11 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen>
 
   Widget _buildTabButton(String label, int index) {
     bool isSelected = _tabIndex == index;
-    return GestureDetector(
-      onTap: () => setState(() => _tabIndex = index),
-      child: AnimatedContainer(
+    return MouseRegion(
+      cursor: SystemMouseCursors.click,
+      child: GestureDetector(
+        onTap: () => setState(() => _tabIndex = index),
+        child: AnimatedContainer(
         duration: const Duration(milliseconds: 200),
         padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
         decoration: BoxDecoration(
@@ -1392,6 +1394,7 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen>
             height: 1.0,
           ),
         ),
+      ),
       ),
     );
   }
@@ -1575,17 +1578,19 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen>
     final file = File(filePath);
     final fileName = p.basename(filePath);
 
-    return GestureDetector(
-      onTap: () {
-        final index = _files.indexWhere((f) => f.path == filePath);
-        if (index != -1) {
-          _playFile(index);
-          Navigator.push(
-            context,
-            MaterialPageRoute(
-              builder: (context) => PlayerScreen(getText: widget.getText),
-            ),
-          ).then((_) async {
+    return MouseRegion(
+      cursor: SystemMouseCursors.click,
+      child: GestureDetector(
+        onTap: () {
+          final index = _files.indexWhere((f) => f.path == filePath);
+          if (index != -1) {
+            _playFile(index);
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (context) => PlayerScreen(getText: widget.getText),
+              ),
+            ).then((_) async {
             if (mounted) {
               final song = GlobalMusicPlayer().songsList.value.firstWhere(
                 (s) => s.filePath == filePath,
@@ -1692,6 +1697,7 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen>
           ),
         ),
       ),
+      ),
     );
   }
 
@@ -1718,16 +1724,18 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen>
     final file = File(filePath);
     final fileName = p.basename(filePath);
 
-    return GestureDetector(
-      // Reproduce la canción directamente: NO abre el PlayerScreen (eso
-      // solo pasa con el tap del miniplayer o al pulsar en la biblioteca).
-      onTap: () {
-        final index = _files.indexWhere((f) => f.path == filePath);
-        if (index != -1) {
-          _playFile(index);
-        }
-      },
-      child: FutureBuilder<Color?>(
+    return MouseRegion(
+      cursor: SystemMouseCursors.click,
+      child: GestureDetector(
+        // Reproduce la canción directamente: NO abre el PlayerScreen (eso
+        // solo pasa con el tap del miniplayer o al pulsar en la biblioteca).
+        onTap: () {
+          final index = _files.indexWhere((f) => f.path == filePath);
+          if (index != -1) {
+            _playFile(index);
+          }
+        },
+        child: FutureBuilder<Color?>(
         future: LocalMusicDatabase().getDominantColor(filePath),
         builder: (context, colorSnapshot) {
           final dominantColor = colorSnapshot.data;
@@ -1853,6 +1861,7 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen>
           );
         },
       ),
+      ),
     );
   }
 
@@ -1967,8 +1976,10 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen>
     double? width = 160,
     double? height = 160,
   }) {
-    return GestureDetector(
-      onTap: () => _openPlaylist(playlist, isReadOnly: isFavorite),
+    return MouseRegion(
+      cursor: SystemMouseCursors.click,
+      child: GestureDetector(
+        onTap: () => _openPlaylist(playlist, isReadOnly: isFavorite),
       // Clic derecho: menú contextual (fijar / editar / eliminar) en la
       // posición del puntero. Solo para playlists personalizadas.
       onSecondaryTapUp: isFavorite
@@ -2068,6 +2079,7 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen>
             ],
           ),
         ),
+      ),
       ),
     );
   }
@@ -2636,9 +2648,11 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen>
   Widget _buildCreatePlaylistCard() {
     // Igual que forawn_mobile: fondo gris oscuro sutil (sin borde),
     // círculo 50px con + en morado 10% y texto morado 14 bold.
-    return GestureDetector(
-      onTap: () => _showCreatePlaylistDialog(),
-      child: Container(
+    return MouseRegion(
+      cursor: SystemMouseCursors.click,
+      child: GestureDetector(
+        onTap: () => _showCreatePlaylistDialog(),
+        child: Container(
         decoration: BoxDecoration(
           color: Colors.grey[900], // Fondo oscuro sutil
           borderRadius: BorderRadius.circular(12),
@@ -2670,6 +2684,7 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen>
             ),
           ],
         ),
+      ),
       ),
     );
   }

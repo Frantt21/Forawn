@@ -451,16 +451,22 @@ class _QrGeneratorScreenState extends State<QrGeneratorScreen> {
                       children: [
                         Text(t('fg', fallback: 'Color frontal')),
                         const SizedBox(width: 8),
-                        GestureDetector(
-                          onTap: () => _pickColor(true),
-                          child: Container(width: 28, height: 28, color: _fg),
+                        MouseRegion(
+                          cursor: SystemMouseCursors.click,
+                          child: GestureDetector(
+                            onTap: () => _pickColor(true),
+                            child: Container(width: 28, height: 28, color: _fg),
+                          ),
                         ),
                         const SizedBox(width: 16),
                         Text(t('bg', fallback: 'Color de fondo')),
                         const SizedBox(width: 8),
-                        GestureDetector(
-                          onTap: () => _pickColor(false),
-                          child: Container(width: 28, height: 28, color: _bg),
+                        MouseRegion(
+                          cursor: SystemMouseCursors.click,
+                          child: GestureDetector(
+                            onTap: () => _pickColor(false),
+                            child: Container(width: 28, height: 28, color: _bg),
+                          ),
                         ),
                         const SizedBox(width: 16),
                         Row(
@@ -569,9 +575,12 @@ class _QrGeneratorScreenState extends State<QrGeneratorScreen> {
           spacing: 8,
           runSpacing: 8,
           children: choices.map((c) {
-            return GestureDetector(
-              onTap: () => Navigator.of(context).pop(c),
-              child: Container(width: 36, height: 36, color: c),
+            return MouseRegion(
+              cursor: SystemMouseCursors.click,
+              child: GestureDetector(
+                onTap: () => Navigator.of(context).pop(c),
+                child: Container(width: 36, height: 36, color: c),
+              ),
             );
           }).toList(),
         ),

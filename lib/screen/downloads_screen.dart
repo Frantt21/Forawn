@@ -242,9 +242,11 @@ class _DownloadsScreenState extends State<DownloadsScreen>
   /// de tareas de la tab (solo si hay al menos una).
   Widget _buildPill(String title, int index, int count) {
     final isSelected = _tabIndex == index;
-    return GestureDetector(
-      onTap: () => setState(() => _tabIndex = index),
-      child: AnimatedContainer(
+    return MouseRegion(
+      cursor: SystemMouseCursors.click,
+      child: GestureDetector(
+        onTap: () => setState(() => _tabIndex = index),
+        child: AnimatedContainer(
         duration: const Duration(milliseconds: 200),
         padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
         decoration: BoxDecoration(
@@ -281,6 +283,7 @@ class _DownloadsScreenState extends State<DownloadsScreen>
             ],
           ],
         ),
+      ),
       ),
     );
   }

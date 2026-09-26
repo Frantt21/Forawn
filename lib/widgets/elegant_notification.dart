@@ -137,15 +137,18 @@ void showElegantNotification(
         alignment: Alignment.topCenter,
         child: Padding(
           padding: const EdgeInsets.only(top: 16),
-          child: GestureDetector(
-            onTap: () => Navigator.of(context).pop(),
-            child: ElegantNotification(
-              message: message,
-              duration: duration,
-              backgroundColor: backgroundColor,
-              textColor: textColor,
-              icon: icon,
-              iconColor: iconColor,
+          child: MouseRegion(
+            cursor: SystemMouseCursors.click,
+            child: GestureDetector(
+              onTap: () => Navigator.of(context).pop(),
+              child: ElegantNotification(
+                message: message,
+                duration: duration,
+                backgroundColor: backgroundColor,
+                textColor: textColor,
+                icon: icon,
+                iconColor: iconColor,
+              ),
             ),
           ),
         ),

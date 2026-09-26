@@ -202,9 +202,12 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
           children: [
             // Tap fuera para cerrar (sin bloquear visualmente).
             Positioned.fill(
-              child: GestureDetector(
-                behavior: HitTestBehavior.translucent,
-                onTap: _closeSearchPopover,
+              child: MouseRegion(
+                cursor: SystemMouseCursors.click,
+                child: GestureDetector(
+                  behavior: HitTestBehavior.translucent,
+                  onTap: _closeSearchPopover,
+                ),
               ),
             ),
             CompositedTransformFollower(

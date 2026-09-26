@@ -394,9 +394,11 @@ class _SelectionChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: enabled ? onTap : null,
-      child: Container(
+    return MouseRegion(
+      cursor: enabled ? SystemMouseCursors.click : MouseCursor.defer,
+      child: GestureDetector(
+        onTap: enabled ? onTap : null,
+        child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 5),
         decoration: BoxDecoration(
           color: enabled
@@ -412,6 +414,7 @@ class _SelectionChip extends StatelessWidget {
             fontWeight: FontWeight.bold,
           ),
         ),
+      ),
       ),
     );
   }

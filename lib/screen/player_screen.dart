@@ -405,13 +405,15 @@ class _PlayerScreenState extends State<PlayerScreen> with WindowListener {
                     child: Row(
                       children: [
                         Expanded(
-                          child: GestureDetector(
-                            onTap: () => setStateDialog(() {
-                              selectedSource = 'Deezer';
-                              searchResults = [];
-                              errorMessage = null;
-                            }),
-                            child: Container(
+                          child: MouseRegion(
+                            cursor: SystemMouseCursors.click,
+                            child: GestureDetector(
+                              onTap: () => setStateDialog(() {
+                                selectedSource = 'Deezer';
+                                searchResults = [];
+                                errorMessage = null;
+                              }),
+                              child: Container(
                               padding: const EdgeInsets.symmetric(vertical: 12),
                               decoration: BoxDecoration(
                                 color: selectedSource == 'Deezer'
@@ -440,17 +442,20 @@ class _PlayerScreenState extends State<PlayerScreen> with WindowListener {
                                 ),
                                 textAlign: TextAlign.center,
                               ),
+                              ),
                             ),
                           ),
                         ),
                         Expanded(
-                          child: GestureDetector(
-                            onTap: () => setStateDialog(() {
-                              selectedSource = 'Server';
-                              searchResults = [];
-                              errorMessage = null;
-                            }),
-                            child: Container(
+                          child: MouseRegion(
+                            cursor: SystemMouseCursors.click,
+                            child: GestureDetector(
+                              onTap: () => setStateDialog(() {
+                                selectedSource = 'Server';
+                                searchResults = [];
+                                errorMessage = null;
+                              }),
+                              child: Container(
                               padding: const EdgeInsets.symmetric(vertical: 12),
                               decoration: BoxDecoration(
                                 color: selectedSource == 'Server'
@@ -478,6 +483,7 @@ class _PlayerScreenState extends State<PlayerScreen> with WindowListener {
                                       : FontWeight.normal,
                                 ),
                                 textAlign: TextAlign.center,
+                              ),
                               ),
                             ),
                           ),
@@ -1234,37 +1240,40 @@ class _PlayerScreenState extends State<PlayerScreen> with WindowListener {
             content: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                GestureDetector(
-                  onTap: () async {
-                    FilePickerResult? result = await FilePicker.pickFiles(
-                      type: FileType.image,
-                    );
-                    if (result != null) {
-                      setDialogState(() {
-                        selectedImagePath = result.files.single.path;
-                      });
-                    }
-                  },
-                  child: Container(
-                    width: 100,
-                    height: 100,
-                    decoration: BoxDecoration(
-                      color: Colors.grey[800],
-                      borderRadius: BorderRadius.circular(12),
-                      image: selectedImagePath != null
-                          ? DecorationImage(
-                              image: FileImage(File(selectedImagePath!)),
-                              fit: BoxFit.cover,
+                MouseRegion(
+                  cursor: SystemMouseCursors.click,
+                  child: GestureDetector(
+                    onTap: () async {
+                      FilePickerResult? result = await FilePicker.pickFiles(
+                        type: FileType.image,
+                      );
+                      if (result != null) {
+                        setDialogState(() {
+                          selectedImagePath = result.files.single.path;
+                        });
+                      }
+                    },
+                    child: Container(
+                      width: 100,
+                      height: 100,
+                      decoration: BoxDecoration(
+                        color: Colors.grey[800],
+                        borderRadius: BorderRadius.circular(12),
+                        image: selectedImagePath != null
+                            ? DecorationImage(
+                                image: FileImage(File(selectedImagePath!)),
+                                fit: BoxFit.cover,
+                              )
+                            : null,
+                      ),
+                      child: selectedImagePath == null
+                          ? const Icon(
+                              Icons.add_photo_alternate,
+                              color: Colors.white54,
+                              size: 40,
                             )
                           : null,
                     ),
-                    child: selectedImagePath == null
-                        ? const Icon(
-                            Icons.add_photo_alternate,
-                            color: Colors.white54,
-                            size: 40,
-                          )
-                        : null,
                   ),
                 ),
                 const SizedBox(height: 16),

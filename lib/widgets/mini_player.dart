@@ -209,15 +209,17 @@ class _MiniPlayerState extends State<MiniPlayer> {
     return ValueListenableBuilder<Color?>(
       valueListenable: GlobalThemeService().dominantColor,
       builder: (context, dominantColor, _) {
-        return GestureDetector(
-          onVerticalDragUpdate: (details) {
-            // Si arrastra hacia arriba (delta negativo), abrir reproductor
-            if (details.primaryDelta! < -5) {
-              _openFullPlayer();
-            }
-          },
-          onTap: _openFullPlayer,
-          child: Container(
+        return MouseRegion(
+          cursor: SystemMouseCursors.click,
+          child: GestureDetector(
+            onVerticalDragUpdate: (details) {
+              // Si arrastra hacia arriba (delta negativo), abrir reproductor
+              if (details.primaryDelta! < -5) {
+                _openFullPlayer();
+              }
+            },
+            onTap: _openFullPlayer,
+            child: Container(
             height: 70,
             child: ClipRRect(
               borderRadius: BorderRadius.circular(24),
@@ -420,6 +422,7 @@ class _MiniPlayerState extends State<MiniPlayer> {
                 ),
               ),
             ),
+          ),
           ),
         );
       },
