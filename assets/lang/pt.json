@@ -489,7 +489,7 @@
   "adjust_lyrics_time": "Ajustar o tempo das letras",
   "queue_empty": "A fila está vazia",
   "effect_win10_lag": "Acrílico e Mica estão disponíveis no Windows 11 (no Windows 10 há lag ao arrastar).",
-  "effect_compositor_note": "O desfoque nativo depende do seu compositor (ex. KDE KWin) e não está disponível no app.",
+  "effect_compositor_note": "O desfoque do fundo é solicitado ao seu compositor (funciona no KDE Plasma com o efeito de desfoque ativado) ao usar um efeito translúcido.",
   "window_color": "Cor",
   "dark_mode": "Modo escuro",
   "window_dark_sub": "Tom de vibração do efeito da janela"

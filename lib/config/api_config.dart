@@ -1,5 +1,5 @@
 class ApiConfig {
   /// Client ID de Discord para Rich Presence.
   /// https://discord.com/developers/applications -> tu app -> OAuth2 -> Client ID
-  static const String discordClientId = '';
+  static const String discordClientId = '1537889823552176128';
 }

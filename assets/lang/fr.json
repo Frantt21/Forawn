@@ -489,7 +489,7 @@
   "adjust_lyrics_time": "Ajuster le temps des paroles",
   "queue_empty": "La file d'attente est vide",
   "effect_win10_lag": "Acrylique et Mica sont disponibles sur Windows 11 (lags au déplacement sur Windows 10).",
-  "effect_compositor_note": "Le flou natif dépend de votre compositeur (ex. KDE KWin) et n’est pas disponible dans l’app.",
+  "effect_compositor_note": "Le flou d’arrière-plan est demandé à votre compositeur (fonctionne sur KDE Plasma avec l’effet de flou activé) lors de l’utilisation d’un effet translucide.",
   "window_color": "Couleur",
   "dark_mode": "Mode sombre",
   "window_dark_sub": "Teinte de vibration de l’effet de fenêtre"

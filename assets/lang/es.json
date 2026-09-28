@@ -496,7 +496,7 @@
   "adjust_lyrics_time": "Ajusta el tiempo de las letras",
   "queue_empty": "La cola está vacía",
   "effect_win10_lag": "Acrylic y Mica están disponibles en Windows 11 (en Windows 10 lag al arrastrar).",
-  "effect_compositor_note": "El blur nativo depende de tu compositor (ej. KDE KWin) y no está disponible desde la app.",
+  "effect_compositor_note": "El blur del fondo se pide a tu compositor (funciona en KDE Plasma con el efecto Blur activado) al usar un efecto translúcido.",
   "window_color": "Color",
   "dark_mode": "Modo oscuro",
   "window_dark_sub": "Tono de vibrancia del efecto de ventana"

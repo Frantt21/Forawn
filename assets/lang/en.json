@@ -495,7 +495,7 @@
   "adjust_lyrics_time": "Adjust lyrics timing",
   "queue_empty": "Queue is empty",
   "effect_win10_lag": "Acrylic and Mica are available on Windows 11 (they lag when dragging on Windows 10).",
-  "effect_compositor_note": "Native blur depends on your compositor (e.g. KDE KWin) and is not available in-app.",
+  "effect_compositor_note": "Background blur is requested to your compositor (works on KDE Plasma with the Blur effect enabled) when using a translucent effect.",
   "window_color": "Color",
   "dark_mode": "Dark mode",
   "window_dark_sub": "Vibrancy tone of the window effect"

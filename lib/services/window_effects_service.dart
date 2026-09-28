@@ -11,9 +11,12 @@
 //    arrastre/redimensionado es notoriamente laggy (issue conocido del
 //    compositor; flutter_acrylic lo documenta). Solo se ofrecen solid y
 //    transparent; si el usuario tenía acrylic/mica guardado se degrada.
-//  · Linux: flutter_acrylic solo implementa disabled/solid/transparent.
-//    El blur de KWin es un compositor script (no invocable desde la app),
-//    así que NO se ofrece; queda solid/transparent.
+//  · Linux: flutter_acrylic solo implementa disabled/solid/transparent
+//    (el "transparent" pinta un tinte translúcido). El blur del compositor
+//    (KWin) se pide desde el runner nativo (ext-background-effect-v1 en
+//    KWin >= 6.7, org_kde_kwin_blur en KWin <= 6.6, _KDE_NET_WM_BLUR_BEHIND_
+//    REGION en X11): solo hace falta que el efecto "Blur" de KWin esté
+//    activo y la ventana sea translúcida.
 //  · macOS: flutter_acrylic implementa materiales NSVisualEffectView
 //    (titlebar, sidebar, hudWindow, etc.). Se exponen los más seguros.
 //
@@ -185,8 +188,8 @@ class WindowEffectsService {
       ];
     }
     if (Platform.isLinux) {
-      // flutter_acrylic en Linux: solo disabled/solid/transparent.
-      // El blur de KWin no es invocable desde la app.
+      // flutter_acrylic en Linux: solo disabled/solid/transparent. El blur
+      // lo aplica el compositor (se pide desde el runner nativo).
       return const [
         WindowEffectOption(
           key: 'solid',
@@ -209,19 +212,18 @@ class WindowEffectsService {
           effect: acrylic.WindowEffect.solid,
           labelKey: 'effect_solid',
           fallback: 'Solid',
-        ),
-        WindowEffectOption(
-          key: 'sidebar',
-          effect: acrylic.WindowEffect.sidebar,
-          labelKey: 'effect_acrylic',
-          fallback: 'Vibrancy',
-        ),
-        WindowEffectOption(
-          key: 'hudWindow',
-          effect: acrylic.WindowEffect.hudWindow,
-          labelKey: 'effect_mica',
-          fallback: 'HUD',
-        ),
+        ),          WindowEffectOption(
+            key: 'sidebar',
+            effect: acrylic.WindowEffect.sidebar,
+            labelKey: 'effect_sidebar',
+            fallback: 'Vibrancy',
+          ),
+          WindowEffectOption(
+            effect: acrylic.WindowEffect.hudWindow,
+            key: 'hudWindow',
+            labelKey: 'effect_hud',
+            fallback: 'HUD',
+          ),
       ];
     }
     return const [
@@ -247,7 +249,7 @@ class WindowEffectsService {
       return (
         key: 'effect_compositor_note',
         fallback:
-            'Native blur depends on your compositor (e.g. KDE KWin) and is not available in-app.',
+            'Background blur is requested to your compositor (works on KDE Plasma with the Blur effect enabled) when using a translucent effect.',
       );
     }
     return null;
@@ -263,10 +265,10 @@ class WindowEffectsService {
         Color(0x99303034), // gris humo más translúcido
       ];
 
-  /// Inicializa el plugin (solo Windows) y valida el efecto persistido
-  /// contra el OS. NO aplica el efecto aquí: aplicarlo antes de que la
-  /// ventana sea visible hace que Windows no tome el backdrop (abre negro)
-  /// y re-aplicarlo varias veces corrompe el DWM. La aplicación única
+  /// Inicializa el plugin (Windows, Linux y macOS) y valida el efecto
+  /// persistido contra el OS. NO aplica el efecto aquí: en Windows, aplicarlo
+  /// antes de que la ventana sea visible hace que no tome el backdrop (abre
+  /// negro) y re-aplicarlo varias veces corrompe el DWM. La aplicación única
   /// diferida la hace [applyPersistedOnce] cuando la ventana ya es visible.
   Future<void> initialize() async {
     if (_initialized) return;
@@ -301,9 +303,25 @@ class WindowEffectsService {
         ));
         return;
       }
-      // Linux/macOS: la app pinta fondo sólido propio (gNativeAcrylicAvailable
-      // queda false y el ColoredBox de main.dart cubre la ventana).
-      _nativeAvailable = false;
+      // Linux: flutter_acrylic soporta disabled/solid/transparent (el
+      // "transparent" pinta un tinte con alpha sobre una ventana RGBA = modo
+      // translúcido real). El Initialize del plugin es obligatorio aunque el
+      // lado nativo diga "not required": sin él el Completer interno de
+      // Window.setEffect nunca se completa y la llamada se cuelga.
+      if (Platform.isLinux) {
+        await acrylic.Window.initialize();
+        _nativeAvailable = true;
+        // Clave efectiva para el apply diferido ('solid' si aún no hay
+        // preferencia: la raíz se pinta transparente tras el apply y el
+        // plugin GTK debe quedar pintando un tinte opaco).
+        _currentKey =
+            (await SharedPreferences.getInstance()).getString(_prefEffectKey) ??
+            'solid';
+      } else {
+        // macOS: la app pinta fondo sólido propio (gNativeAcrylicAvailable
+        // queda false y el ColoredBox de main.dart cubre la ventana).
+        _nativeAvailable = false;
+      }
     } catch (e) {
       debugPrint('[WindowEffects] initialize error: $e');
       _nativeAvailable = false;
@@ -488,6 +506,10 @@ class WindowEffectsService {
   /// ignora llamadas concurrentes porque cada setEffect hace ACCENT_DISABLED
   /// → apply y dos solapados se corrompen.
   Future<void> _reapplyCurrentOnce(String reason) async {
+    // Linux: el backdrop del compositor no se "pierde" como el del DWM de
+    // Windows; los refuerzos por foco/restauración son innecesarios (y cada
+    // SetEffect re-pinta la ventana GTK).
+    if (Platform.isLinux) return;
     if (_reapplying) return;
     final option = _optionByKey(_currentKey);
     if (option == null) return;

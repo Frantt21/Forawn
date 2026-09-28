@@ -23,4 +23,16 @@ add_definitions(-DAPPLICATION_ID="${APPLICATION_ID}")
 target_link_libraries(${BINARY_NAME} PRIVATE flutter)
 target_link_libraries(${BINARY_NAME} PRIVATE PkgConfig::GTK)
 
+# Blur del compositor en Wayland (ext-background-effect-v1 / org_kde_kwin_blur):
+# cliente escrito a mano, solo se necesita libwayland-client. Si no está
+# disponible, el runner compila sin la ruta Wayland (queda el fallback X11).
+find_package(PkgConfig QUIET)
+if(PkgConfig_FOUND)
+  pkg_check_modules(WAYLAND_CLIENT QUIET IMPORTED_TARGET wayland-client)
+  if(WAYLAND_CLIENT_FOUND)
+    target_link_libraries(${BINARY_NAME} PRIVATE PkgConfig::WAYLAND_CLIENT)
+    target_compile_definitions(${BINARY_NAME} PRIVATE HAVE_WAYLAND_CLIENT=1)
+  endif()
+endif()
+
 target_include_directories(${BINARY_NAME} PRIVATE "${CMAKE_SOURCE_DIR}")

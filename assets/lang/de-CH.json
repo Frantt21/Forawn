@@ -489,7 +489,7 @@
   "adjust_lyrics_time": "Textzeit anpassen",
   "queue_empty": "Warteschlange ist leer",
   "effect_win10_lag": "Acryl und Mica sind auf Windows 11 verfügbar (auf Windows 10 Ruckeln beim Ziehen).",
-  "effect_compositor_note": "Nativer Blur hängt von deinem Compositor ab (z. B. KDE KWin) und ist in der App nicht verfügbar.",
+  "effect_compositor_note": "Der Hintergrund-Blur wird an deinen Compositor übermittelt (funktioniert unter KDE Plasma mit aktiviertem Blur-Effekt), wenn ein transluzider Effekt aktiv ist.",
   "window_color": "Farbe",
   "dark_mode": "Dunkelmodus",
   "window_dark_sub": "Vibranzton des Fenstereffekts"

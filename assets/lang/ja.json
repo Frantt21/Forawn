@@ -491,7 +491,7 @@
   "adjust_lyrics_time": "歌詞のタイミングを調整",
   "queue_empty": "キューは空です",
   "effect_win10_lag": "アクリルとミカはWindows 11で利用可能です（Windows 10ではドラッグ時にラグが発生します）。",
-  "effect_compositor_note": "ネイティブのブラーはコンポジター（例：KDE KWin）に依存し、アプリからは利用できません。",
+  "effect_compositor_note": "半透明エフェクト使用時、背景のブラーはコンポジターに要求されます（KDE Plasma でブラー効果が有効な場合に動作します）。",
   "window_color": "色",
   "dark_mode": "ダークモード",
   "window_dark_sub": "ウィンドウ効果のバイブレーションのトーン"
