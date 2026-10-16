@@ -36,7 +36,6 @@ import 'win_diag.dart';
 
 const String _prefEffectKey = 'window_effect';
 const String _prefColorKey = 'window_color';
-const String _prefDarkKey = 'window_dark';
 
 /// Color por defecto del acrílico (gris oscuro translúcido, el histórico).
 const Color kDefaultWindowColor = Color(0xCC222222);
@@ -188,22 +187,11 @@ class WindowEffectsService {
       ];
     }
     if (Platform.isLinux) {
-      // flutter_acrylic en Linux: solo disabled/solid/transparent. El blur
-      // lo aplica el compositor (se pide desde el runner nativo).
-      return const [
-        WindowEffectOption(
-          key: 'solid',
-          effect: acrylic.WindowEffect.solid,
-          labelKey: 'effect_solid',
-          fallback: 'Solid',
-        ),
-        WindowEffectOption(
-          key: 'transparent',
-          effect: acrylic.WindowEffect.transparent,
-          labelKey: 'effect_transparent',
-          fallback: 'Transparent',
-        ),
-      ];
+      // Linux SIN modo translúcido: la ventana es opaca y el fondo lo pinta
+      // la app (ColoredBox de main.dart). No se ofrecen efectos: el blur del
+      // compositor no tendría nada que mostrar detrás de una superficie
+      // opaca.
+      return const [];
     }
     if (Platform.isMacOS) {
       return const [
@@ -243,13 +231,6 @@ class WindowEffectsService {
         key: 'effect_win10_lag',
         fallback:
             'Acrylic and Mica are available on Windows 11 (they lag when dragging on Windows 10).',
-      );
-    }
-    if (Platform.isLinux) {
-      return (
-        key: 'effect_compositor_note',
-        fallback:
-            'Background blur is requested to your compositor (works on KDE Plasma with the Blur effect enabled) when using a translucent effect.',
       );
     }
     return null;
@@ -303,25 +284,13 @@ class WindowEffectsService {
         ));
         return;
       }
-      // Linux: flutter_acrylic soporta disabled/solid/transparent (el
-      // "transparent" pinta un tinte con alpha sobre una ventana RGBA = modo
-      // translúcido real). El Initialize del plugin es obligatorio aunque el
-      // lado nativo diga "not required": sin él el Completer interno de
-      // Window.setEffect nunca se completa y la llamada se cuelga.
-      if (Platform.isLinux) {
-        await acrylic.Window.initialize();
-        _nativeAvailable = true;
-        // Clave efectiva para el apply diferido ('solid' si aún no hay
-        // preferencia: la raíz se pinta transparente tras el apply y el
-        // plugin GTK debe quedar pintando un tinte opaco).
-        _currentKey =
-            (await SharedPreferences.getInstance()).getString(_prefEffectKey) ??
-            'solid';
-      } else {
-        // macOS: la app pinta fondo sólido propio (gNativeAcrylicAvailable
-        // queda false y el ColoredBox de main.dart cubre la ventana).
-        _nativeAvailable = false;
-      }
+      // Linux y macOS: sin efectos nativos. En Linux el modo translúcido se
+      // eliminó (ventana opaca, fondo pintado por el ColoredBox de main.dart)
+      // y en macOS la app pinta su propio fondo sólido. No se inicializa
+      // flutter_acrylic: al quedar _nativeAvailable=false, translucentSurfaces
+      // es false y ninguna superficie usa alpha.
+      _nativeAvailable = false;
+      _currentKey = null;
     } catch (e) {
       debugPrint('[WindowEffects] initialize error: $e');
       _nativeAvailable = false;
@@ -335,6 +304,7 @@ class WindowEffectsService {
   ) async {
     final savedKey = prefs.getString(_prefEffectKey) ?? 'solid';
     final supported = availableEffects;
+    if (supported.isEmpty) return null; // OS sin efectos (Linux).
     WindowEffectOption chosen;
     try {
       chosen = supported.firstWhere((e) => e.key == savedKey);
@@ -348,7 +318,10 @@ class WindowEffectsService {
     }
 
     final color = Color(prefs.getInt(_prefColorKey) ?? kDefaultWindowColor.value);
-    final dark = prefs.getBool(_prefDarkKey) ?? true;
+    // Tono del material DERIVADO del color de fondo: así volver de un color
+    // claro a uno oscuro restaura el material/texto oscuro (antes salía de un
+    // switch de dark mode que podía quedar desincronizado con el color).
+    final dark = color.computeLuminance() < 0.5;
     _currentColor = color;
     _currentDark = dark;
 
@@ -572,8 +545,9 @@ class WindowEffectsService {
   /// Aplica un efecto en caliente (desde settings) y lo persiste con
   /// debounce. Marca la sesión como aplicada: si el usuario ya eligió
   /// efecto/color, el apply diferido del arranque debe ser no-op.
-  Future<void> applyAndPersist(WindowEffectOption option, Color color,
-      {bool dark = true}) async {
+  Future<void> applyAndPersist(WindowEffectOption option, Color color) async {
+    // Mismo criterio de tono que en el resto de la app: derivado del color.
+    final dark = color.computeLuminance() < 0.5;
     try {
       await acrylic.Window.setEffect(
         effect: option.effect,
@@ -593,7 +567,6 @@ class WindowEffectsService {
           final prefs = await SharedPreferences.getInstance();
           await prefs.setString(_prefEffectKey, option.key);
           await prefs.setInt(_prefColorKey, color.value);
-          await prefs.setBool(_prefDarkKey, dark);
         } catch (_) {}
       });
     } catch (e) {
@@ -602,11 +575,13 @@ class WindowEffectsService {
   }
 
   /// Lee el efecto persistido validándolo contra el OS actual.
-  /// Devuelve la opción efectiva (nunca una no soportada).
-  Future<WindowEffectOption> loadPersistedOption() async {
+  /// Devuelve la opción efectiva (nunca una no soportada) o null si el OS no
+  /// ofrece ningún efecto (Linux).
+  Future<WindowEffectOption?> loadPersistedOption() async {
+    final supported = availableEffects;
+    if (supported.isEmpty) return null;
     final prefs = await SharedPreferences.getInstance();
     final savedKey = prefs.getString(_prefEffectKey) ?? 'solid';
-    final supported = availableEffects;
     try {
       return supported.firstWhere((e) => e.key == savedKey);
     } catch (_) {

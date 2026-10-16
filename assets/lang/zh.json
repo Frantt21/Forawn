@@ -63,6 +63,7 @@
   "downloading_percent": "下载中",
   "saving_file": "保存文件...",
   "processing_audio": "处理 / 提取音频...",
+  "audio_plugin_missing": "无法播放音频：缺少系统组件（GStreamer）。在 Arch 上：sudo pacman -S gst-plugins-good",
   "yt_backup_failed": "YouTube 备用失败。",
   "download_error": "下载错误",
   "backup_completed_but_not_found": "备用完成，但未找到生成的文件。",

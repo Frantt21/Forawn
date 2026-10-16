@@ -1,5 +1,6 @@
 import 'package:audioplayers/audioplayers.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart' show PlatformException;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:io';
 import 'dart:math';
@@ -68,6 +69,15 @@ class GlobalMusicPlayer {
   bool _isCrossfading = false;
   bool _isSkipping = false;
   Timer? _fadeTimer;
+
+  /// Aviso visible al usuario cuando el backend de audio del sistema falla
+  /// (p. ej. falta un complemento de GStreamer en Linux). Lo instala
+  /// main.dart: el servicio avisa a la UI sin crear un ciclo de imports.
+  static void Function(String key, String fallback)? onAudioError;
+
+  /// El aviso se muestra UNA vez por sesión: si el backend está roto, cada
+  /// intento de reproducción falla igual y repetirlo sería spam.
+  static bool _audioErrorReported = false;
 
   /// Reproductor que suena AHORA. Todas las interacciones externas (media
   /// keys, SMTC, pantallas) deben usar este getter en lugar de `player`.
@@ -592,7 +602,7 @@ class GlobalMusicPlayer {
             );
           }
         } catch (e) {
-          debugPrint('[GlobalMusicPlayer] Error loading audio source: $e');
+          _reportAudioError('restore', e);
         }
 
         // Intentar cargar artwork desde caché
@@ -611,21 +621,92 @@ class GlobalMusicPlayer {
     }
   }
 
+  /// Ejecuta una operación del backend de audio capturando su fallo.
+  ///
+  /// En Linux, si falta el plugin de GStreamer necesario (id3demux,
+  /// mpegaudioparse, autoaudiosink...), audioplayers lanza
+  /// PlatformException(LinuxAudioError) en setSource()/play(). Antes ese
+  /// error escapaba como "Unhandled Exception" en cada intento; acá se
+  /// registra y se avisa al usuario una vez, sin re-lanzar (false = la
+  /// operación no se completó).
+  Future<bool> _guardAudio(String action, Future<void> Function() op) async {
+    try {
+      await op();
+      return true;
+    } catch (e) {
+      _reportAudioError(action, e);
+      return false;
+    }
+  }
+
+  /// Registra el fallo de audio y avisa al usuario la primera vez.
+  static void _reportAudioError(String action, Object error) {
+    debugPrint('[GlobalMusicPlayer] Error de audio ($action): $error');
+    if (_audioErrorReported) return;
+    _audioErrorReported = true;
+    onAudioError?.call(
+      'audio_plugin_missing',
+      'No se pudo reproducir audio: falta un componente del sistema '
+          '(GStreamer). En Arch: sudo pacman -S gst-plugins-good',
+    );
+  }
+
+  /// true si el error viene del backend de audio del sistema.
+  ///
+  /// En Linux audioplayers reporta PlatformException con código
+  /// `LinuxAudioError` (GStreamer) tanto en la respuesta del canal como en su
+  /// event stream; este último no pasa por ningún try/catch de la app.
+  static bool _isAudioBackendError(Object error) {
+    final text = error is PlatformException
+        ? '${error.code} ${error.message ?? ''}'
+        : '$error';
+    return text.contains('LinuxAudioError') ||
+        text.contains('AudioPlayerException') ||
+        text.contains('GStreamer') ||
+        text.contains('gst-');
+  }
+
+  /// Maneja un error NO capturado de la app.
+  ///
+  /// Devuelve true si era del backend de audio (ya quedó registrado y avisado),
+  /// en cuyo caso el llamador debe dar por manejado el error; false para el
+  /// resto, que sigue el flujo normal de errores de Flutter.
+  static bool handleUncaught(Object error) {
+    if (!_isAudioBackendError(error)) return false;
+    _reportAudioError('backend', error);
+    return true;
+  }
+
   /// Pausa el reproductor activo (media keys, SMTC, UI).
   Future<void> pauseActive() async {
     _cancelCrossfade();
-    await activePlayer.pause();
+    await _guardAudio('pause', () => activePlayer.pause());
   }
 
   /// Reanuda el reproductor activo.
   Future<void> resumeActive() async {
-    await activePlayer.resume();
+    await _guardAudio('resume', () => activePlayer.resume());
   }
 
   /// Detiene el reproductor activo y limpia cualquier fade en curso.
   Future<void> stopActive() async {
     _cancelCrossfade();
-    await activePlayer.stop();
+    await _guardAudio('stop', () => activePlayer.stop());
+  }
+
+  /// Reproduce [file] en el reproductor ACTIVO, con manejo de errores.
+  ///
+  /// Es la vía ÚNICA para arrancar audio (pantallas, media keys, atajos): si
+  /// el backend falla — p. ej. falta el plugin de GStreamer en Linux y
+  /// audioplayers lanza PlatformException(LinuxAudioError) — se captura aquí,
+  /// nunca escapa como "Unhandled Exception", y se avisa al usuario una vez
+  /// por sesión. Devuelve false si la reproducción no arrancó.
+  Future<bool> playFile(File file) async {
+    await _guardAudio('stop', () => activePlayer.stop());
+    return _guardAudio('play', () async {
+      await activePlayer.play(DeviceFileSource(file.path));
+      await activePlayer.setVolume(volume.value);
+    });
   }
 
   // Play a playlist
@@ -848,7 +929,7 @@ class GlobalMusicPlayer {
         }
       });
     } catch (e) {
-      debugPrint('[Crossfade] Error: $e');
+      _reportAudioError('crossfade', e);
       _isCrossfading = false;
       // Reconciliar: el saliente sigue activo.
       try {
@@ -908,17 +989,20 @@ class GlobalMusicPlayer {
     }
 
     _isSkipping = true;
+    var started = false;
     try {
       _cancelCrossfade(); // Un skip manual aborta cualquier fade en curso.
       // Enviar al reproductor ACTIVO: si suena el secundario (crossfade en
       // curso o previo), reproducir en el primario lo detendría de facto.
       await activePlayer.stop();
-      await activePlayer.play(DeviceFileSource(file.path));
-      await activePlayer.setVolume(volume.value);
+      // Si el backend de audio falla (p. ej. falta el plugin de GStreamer),
+      // NO debe escapar como Unhandled Exception: playFile lo captura y avisa.
+      started = await playFile(file);
     } finally {
       _isSkipping = false;
     }
-    isPlaying.value = true;
+    // Sin audio la pista no arrancó: la UI no debe quedar en "reproduciendo".
+    isPlaying.value = started;
     showMiniPlayer.value = true;
   }
 

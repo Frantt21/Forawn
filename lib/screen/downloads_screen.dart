@@ -614,7 +614,8 @@ class _DownloadsScreenState extends State<DownloadsScreen>
     } catch (e, st) {
       debugPrint('[DownloadsScreen] Build error: $e\n$st');
       return Scaffold(
-        backgroundColor: const Color(0xFF1E1E1E),
+        // Mismo gris de fondo que forawn_mobile (AppColors.background).
+        backgroundColor: const Color(0xFF222222),
         body: Center(
           child: Column(
             mainAxisSize: MainAxisSize.min,

@@ -63,6 +63,7 @@
   "downloading_percent": "Descargando",
   "saving_file": "Guardando archivo...",
   "processing_audio": "Procesando / Extrayendo audio...",
+  "audio_plugin_missing": "No se pudo reproducir audio: falta un componente del sistema (GStreamer). En Arch: sudo pacman -S gst-plugins-good",
   "yt_backup_failed": "Respaldo con yt falló.",
   "download_error": "Error en descarga",
   "backup_completed_but_not_found": "Respaldo completado, pero no encontré el archivo resultante.",

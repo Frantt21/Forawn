@@ -64,9 +64,32 @@ class LyricsDisplay extends StatefulWidget {
   State<LyricsDisplay> createState() => _LyricsDisplayState();
 }
 
+/// Duración por defecto de la interpolación del sweep (≈ señal cada 200 ms).
+const Duration kDefaultSweepSmoothing = Duration(milliseconds: 180);
+
+/// Duración de interpolación para un intervalo de señal dado, con topes.
+///
+/// audioplayers pide la posición en cada frame, pero el valor vuelve de la
+/// plataforma y puede llegar cuantizado (cada ~200 ms según el backend).
+/// Con señales fluidas (60 fps) la interpolación es mínima -no añade retardo-;
+/// con señales espaciadas cubre el hueco para que el sweep no salte.
+Duration sweepSmoothingFor(
+  Duration signalInterval, {
+  Duration min = const Duration(milliseconds: 40),
+  Duration max = const Duration(milliseconds: 250),
+}) {
+  if (signalInterval <= min) return min;
+  if (signalInterval > max) return max;
+  return signalInterval;
+}
+
 class _LyricsDisplayState extends State<LyricsDisplay>
     with AutomaticKeepAliveClientMixin {
   late ScrollController _controller;
+
+  /// Interpolación del sweep, ajustada al ritmo real de las señales.
+  Duration _sweepSmoothing = kDefaultSweepSmoothing;
+  DateTime? _lastSignalAt;
   final Map<int, GlobalKey> _itemKeys = {};
   bool _showSyncButton = false;
   int _lastAutoScrolledIndex = -1;
@@ -154,6 +177,7 @@ class _LyricsDisplayState extends State<LyricsDisplay>
     _controller = ScrollController();
     _controller.addListener(_checkButtonVisibility);
     widget.currentIndexNotifier.addListener(_onIndexChanged);
+    widget.positionNotifier.addListener(_trackPositionCadence);
 
     // Crear keys para cada item (con gaps)
     for (var i = 0; i < _lines.length; i++) {
@@ -188,9 +212,22 @@ class _LyricsDisplayState extends State<LyricsDisplay>
     }
   }
 
+  /// Mide cada cuánto cambia realmente la posición para ajustar la
+  /// interpolación del sweep (no usa setState: lo consume el próximo build).
+  void _trackPositionCadence() {
+    final now = DateTime.now();
+    final last = _lastSignalAt;
+    _lastSignalAt = now;
+    if (last == null) return;
+    final delta = now.difference(last);
+    if (delta <= Duration.zero || delta > const Duration(seconds: 1)) return;
+    _sweepSmoothing = sweepSmoothingFor(delta);
+  }
+
   @override
   void dispose() {
     widget.currentIndexNotifier.removeListener(_onIndexChanged);
+    widget.positionNotifier.removeListener(_trackPositionCadence);
     _controller.removeListener(_checkButtonVisibility);
     _controller.dispose();
     super.dispose();
@@ -364,7 +401,11 @@ class _LyricsDisplayState extends State<LyricsDisplay>
         }
 
         wordWidgets.add(
-          _LyricWord(
+          KaraokeWordFill(
+            // Key por palabra+inicio: al cambiar de línea son widgets
+            // nuevos, así no heredan la animación de la anterior.
+            key: ValueKey('$text@${wStart.inMilliseconds}'),
+            smoothing: _sweepSmoothing,
             word: text + (tokenIndex < tokenCount - 1 ? ' ' : ''),
             progress: wordProgress,
             style: style,
@@ -592,53 +633,130 @@ class _LyricsDisplayState extends State<LyricsDisplay>
   }
 }
 
-/// Palabra con relleno por progreso (modo karaoke, forawn_mobile).
-class _LyricWord extends StatelessWidget {
+/// Palabra del karaoke con relleno animado de forma continua.
+///
+/// La posición de audio llega cada ~200 ms (onPositionChanged): pintar el
+/// relleno solo con esos valores hace que el sweep avance a saltos. Este
+/// widget interpola cada cambio de progreso (lineal), así que el relleno se
+/// mueve continuo y sigue alineado con la última señal.
+class KaraokeWordFill extends StatefulWidget {
   final String word;
+
+  /// Progreso objetivo (0..1) tal como llega de la posición de audio.
   final double progress;
   final TextStyle style;
   final Color activeColor;
   final Color inactiveColor;
 
-  const _LyricWord({
+  /// Duración de la interpolación (se ajusta al ritmo de las señales).
+  final Duration smoothing;
+
+  const KaraokeWordFill({
+    super.key,
     required this.word,
     required this.progress,
     required this.style,
     required this.activeColor,
     required this.inactiveColor,
+    this.smoothing = kDefaultSweepSmoothing,
   });
 
   @override
-  Widget build(BuildContext context) {
-    if (progress >= 1.0) {
-      return Text(word, style: style.copyWith(color: activeColor));
-    } else if (progress <= 0.0) {
-      return Text(word, style: style.copyWith(color: inactiveColor));
+  State<KaraokeWordFill> createState() => KaraokeWordFillState();
+}
+
+class KaraokeWordFillState extends State<KaraokeWordFill>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller = AnimationController(
+    vsync: this,
+    duration: widget.smoothing,
+    // Arranca en el progreso recibido: una palabra que ya venía a medias (o
+    // resuelta) no se anima desde cero al montarse.
+    value: widget.progress.clamp(0.0, 1.0),
+  );
+
+  double _from = 0.0;
+  double _to = 0.0;
+
+  /// Progreso pintado ahora mismo (interpolado entre señales).
+  double get value =>
+      (_from + (_to - _from) * _controller.value).clamp(0.0, 1.0);
+
+  @override
+  void initState() {
+    super.initState();
+    _from = _to = _controller.value;
+  }
+
+  @override
+  void didUpdateWidget(KaraokeWordFill oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (_controller.duration != widget.smoothing) {
+      _controller.duration = widget.smoothing;
     }
+    final target = widget.progress.clamp(0.0, 1.0);
+    if (target == _to) return;
+    // Continuidad: si llega un valor nuevo a mitad de animación se sigue
+    // desde el valor pintado, así el relleno nunca salta.
+    _from = value;
+    _to = target;
+    _controller.forward(from: 0);
+  }
 
-    // Acelerador visual de progreso para que la última letra se ilumine
-    final visualProgress = (progress * 1.25).clamp(0.0, 1.0);
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
 
-    return ShaderMask(
-      shaderCallback: (rect) {
-        return LinearGradient(
-          colors: [
-            activeColor,
-            activeColor.withOpacity(0.5),
-            inactiveColor,
-          ],
-          stops: [
-            (visualProgress - 0.2).clamp(0.0, 1.0),
-            visualProgress,
-            (visualProgress + 0.2).clamp(0.0, 1.0),
-          ],
-          begin: Alignment.centerLeft,
-          end: Alignment.centerRight,
-          tileMode: TileMode.clamp,
-        ).createShader(rect);
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedBuilder(
+      animation: _controller,
+      builder: (context, _) {
+        final p = value;
+        if (p >= 1.0) {
+          return Text(
+            widget.word,
+            style: widget.style.copyWith(color: widget.activeColor),
+          );
+        }
+        if (p <= 0.0) {
+          return Text(
+            widget.word,
+            style: widget.style.copyWith(color: widget.inactiveColor),
+          );
+        }
+
+        // Acelerador visual de progreso para que la última letra se ilumine
+        // (mismo criterio que antes, ahora sobre el valor interpolado).
+        final visualProgress = (p * 1.25).clamp(0.0, 1.0);
+
+        return ShaderMask(
+          shaderCallback: (rect) {
+            return LinearGradient(
+              colors: [
+                widget.activeColor,
+                widget.activeColor.withOpacity(0.5),
+                widget.inactiveColor,
+              ],
+              stops: [
+                (visualProgress - 0.2).clamp(0.0, 1.0),
+                visualProgress,
+                (visualProgress + 0.2).clamp(0.0, 1.0),
+              ],
+              begin: Alignment.centerLeft,
+              end: Alignment.centerRight,
+              tileMode: TileMode.clamp,
+            ).createShader(rect);
+          },
+          blendMode: BlendMode.srcIn,
+          child: Text(
+            widget.word,
+            style: widget.style.copyWith(color: Colors.white),
+          ),
+        );
       },
-      blendMode: BlendMode.srcIn,
-      child: Text(word, style: style.copyWith(color: Colors.white)),
     );
   }
 }

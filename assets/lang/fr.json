@@ -63,6 +63,7 @@
   "downloading_percent": "Téléchargement",
   "saving_file": "Enregistrement du fichier...",
   "processing_audio": "Traitement / extraction audio...",
+  "audio_plugin_missing": "Impossible de lire l'audio : un composant système (GStreamer) est manquant. Sur Arch : sudo pacman -S gst-plugins-good",
   "yt_backup_failed": "Repli YouTube échoué.",
   "download_error": "Erreur de téléchargement",
   "backup_completed_but_not_found": "Repli terminé, mais fichier introuvable.",

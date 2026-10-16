@@ -63,6 +63,7 @@
   "downloading_percent": "다운로드 중",
   "saving_file": "파일 저장 중...",
   "processing_audio": "오디오 처리 / 추출 중...",
+  "audio_plugin_missing": "오디오를 재생할 수 없습니다: 시스템 구성 요소(GStreamer)가 없습니다. Arch: sudo pacman -S gst-plugins-good",
   "yt_backup_failed": "YouTube 백업 실패.",
   "download_error": "다운로드 오류",
   "backup_completed_but_not_found": "백업 완료, 그러나 결과 파일을 찾을 수 없음.",

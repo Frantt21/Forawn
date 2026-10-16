@@ -166,6 +166,17 @@ static inline void ext_bg_surface_set_blur_region(
       region);
 }
 
+// set_blur_region acepta region NULL ("toda la superficie") y destroy es el
+// destructor del objeto (opcode 0).
+static inline void ext_bg_surface_destroy(
+    struct ext_background_effect_surface_v1* surface) {
+  wl_proxy_marshal_flags(
+      reinterpret_cast<struct wl_proxy*>(surface),
+      EXT_BACKGROUND_EFFECT_SURFACE_V1_DESTROY, nullptr,
+      wl_proxy_get_version(reinterpret_cast<struct wl_proxy*>(surface)),
+      WL_MARSHAL_FLAG_DESTROY);
+}
+
 static inline struct org_kde_kwin_blur* kde_blur_manager_create(
     struct org_kde_kwin_blur_manager* manager, struct wl_surface* surface) {
   struct wl_proxy* id = wl_proxy_marshal_flags(
@@ -238,22 +249,52 @@ static const struct wl_registry_listener forawn_registry_listener = {
 static struct ext_background_effect_surface_v1* g_ext_bg_surface = nullptr;
 static struct org_kde_kwin_blur* g_kde_blur = nullptr;
 
+// Cola de eventos PROPIA para nuestros proxies. El wl_display es el de GDK
+// (compartido): todo lo nuestro se asigna a esta cola para que ningún
+// despacho que hagamos alcance a los handlers de GDK.
+static struct wl_event_queue* g_blur_queue = nullptr;
+
 // Región "grande" que el compositor recorta al tamaño real de la superficie
 // (spec ext-background-effect-v1: "clipped by the compositor to the surface
 // size"). Así el blur cubre la ventana aunque cambie de tamaño.
 static constexpr int32_t kBlurRegionSize = 1 << 16;  // 65536x65536
 
+static void forawn_blur_release_wayland();
+
 static void forawn_blur_request_wayland(GdkWindow* gdk_window) {
+  forawn_blur_release_wayland();
   struct wl_display* wl_display = gdk_wayland_display_get_wl_display(
       gdk_window_get_display(gdk_window));
   struct wl_surface* surface = gdk_wayland_window_get_wl_surface(gdk_window);
   if (wl_display == nullptr || surface == nullptr) return;
 
+  // La conexión es la de GTK/GDK: su cola POR DEFECTO no se despacha nunca
+  // desde aquí. wl_display_roundtrip() lo haría (invocaría los handlers de
+  // GDK fuera de su GSource, con el estado Wayland/EGL a medio inicializar y
+  // en mitad de activate/paint: de ahí el abort de libepoxy "Couldn't find
+  // current GLX or EGL context" al siguiente draw). Con cola propia el
+  // roundtrip solo despacha NUESTROS eventos (patrón documentado en
+  // wayland-client-core.h para clientes que comparten wl_display, el mismo
+  // que usa Mesa con eglSwapBuffers).
+  if (g_blur_queue == nullptr) {
+    g_blur_queue = wl_display_create_queue(wl_display);
+  }
+  if (g_blur_queue == nullptr) return;
+
   ForawnBlurGlobals globals;
   struct wl_registry* registry = wl_display_get_registry(wl_display);
+  if (registry == nullptr) return;
+  // El registry y todo lo que cuelgue de él (managers, regiones) viven en
+  // nuestra cola.
+  wl_proxy_set_queue(reinterpret_cast<struct wl_proxy*>(registry),
+                     g_blur_queue);
   wl_registry_add_listener(registry, &forawn_registry_listener, &globals);
-  // Roundtrip: procesa los eventos global ya encolados y llena `globals`.
-  wl_display_roundtrip(wl_display);
+  // Roundtrip de la cola propia: recibe los `global` ya encolados y llena
+  // `globals` sin despachar nada de GDK.
+  if (wl_display_roundtrip_queue(wl_display, g_blur_queue) < 0) {
+    wl_registry_destroy(registry);
+    return;
+  }
 
   if (globals.ext_mgr != nullptr) {
     // Protocolo nuevo: la región inicial del efecto es VACÍA, hay que
@@ -285,6 +326,39 @@ static void forawn_blur_request_wayland(GdkWindow* gdk_window) {
   }
 
   wl_registry_destroy(registry);
+
+  // Los proxies auxiliares se sueltan aquí: cada petición (una por mapeo)
+  // re-bindea los globals, así que no se acumulan. Los objetos de blur SÍ se
+  // mantienen vivos: su vida ES la del efecto.
+  if (globals.compositor != nullptr) {
+    wl_proxy_destroy(reinterpret_cast<struct wl_proxy*>(globals.compositor));
+  }
+  if (globals.kde_mgr != nullptr) {
+    // El manager legacy no expone destructor en el protocolo: se suelta el
+    // proxy local (el org_kde_kwin_blur creado sigue vivo).
+    wl_proxy_destroy(reinterpret_cast<struct wl_proxy*>(globals.kde_mgr));
+  }
+
+  // Los requests quedan en el buffer de salida: se envía lo antes posible
+  // (GDK comparte el mismo fd y también hace flush).
+  wl_display_flush(wl_display);
+}
+
+// La vida de los objetos de blur creados ES la de la ventana: se liberan
+// antes de volver a pedir el efecto (si el blur se re-solicita, el objeto
+// anterior ya no sirve y dejarlo vivo duplicaría el efecto en el compositor).
+static void forawn_blur_release_wayland() {
+  if (g_ext_bg_surface != nullptr) {
+    // Destructor del protocolo (opcode 0): hay que AVISAR al compositor. Si
+    // solo se destruyera el proxy local, su objeto seguiría vivo y un nuevo
+    // get_background_effect sobre la misma wl_surface es error de protocolo.
+    ext_bg_surface_destroy(g_ext_bg_surface);
+    g_ext_bg_surface = nullptr;
+  }
+  if (g_kde_blur != nullptr) {
+    wl_proxy_destroy(reinterpret_cast<struct wl_proxy*>(g_kde_blur));
+    g_kde_blur = nullptr;
+  }
 }
 #endif  // FORAWN_HAVE_WAYLAND
 
@@ -400,9 +474,17 @@ static void my_application_activate(GApplication* application) {
   g_signal_connect_swapped(view, "first-frame", G_CALLBACK(first_frame_cb), self);
   gtk_widget_realize(GTK_WIDGET(view));
 
-  // Pedir el blur al compositor con la ventana ya realizada (necesitamos su
-  // wl_surface / XID). Sin soporte del compositor, la petición se ignora.
-  forawn_blur_request(GTK_WIDGET(window));
+  // El blur se pide al compositor cuando la ventana se MAPEA, no en activate:
+  // en activate GTK/GDK aún está inicializando su estado Wayland/EGL y el
+  // roundtrip para leer los globals (que despacha eventos) puede romperlo.
+  // Con `map` la wl_surface ya es la definitiva, y se re-pide en cada
+  // re-mapeo (el plugin de acrylic hace hide/show al aplicar el efecto y la
+  // superficie puede recrearse). Sin soporte del compositor se ignora.
+  g_signal_connect_swapped(window, "map", G_CALLBACK(forawn_blur_request),
+                           window);
+  if (gtk_widget_get_mapped(GTK_WIDGET(window))) {
+    forawn_blur_request(GTK_WIDGET(window));
+  }
 
   gtk_widget_grab_focus(GTK_WIDGET(view));
 }
@@ -440,6 +522,12 @@ static void my_application_shutdown(GApplication* application) {
   //MyApplication* self = MY_APPLICATION(object);
 
   // Perform any actions required at application shutdown.
+  //
+  // Aquí NO se sueltan los objetos de blur: en el apagado GDK puede haber
+  // desconectado ya su wl_display (lo que libera todos los proxies) y
+  // tocarlos sería use-after-free; el compositor destruye sus objetos al
+  // cerrarse la conexión. La liberación solo hace falta antes de volver a
+  // pedir el blur.
 
   G_APPLICATION_CLASS(my_application_parent_class)->shutdown(application);
 }

@@ -383,11 +383,11 @@ class _MusicPlayerScreenState extends State<MusicPlayerScreen>
         _musicPlayer.currentArt.value = null;
         _musicPlayer.isPlaying.value = true;
 
-        // Stop & Play (handling audio)
-        // We don't await stop() strictly before setting UI state to make it feel snappier
-        _musicPlayer.stopActive().then((_) async {
-          await _musicPlayer.activePlayer.play(DeviceFileSource(file.path));
-        });
+        // Stop & Play (handling audio) por la vía del servicio, que captura
+        // los fallos del backend (p. ej. sin el plugin de GStreamer) en vez
+        // de dejarlos como Unhandled Exception. Sin await: la UI no espera
+        // al arranque del audio.
+        _musicPlayer.playFile(file);
 
         // Add history in background
         MusicHistory().addToHistory(file);

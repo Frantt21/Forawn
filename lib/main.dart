@@ -29,12 +29,12 @@ import 'services/tools_service.dart';
 import 'services/win_diag.dart';
 import 'services/window_effects_service.dart';
 import 'services/window_media_service.dart';
+import 'widgets/elegant_notification.dart';
 import 'widgets/mini_player.dart';
 import 'utils/color_utils.dart';
 
 const String kDefaultLangCode = 'en';
 const _prefColorKey = 'window_color';
-const _prefDarkKey = 'window_dark';
 
 /// Tamaño logico deseado del CONTENIDO de la ventana (y su minimo).
 const double kWindowWidth = 1102;
@@ -59,6 +59,15 @@ double get gMacTrafficLightInset => Platform.isMacOS ? 78 : 0;
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+
+  // Los fallos del backend de audio (p. ej. falta el plugin de GStreamer en
+  // Linux) llegan también por el event stream del plugin, FUERA del alcance
+  // de cualquier try/catch de la app. Se capturan acá para avisar en la UI y
+  // no llenar la consola con "Unhandled Exception" en cada intento. El resto
+  // de errores no capturados mantienen el comportamiento normal de Flutter.
+  WidgetsBinding.instance.platformDispatcher.onError = (error, stack) {
+    return GlobalMusicPlayer.handleUncaught(error);
+  };
 
   // Inicialización FFI para sqflite en escritorio
   try {
@@ -323,10 +332,15 @@ class _ForawnAppRootState extends State<ForawnAppRoot>
   /// (evita el frame negro del arranque sin backdrop).
   bool _effectsApplied = false;
 
+  /// Gris de fondo de la app en modo oscuro: el MISMO valor que
+  /// `AppColors.background` de forawn_mobile (34, 34, 34) para que ambas
+  /// versiones se vean iguales.
+  static const Color _kDarkBackground = Color(0xFF222222);
+
   /// Color real de fondo de la ventana. En Windows es el color del acrílico
   /// elegido por el usuario; en Linux/macOS el fondo sólido de la app.
   /// Se usa para calcular el contraste de la title bar (texto/iconos).
-  Color _windowBackgroundColor = const Color(0xFF1E1E1E);
+  Color _windowBackgroundColor = _kDarkBackground;
 
   @override
   void initState() {
@@ -358,6 +372,20 @@ class _ForawnAppRootState extends State<ForawnAppRoot>
     // Señal de foco a nivel Flutter (complementa onWindowFocus): al volver a
     // primer plano se refuerza el backdrop del compositor.
     WidgetsBinding.instance.addObserver(this);
+
+    // Errores del backend de audio (p. ej. falta el plugin de GStreamer en
+    // Linux): avisar en la UI en vez de tirar "Unhandled Exception" en cada
+    // intento de reproducción.
+    GlobalMusicPlayer.onAudioError = (key, fallback) {
+      final overlay = appNavigatorKey.currentState?.overlay?.context;
+      if (overlay == null) return;
+      showElegantNotification(
+        overlay,
+        t(key, fallback: fallback),
+        icon: Icons.volume_off_rounded,
+        duration: const Duration(seconds: 6),
+      );
+    };
 
     // Cargar librería de música globalmente al inicio de la app
     _loadMusicLibrary();
@@ -419,28 +447,31 @@ class _ForawnAppRootState extends State<ForawnAppRoot>
     }
   }
 
-  Future<void> _loadBackgroundBrightness() async {
-    final prefs = await SharedPreferences.getInstance();
-    final isDark = prefs.getBool(_prefDarkKey) ?? true;
-    Color bg;
-    if (Platform.isWindows) {
-      // Windows: el fondo real es el color del acrílico guardado.
-      bg = Color(prefs.getInt(_prefColorKey) ?? kDefaultWindowColor.value);
-    } else {
-      // Linux/macOS: fondo sólido de la app.
-      bg = isDark ? const Color(0xFF1E1E1E) : const Color(0xFFF5F5F5);
-    }
-    if (mounted) {
-      setState(() {
-        _isDarkBackground = isDark;
-        _windowBackgroundColor = bg;
-      });
-    }
+  /// Fija el fondo de la raíz y el tono de la app a partir del color de
+  /// fondo EFECTIVO.
+  ///
+  /// El tono se deriva SIEMPRE de la luminancia de ese color y no de una
+  /// preferencia aparte: antes `window_dark` (switch "Dark mode") no se
+  /// reevaluaba al cambiar el color, así que al volver de un color claro a
+  /// uno oscuro el texto se quedaba en negro. Ahora la ida y la vuelta son
+  /// simétricas (luminancia < 0.5 = oscuro).
+  ///
+  /// Linux/macOS: sin efecto de ventana, el fondo es el sólido de la app.
+  void _setWindowBackground(Color effectColor) {
+    final bg = Platform.isWindows ? effectColor : _kDarkBackground;
+    final isDark = bg.computeLuminance() < 0.5;
+    if (!mounted) return;
+    setState(() {
+      _isDarkBackground = isDark;
+      _windowBackgroundColor = bg;
+    });
   }
 
-  // Call this when returning from settings to refresh theme
-  Future<void> _refreshBackgroundBrightness() async {
-    await _loadBackgroundBrightness();
+  Future<void> _loadBackgroundBrightness() async {
+    final prefs = await SharedPreferences.getInstance();
+    _setWindowBackground(
+      Color(prefs.getInt(_prefColorKey) ?? kDefaultWindowColor.value),
+    );
   }
 
   @override
@@ -517,10 +548,10 @@ class _ForawnAppRootState extends State<ForawnAppRoot>
             ? (_effectsApplied
                 ? Colors.transparent
                 : (_isDarkBackground
-                      ? const Color(0xFF1E1E1E)
+                      ? _kDarkBackground
                       : const Color(0xFFF5F5F5)))
             : _isDarkBackground
-            ? const Color(0xFF1E1E1E)
+            ? _kDarkBackground
             : const Color(0xFFF5F5F5),
         child: ClipRRect(
           borderRadius: BorderRadius.circular(0),
@@ -861,13 +892,10 @@ class _HomeScreenState extends State<HomeScreen> with WindowListener {
   /// Aplica y persiste un efecto de ventana por CLAVE ('solid', 'acrylic',
   /// 'mica', ...). La validación por OS la hace WindowEffectsService: si la
   /// clave no existe en este sistema se degrada al primer efecto soportado.
-  Future<void> _applyWindowEffect(
-    String effectKey,
-    Color color, {
-    bool dark = true,
-  }) async {
+  Future<void> _applyWindowEffect(String effectKey, Color color) async {
     try {
       final options = WindowEffectsService.instance.availableEffects;
+      if (options.isEmpty) return; // OS sin efectos de ventana (Linux).
       WindowEffectOption option;
       try {
         option = options.firstWhere((e) => e.key == effectKey);
@@ -877,11 +905,7 @@ class _HomeScreenState extends State<HomeScreen> with WindowListener {
 
       // Aplicar y persistir (el servicio completa su completer `applied`,
       // que pone la superficie transparente vía el listener del root).
-      await WindowEffectsService.instance.applyAndPersist(
-        option,
-        color,
-        dark: dark,
-      );
+      await WindowEffectsService.instance.applyAndPersist(option, color);
 
       if (mounted) {
         // Recrear las screens cacheadas: sus superficies adaptativas leen
@@ -890,12 +914,13 @@ class _HomeScreenState extends State<HomeScreen> with WindowListener {
         setState(_initializeScreens);
       }
 
-      // Refresh theme in parent widget
-      if (mounted &&
-          context.findAncestorStateOfType<_ForawnAppRootState>() != null) {
+      // El tono de la app (texto claro/oscuro) sigue al color elegido: se
+      // pasa el color EN MANO en vez de releer prefs, cuya escritura está
+      // debounceada y devolvería el color anterior.
+      if (mounted) {
         context
-            .findAncestorStateOfType<_ForawnAppRootState>()!
-            ._refreshBackgroundBrightness();
+            .findAncestorStateOfType<_ForawnAppRootState>()
+            ?._setWindowBackground(color);
       }
     } catch (e) {
       debugPrint('[WindowEffect] error: $e');

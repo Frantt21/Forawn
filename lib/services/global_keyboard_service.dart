@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:audioplayers/audioplayers.dart';
 import 'package:hotkey_manager/hotkey_manager.dart';
 import 'global_music_player.dart';
 import 'music_history.dart';
@@ -163,10 +162,10 @@ class GlobalKeyboardService {
     );
 
     try {
-      // Detener antes de reproducir para evitar errores de MediaEngine en Windows
-      await _musicPlayer.stopActive();
-
-      await _musicPlayer.activePlayer.play(DeviceFileSource(file.path));
+      // Detener antes de reproducir y arrancar audio por la vía del servicio
+      // (captura los fallos del backend: sin el plugin de GStreamer no debe
+      // escapar un Unhandled Exception).
+      await _musicPlayer.playFile(file);
       _musicPlayer.currentIndex.value = index;
       _musicPlayer.currentFilePath.value = file.path;
       _musicPlayer.filesList.value = _files!;

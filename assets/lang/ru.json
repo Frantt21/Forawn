@@ -63,6 +63,7 @@
   "downloading_percent": "Загрузка",
   "saving_file": "Сохранение файла...",
   "processing_audio": "Обработка / извлечение аудио...",
+  "audio_plugin_missing": "Не удалось воспроизвести аудио: отсутствует системный компонент (GStreamer). В Arch: sudo pacman -S gst-plugins-good",
   "yt_backup_failed": "Резерв через yt не удался.",
   "download_error": "Ошибка загрузки",
   "backup_completed_but_not_found": "Резерв завершён, но файл не найден.",

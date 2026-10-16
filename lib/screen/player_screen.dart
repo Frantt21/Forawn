@@ -1425,12 +1425,10 @@ class _PlayerScreenState extends State<PlayerScreen> with WindowListener {
       _musicPlayer.currentArtist.value = 'Unknown Artist';
     }
 
-    // 4. Audio operations - fire and forget (non-blocking)
-    _player.stop().then((_) {
-      _player.play(DeviceFileSource(file.path)).catchError((e) {
-        debugPrint("Error playing file: $e");
-      });
-    });
+    // 4. Audio operations - fire and forget (non-blocking). Va por el
+    // servicio para que un fallo del backend (p. ej. sin GStreamer) no escape
+    // como Unhandled Exception y avise al usuario una vez.
+    _musicPlayer.playFile(file);
 
     // 5. Background tasks (non-blocking)
     MusicHistory().addToHistory(file);

@@ -14,7 +14,6 @@ import 'package:forawn/version.dart';
 typedef TextGetter = String Function(String key, {String? fallback});
 typedef LanguageSelector = Future<void> Function(String code);
 const String _prefColorKey = 'window_color';
-const String _prefDarkKey = 'window_dark';
 
 extension StringCapitalization on String {
   String capitalize() {
@@ -30,7 +29,7 @@ class SettingsScreen extends StatefulWidget {
 
   /// Aplica un efecto de ventana por CLAVE ('solid', 'acrylic', 'mica', ...).
   /// La validación por OS y la persistencia las hace WindowEffectsService.
-  final Future<void> Function(String effectKey, Color color, {bool dark})
+  final Future<void> Function(String effectKey, Color color)
   onChangeWindowEffect;
 
   /// Volver a home. En modo screen (IndexedStack) lo invoca el botón back
@@ -89,7 +88,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
   String _selectedEffectLabel = 'solid';
   String _currentEffectKey = 'solid';
   Color _selectedColor = const Color(0xFF222222);
-  bool _darkMode = true;
 
   /// Opciones de efecto que soporta el OS actual (no las de otro OS).
   List<WindowEffectOption> _effectOptions = const [];
@@ -114,21 +112,21 @@ class _SettingsScreenState extends State<SettingsScreen> {
     final prefs = await SharedPreferences.getInstance();
     if (!mounted) return;
 
-    // Efectos disponibles EN ESTE OS + validación del persistido.
+    // Efectos disponibles EN ESTE OS (vacío en Linux: sin modo translúcido).
     final svc = WindowEffectsService.instance;
     final options = svc.availableEffects;
-    final effective = await svc.loadPersistedOption();
+    final effective = options.isEmpty ? null : await svc.loadPersistedOption();
     final colorValue = prefs.getInt(_prefColorKey) ?? kDefaultWindowColor.value;
-    final dark = prefs.getBool(_prefDarkKey) ?? true;
 
     if (mounted) {
       setState(() {
         _effectOptions = options;
         _effectNote = svc.noteForPlatform;
-        _selectedEffectLabel = effective.key;
-        _currentEffectKey = effective.key;
+        if (effective != null) {
+          _selectedEffectLabel = effective.key;
+          _currentEffectKey = effective.key;
+        }
         _selectedColor = Color(colorValue);
-        _darkMode = dark;
       });
     }
   }
@@ -175,7 +173,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       _selectedColor = color;
     });
 
-    await widget.onChangeWindowEffect(label, color, dark: _darkMode);
+    await widget.onChangeWindowEffect(label, color);
   }
 
   Future<void> _toggleDiscord(bool value) async {
@@ -569,27 +567,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
                                   },
                                 ),
                               ],
-                            ),
-                          ),
-                          Divider(
-                            height: 1,
-                            color: currentTheme.dividerColor,
-                          ),
-                          // Modo oscuro (afecta la vibrancy del efecto).
-                          _SettingsTile(
-                            leadingIcon: Icons.dark_mode,
-                            leadingColor: Colors.indigoAccent,
-                            title: widget.getText('dark_mode', fallback: 'Dark mode'),
-                            subtitle: widget.getText(
-                              'window_dark_sub',
-                              fallback: 'Vibrancy tone of the window effect',
-                            ),
-                            trailing: Switch(
-                              value: _darkMode,
-                              onChanged: (v) {
-                                setState(() => _darkMode = v);
-                                _applyEffect(_currentEffectKey, _selectedColor);
-                              },
                             ),
                           ),
                           if (_effectNote != null)

@@ -63,6 +63,7 @@
   "downloading_percent": "ダウンロード中",
   "saving_file": "ファイルを保存中...",
   "processing_audio": "処理中 / 音声抽出中...",
+  "audio_plugin_missing": "音声を再生できません：システムコンポーネント（GStreamer）が不足しています。Arch の場合：sudo pacman -S gst-plugins-good",
   "yt_backup_failed": "YouTube バックアップに失敗しました。",
   "download_error": "ダウンロードエラー",
   "backup_completed_but_not_found": "バックアップは完了しましたが、結果ファイルが見つかりません。",

@@ -63,6 +63,7 @@
   "downloading_percent": "Downloading",
   "saving_file": "Saving file...",
   "processing_audio": "Processing / Extracting audio...",
+  "audio_plugin_missing": "Couldn't play audio: a system component (GStreamer) is missing. On Arch: sudo pacman -S gst-plugins-good",
   "yt_backup_failed": "YouTube backup failed.",
   "download_error": "Download error",
   "backup_completed_but_not_found": "Backup completed but result file not found.",
